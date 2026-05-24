@@ -15,7 +15,11 @@ logger = logging.getLogger("visora.server")
 # Import all tools to trigger registration decorators on startup
 from visora.tools import animation, mesh, queue, scene, vision
 
-if __name__ == "__main__":
-    # Start the FastMCP server
+
+def main() -> None:
     logger.info("Running Visora server via FastMCP...")
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

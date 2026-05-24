@@ -11,6 +11,9 @@ dependencies = [
     "pydantic-settings>=2.0.0",
 ]
 
+[project.scripts]
+visora = "visora.server:main"
+
 [project.optional-dependencies]
 dev = [
     "ruff>=0.3.0",
