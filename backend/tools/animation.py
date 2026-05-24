@@ -1,5 +1,5 @@
-from visora.app import mcp
-from visora.schemas import ClipInspectorResult, SkeletonMapperResult
+from backend.app import mcp
+from backend.schemas import ClipInspectorResult, SkeletonMapperResult
 
 
 @mcp.tool()

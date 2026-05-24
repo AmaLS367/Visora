@@ -2,11 +2,11 @@ import logging
 import uuid
 from typing import Any
 
-from visora.app import mcp
-from visora.bridge import UnityBridge
-from visora.schemas import PlayModeManagementResult, SafeTransactionResult
+from backend.app import mcp
+from backend.bridge import UnityBridge
+from backend.schemas import PlayModeManagementResult, SafeTransactionResult
 
-logger = logging.getLogger("visora.tools.scene")
+logger = logging.getLogger("backend.tools.scene")
 bridge = UnityBridge()
 
 

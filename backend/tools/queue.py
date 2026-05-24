@@ -2,11 +2,11 @@ import asyncio
 import logging
 import time
 
-from visora.app import mcp
-from visora.bridge import UnityBridge
-from visora.schemas import QueueStatusResult
+from backend.app import mcp
+from backend.bridge import UnityBridge
+from backend.schemas import QueueStatusResult
 
-logger = logging.getLogger("visora.tools.queue")
+logger = logging.getLogger("backend.tools.queue")
 
 # Instantiate unity bridge for queue operations
 bridge = UnityBridge()

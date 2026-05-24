@@ -1,5 +1,5 @@
-from visora.app import mcp
-from visora.schemas import SkinnedMeshDiagnosticsResult
+from backend.app import mcp
+from backend.schemas import SkinnedMeshDiagnosticsResult
 
 
 @mcp.tool()

@@ -1,5 +1,5 @@
-from visora.app import mcp
-from visora.schemas import ProjectWorldPointsResult, ScreenshotResult
+from backend.app import mcp
+from backend.schemas import ProjectWorldPointsResult, ScreenshotResult
 
 
 @mcp.tool()

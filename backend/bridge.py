@@ -3,9 +3,9 @@ from typing import Any, cast
 
 import httpx
 
-from visora.config import Settings, get_settings
+from backend.config import Settings, get_settings
 
-logger = logging.getLogger("visora.bridge")
+logger = logging.getLogger("backend.bridge")
 
 
 class UnityBridge:

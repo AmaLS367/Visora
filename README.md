@@ -16,7 +16,7 @@ Visora is a high-level Model Context Protocol (MCP) server wrapper designed to i
 
 ```
 visora/
-├── visora/
+├── backend/
 │   ├── __init__.py
 │   ├── server.py          # MCP server entrypoint
 │   ├── bridge.py          # HTTP client to AnkleBreaker
@@ -73,7 +73,7 @@ cp .env.example .env
 To run the server locally:
 
 ```bash
-uv run python -m visora.server
+uv run python -m backend.server
 ```
 
 ---
