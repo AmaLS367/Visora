@@ -1,25 +1,18 @@
 import logging
-import os
 
-from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
+from visora.app import mcp
+from visora.config import get_settings
 
-# Load environment variables
-load_dotenv()
+settings = get_settings()
 
 # Setup basic logging
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=getattr(logging, log_level, logging.INFO),
+    level=getattr(logging, settings.log_level, logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("visora.server")
 
-# Initialize FastMCP Server
-mcp = FastMCP("Visora")
-
 # Import all tools to trigger registration decorators on startup
-# This resolves any module imports beautifully as mcp is fully initialized.
 from visora.tools import animation, mesh, queue, scene, vision
 
 if __name__ == "__main__":

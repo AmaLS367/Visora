@@ -1,5 +1,13 @@
+import logging
+import uuid
+from typing import Any
+
+from visora.app import mcp
+from visora.bridge import UnityBridge
 from visora.schemas import PlayModeManagementResult, SafeTransactionResult
-from visora.server import mcp
+
+logger = logging.getLogger("visora.tools.scene")
+bridge = UnityBridge()
 
 
 @mcp.tool()
@@ -14,8 +22,47 @@ async def safe_transaction(editor_code: str, auto_save: bool = True) -> SafeTran
     Returns:
         A SafeTransactionResult detailing whether the scene was saved, transaction ID, and outcome description.
     """
-    # Empty decorated stub - no implementation yet
-    return SafeTransactionResult(success=True, message="Transaction dry run successful")
+    transaction_id = str(uuid.uuid4())
+
+    try:
+        state = await bridge.get_editor_state()
+        if state.get("isPlaying") is True:
+            await bridge.set_play_mode(False)
+
+        scene_saved = False
+        if auto_save:
+            save_result = await bridge.save_scene()
+            scene_saved = bool(save_result.get("success", False))
+
+        result: dict[str, Any] = await bridge.execute_code(editor_code)
+        if result.get("error"):
+            return SafeTransactionResult(
+                success=False,
+                error=str(result["error"]),
+                transaction_id=transaction_id,
+                scene_saved=scene_saved,
+                message="Unity editor code execution failed",
+            )
+
+        if auto_save:
+            save_result = await bridge.save_scene()
+            scene_saved = scene_saved and bool(save_result.get("success", False))
+
+        return SafeTransactionResult(
+            success=True,
+            transaction_id=transaction_id,
+            scene_saved=scene_saved,
+            message="Transaction executed successfully",
+        )
+    except Exception as exc:
+        logger.exception("Safe transaction failed")
+        return SafeTransactionResult(
+            success=False,
+            error=str(exc),
+            transaction_id=transaction_id,
+            scene_saved=False,
+            message="Safe transaction failed",
+        )
 
 
 @mcp.tool()
@@ -29,5 +76,25 @@ async def playmode_management(play: bool) -> PlayModeManagementResult:
     Returns:
         A PlayModeManagementResult detailing the playmode state change outcome.
     """
-    # Empty decorated stub - no implementation yet
-    return PlayModeManagementResult(success=True, is_playing=play, previous_state=not play, message="State toggled")
+    try:
+        before = await bridge.get_editor_state()
+        previous_state = bool(before.get("isPlaying", False))
+        await bridge.set_play_mode(play)
+        after = await bridge.get_editor_state()
+        is_playing = bool(after.get("isPlaying", play))
+
+        return PlayModeManagementResult(
+            success=True,
+            is_playing=is_playing,
+            previous_state=previous_state,
+            message="Play mode state updated",
+        )
+    except Exception as exc:
+        logger.exception("Play mode management failed")
+        return PlayModeManagementResult(
+            success=False,
+            error=str(exc),
+            is_playing=not play,
+            previous_state=not play,
+            message="Play mode state update failed",
+        )

@@ -2,9 +2,9 @@ import asyncio
 import logging
 import time
 
+from visora.app import mcp
 from visora.bridge import UnityBridge
 from visora.schemas import QueueStatusResult
-from visora.server import mcp
 
 logger = logging.getLogger("visora.tools.queue")
 
@@ -35,10 +35,11 @@ async def wait_for_ticket(
         try:
             # Poll status of the ticket from the Unity Editor bridge
             status_data = await bridge.get_queue_status(ticket_id)
-            status = status_data.get("status", "pending")
+            raw_status = str(status_data.get("status", "pending"))
+            status = raw_status.lower()
             progress = status_data.get("progress", 0.0)
             result = status_data.get("result")
-            error = status_data.get("error")
+            error = status_data.get("error") or status_data.get("errorMessage")
 
             logger.info(f"Polling ticket {ticket_id}: status={status}, progress={progress}")
 
@@ -51,7 +52,7 @@ async def wait_for_ticket(
                     result=result,
                     error=None,
                 )
-            elif status == "failed":
+            if status == "failed":
                 return QueueStatusResult(
                     success=False,
                     ticket_id=ticket_id,

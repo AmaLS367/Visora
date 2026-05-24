@@ -1,12 +1,9 @@
 import logging
-import os
 from typing import Any, cast
 
 import httpx
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+from visora.config import Settings, get_settings
 
 logger = logging.getLogger("visora.bridge")
 
@@ -17,12 +14,13 @@ class UnityBridge:
     Implements a automatic port fallback mechanism (default port 7890, fallback 7891).
     """
 
-    def __init__(self) -> None:
-        self.base_url = os.getenv("UNITY_BRIDGE_URL", "http://localhost").rstrip("/")
-        self.default_port = int(os.getenv("UNITY_BRIDGE_PORT", "7890"))
-        self.fallback_port = int(os.getenv("UNITY_BRIDGE_FALLBACK_PORT", "7891"))
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
+        self.base_url = self.settings.unity_bridge_url
+        self.default_port = self.settings.unity_bridge_port
+        self.fallback_port = self.settings.unity_bridge_fallback_port
         self._active_port: int | None = None
-        self.client = httpx.AsyncClient(timeout=10.0)
+        self.client = httpx.AsyncClient(timeout=self.settings.unity_bridge_timeout_seconds)
 
     async def get_active_port(self) -> int:
         """
@@ -36,7 +34,7 @@ class UnityBridge:
             test_url = f"{self.base_url}:{port}/api/ping"
             try:
                 logger.debug(f"Trying to ping AnkleBreaker on {test_url}...")
-                response = await self.client.get(test_url, timeout=2.0)
+                response = await self.client.get(test_url, timeout=self.settings.unity_bridge_ping_timeout_seconds)
                 if response.status_code == 200:
                     logger.info(f"Successfully connected to AnkleBreaker on port {port}")
                     self._active_port = port
@@ -45,13 +43,9 @@ class UnityBridge:
                 logger.warning(f"AnkleBreaker not responding on port {port}")
                 continue
 
-        # If neither port responds, fallback to the default port and log a warning
-        logger.error(
-            f"AnkleBreaker is not reachable on ports {self.default_port} or {self.fallback_port}. "
-            f"Defaulting to {self.default_port}.",
-        )
-        self._active_port = self.default_port
-        return self.default_port
+        msg = f"AnkleBreaker is not reachable on ports {self.default_port} or {self.fallback_port}."
+        logger.error(msg)
+        raise ConnectionError(msg)
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """Helper to send HTTP requests to AnkleBreaker using the active port."""
@@ -91,11 +85,16 @@ class UnityBridge:
         response = await self._request("POST", "/api/editor/execute-code", json={"code": code})
         return cast(dict[str, Any], response.json())
 
+    async def get_editor_state(self) -> dict[str, Any]:
+        """Returns current Unity editor state including play mode, compilation, and active scene."""
+        response = await self._request("GET", "/api/editor/state")
+        return cast(dict[str, Any], response.json())
+
     async def set_play_mode(self, active: bool) -> dict[str, Any]:
         """
         Sets the Unity Editor Play Mode state (active=True to play, active=False to stop).
         """
-        response = await self._request("POST", "/api/editor/play-mode", json={"active": active})
+        response = await self._request("POST", "/api/editor/play-mode", json={"action": "play" if active else "stop"})
         return cast(dict[str, Any], response.json())
 
     async def save_scene(self) -> dict[str, Any]:
@@ -116,7 +115,7 @@ class UnityBridge:
         """
         Checks the status of a long-running ticket in the AnkleBreaker task queue.
         """
-        response = await self._request("GET", "/api/queue/status", params={"ticket_id": ticket_id})
+        response = await self._request("GET", "/api/queue/status", params={"ticketId": ticket_id})
         return cast(dict[str, Any], response.json())
 
     async def close(self) -> None:

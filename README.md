@@ -7,7 +7,7 @@ Visora is a high-level Model Context Protocol (MCP) server wrapper designed to i
 - **Python 3.10+**
 - **FastMCP (mcp)** — MCP server framework
 - **HTTPX** — Async HTTP client for communication with Unity
-- **Pydantic v2** — Data validation and tool outputs schemas
+- **Pydantic v2 + pydantic-settings** — Typed config, data validation, and tool output schemas
 - **Asyncio** — Asynchronous task loop & ticket polling
 
 ---
