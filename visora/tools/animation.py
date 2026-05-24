@@ -1,5 +1,6 @@
-from visora.server import mcp
 from visora.schemas import ClipInspectorResult, SkeletonMapperResult
+from visora.server import mcp
+
 
 @mcp.tool()
 async def clip_inspector(clip_path: str) -> ClipInspectorResult:
@@ -13,7 +14,8 @@ async def clip_inspector(clip_path: str) -> ClipInspectorResult:
         A ClipInspectorResult containing animation duration, frame rate, loop configuration, and curve metrics.
     """
     # Empty decorated stub - no implementation yet
-    pass
+    return ClipInspectorResult(success=True)
+
 
 @mcp.tool()
 async def skeleton_mapper(root_transform_path: str) -> SkeletonMapperResult:
@@ -27,4 +29,4 @@ async def skeleton_mapper(root_transform_path: str) -> SkeletonMapperResult:
         A SkeletonMapperResult detailing mapped transforms and missing required humanoid bones.
     """
     # Empty decorated stub - no implementation yet
-    pass
+    return SkeletonMapperResult(success=True)

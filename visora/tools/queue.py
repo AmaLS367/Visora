@@ -1,20 +1,22 @@
 import asyncio
-import time
 import logging
-from visora.server import mcp
+import time
+
 from visora.bridge import UnityBridge
 from visora.schemas import QueueStatusResult
+from visora.server import mcp
 
 logger = logging.getLogger("visora.tools.queue")
 
 # Instantiate unity bridge for queue operations
 bridge = UnityBridge()
 
+
 @mcp.tool()
 async def wait_for_ticket(
-    ticket_id: str, 
-    timeout: float = 30.0, 
-    poll_interval: float = 1.0
+    ticket_id: str,
+    timeout: float = 30.0,
+    poll_interval: float = 1.0,
 ) -> QueueStatusResult:
     """
     Asynchronously polls the Unity task queue for the status of a specific ticket until completion or timeout.
@@ -28,7 +30,7 @@ async def wait_for_ticket(
         A QueueStatusResult detailing the outcome of the queued execution, or timeout state.
     """
     start_time = time.time()
-    
+
     while True:
         try:
             # Poll status of the ticket from the Unity Editor bridge
@@ -37,9 +39,9 @@ async def wait_for_ticket(
             progress = status_data.get("progress", 0.0)
             result = status_data.get("result")
             error = status_data.get("error")
-            
+
             logger.info(f"Polling ticket {ticket_id}: status={status}, progress={progress}")
-            
+
             if status == "completed":
                 return QueueStatusResult(
                     success=True,
@@ -47,7 +49,7 @@ async def wait_for_ticket(
                     status=status,
                     progress=progress,
                     result=result,
-                    error=None
+                    error=None,
                 )
             elif status == "failed":
                 return QueueStatusResult(
@@ -56,14 +58,14 @@ async def wait_for_ticket(
                     status=status,
                     progress=progress,
                     result=None,
-                    error=error or "Task execution failed in Unity Editor"
+                    error=error or "Task execution failed in Unity Editor",
                 )
-                
+
         except Exception as e:
             logger.warning(f"Error while polling ticket {ticket_id}: {e}. Retrying...")
             # We don't abort on request failures; we continue trying until timeout
             pass
-        
+
         # Check if we have timed out
         elapsed = time.time() - start_time
         if elapsed >= timeout:
@@ -74,7 +76,7 @@ async def wait_for_ticket(
                 status="timeout",
                 progress=0.0,
                 result=None,
-                error=f"Polling timed out after {timeout} seconds"
+                error=f"Polling timed out after {timeout} seconds",
             )
-            
+
         await asyncio.sleep(poll_interval)

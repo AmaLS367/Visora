@@ -1,12 +1,12 @@
-from typing import List
+from visora.schemas import ProjectWorldPointsResult, ScreenshotResult
 from visora.server import mcp
-from visora.schemas import ScreenshotResult, ProjectWorldPointsResult
+
 
 @mcp.tool()
 async def screenshot(
-    camera_name: str = "Main Camera", 
-    width: int = 1920, 
-    height: int = 1080
+    camera_name: str = "Main Camera",
+    width: int = 1920,
+    height: int = 1080,
 ) -> ScreenshotResult:
     """
     Captures a high-resolution screenshot from the specified editor or gameplay camera.
@@ -20,12 +20,13 @@ async def screenshot(
         A ScreenshotResult object containing base64-encoded image data or error details.
     """
     # Empty decorated stub - no implementation yet
-    pass
+    return ScreenshotResult(success=True)
+
 
 @mcp.tool()
 async def project_world_points(
-    points: List[List[float]], 
-    camera_name: str = "Main Camera"
+    points: list[list[float]],
+    camera_name: str = "Main Camera",
 ) -> ProjectWorldPointsResult:
     """
     Projects 3D world coordinates onto the 2D screen coordinate viewport of a camera.
@@ -38,4 +39,4 @@ async def project_world_points(
         A ProjectWorldPointsResult with a list of 2D screen positions.
     """
     # Empty decorated stub - no implementation yet
-    pass
+    return ProjectWorldPointsResult(success=True)

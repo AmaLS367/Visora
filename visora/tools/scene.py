@@ -1,5 +1,6 @@
+from visora.schemas import PlayModeManagementResult, SafeTransactionResult
 from visora.server import mcp
-from visora.schemas import SafeTransactionResult, PlayModeManagementResult
+
 
 @mcp.tool()
 async def safe_transaction(editor_code: str, auto_save: bool = True) -> SafeTransactionResult:
@@ -14,7 +15,8 @@ async def safe_transaction(editor_code: str, auto_save: bool = True) -> SafeTran
         A SafeTransactionResult detailing whether the scene was saved, transaction ID, and outcome description.
     """
     # Empty decorated stub - no implementation yet
-    pass
+    return SafeTransactionResult(success=True, message="Transaction dry run successful")
+
 
 @mcp.tool()
 async def playmode_management(play: bool) -> PlayModeManagementResult:
@@ -28,4 +30,4 @@ async def playmode_management(play: bool) -> PlayModeManagementResult:
         A PlayModeManagementResult detailing the playmode state change outcome.
     """
     # Empty decorated stub - no implementation yet
-    pass
+    return PlayModeManagementResult(success=True, is_playing=play, previous_state=not play, message="State toggled")

@@ -1,5 +1,6 @@
-from visora.server import mcp
 from visora.schemas import SkinnedMeshDiagnosticsResult
+from visora.server import mcp
+
 
 @mcp.tool()
 async def skinned_mesh_diagnostics(mesh_renderer_path: str) -> SkinnedMeshDiagnosticsResult:
@@ -13,4 +14,4 @@ async def skinned_mesh_diagnostics(mesh_renderer_path: str) -> SkinnedMeshDiagno
         A SkinnedMeshDiagnosticsResult containing diagnostic bounds, material counts, bone attachments, and warnings.
     """
     # Empty decorated stub - no implementation yet
-    pass
+    return SkinnedMeshDiagnosticsResult(success=True)

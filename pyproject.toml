@@ -11,6 +11,28 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
+    "mypy>=1.9.0",
+    "pytest>=8.0.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "COM", "C4", "PT", "ARG", "PTH", "TD", "ERA", "PL", "RUF"]
+ignore = ["E402", "F401", "UP035", "PLR2004", "E501", "ARG001"] # Ignore late import, unused, type deprecation, magic value, line-length, and unused argument warnings
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+exclude = ["build", "dist"]
+
