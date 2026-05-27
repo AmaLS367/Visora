@@ -58,6 +58,20 @@ class VisualInspectionResult(BaseToolResult):
     recommended_interpretation: str = Field(..., description="Text guidance for how agents should inspect the captures")
 
 
+class SceneCameraInfo(BaseModel):
+    """Compact metadata for a Unity scene camera."""
+
+    name: str = Field(..., description="Unity camera GameObject name")
+    path: str = Field(..., description="Hierarchy path to the camera GameObject")
+    enabled: bool = Field(..., description="Whether the Camera component is enabled")
+    active: bool = Field(..., description="Whether the camera GameObject is active in hierarchy")
+    tag: str = Field(..., description="Camera GameObject tag")
+    depth: float = Field(..., description="Camera rendering depth")
+    field_of_view: float = Field(..., description="Perspective camera field of view")
+    orthographic: bool = Field(..., description="Whether the camera is orthographic")
+    orthographic_size: float = Field(..., description="Orthographic camera size")
+
+
 class ScreenPoint(BaseModel):
     """Represents a projected 2D screen point."""
 
@@ -71,6 +85,29 @@ class ProjectWorldPointsResult(BaseToolResult):
     """Result schema for the world-to-screen projection tool."""
 
     screen_points: list[ScreenPoint] = Field(default_factory=list, description="List of projected screen coordinates")
+
+
+class CameraFramingDiagnosticsResult(BaseToolResult):
+    """Result schema for checking whether a subject is framed by a Unity camera."""
+
+    subject_path: str = Field(..., description="Inspected scene object path")
+    camera_name: str = Field(..., description="Camera used for framing diagnostics")
+    viewport_bounds: list[float] | None = Field(
+        default=None,
+        description="Subject viewport bounds [min_x, min_y, max_x, max_y]",
+    )
+    visible_ratio: float = Field(default=0.0, description="Approximate fraction of subject viewport bounds visible")
+    is_visible: bool = Field(default=False, description="True if any subject bounds are inside the viewport")
+    is_behind_camera: bool = Field(
+        default=False, description="True if all sampled subject bounds are behind the camera"
+    )
+    is_clipped: bool = Field(
+        default=False, description="True if subject is clipped by near/far planes or viewport edges"
+    )
+    framing_status: str = Field(
+        default="unknown", description="Framing status: centered, offscreen, too_small, too_large, clipped"
+    )
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking framing diagnostic warnings")
 
 
 class ClipInspectorResult(BaseToolResult):

@@ -4,7 +4,12 @@ import zlib
 
 import pytest
 
-from backend.schemas import VisualComparisonResult, VisualInspectionResult
+from backend.schemas import (
+    CameraFramingDiagnosticsResult,
+    SceneCameraInfo,
+    VisualComparisonResult,
+    VisualInspectionResult,
+)
 from backend.tools import vision
 
 
@@ -17,10 +22,20 @@ class FakeBridge:
     def __init__(self, response: dict[str, object] | list[dict[str, object]]) -> None:
         self.responses = response if isinstance(response, list) else [response]
         self.codes: list[str] = []
+        self.play_mode_changes: list[bool] = []
+        self.editor_state: dict[str, object] = {"isPlaying": False}
 
     async def execute_code(self, code: str) -> dict[str, object]:
         self.codes.append(code)
         return self.responses.pop(0)
+
+    async def get_editor_state(self) -> dict[str, object]:
+        return self.editor_state
+
+    async def set_play_mode(self, active: bool) -> dict[str, object]:
+        self.play_mode_changes.append(active)
+        self.editor_state = {"isPlaying": active}
+        return {"success": True, "isPlaying": active}
 
     @property
     def code(self) -> str | None:
@@ -140,6 +155,118 @@ def test_camera_screenshot_code_is_valid_inside_bridge_method_wrapper() -> None:
     assert "using UnityEngine;" not in code
     assert "System.Convert.ToBase64String" in code
     assert "UnityEngine.RenderTexture.active" in code
+
+
+@pytest.mark.anyio
+async def test_list_scene_cameras_returns_camera_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        {
+            "success": True,
+            "result": {
+                "cameras": [
+                    {
+                        "name": "Main Camera",
+                        "path": "Main Camera",
+                        "enabled": True,
+                        "active": True,
+                        "tag": "MainCamera",
+                        "depth": 0.0,
+                        "fieldOfView": 60.0,
+                        "orthographic": False,
+                        "orthographicSize": 5.0,
+                    },
+                ],
+            },
+        },
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    result = await vision.list_scene_cameras()
+
+    assert len(result) == 1
+    assert isinstance(result[0], SceneCameraInfo)
+    assert result[0].name == "Main Camera"
+    assert result[0].field_of_view == 60.0
+    assert result[0].orthographic is False
+    assert fake_bridge.code is not None
+    assert "FindObjectsByType<UnityEngine.Camera>" in fake_bridge.code
+
+
+@pytest.mark.anyio
+async def test_project_world_points_returns_viewport_points(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        {
+            "success": True,
+            "result": {
+                "screenPoints": [
+                    {"x": 0.5, "y": 0.5, "z": 3.0, "isBehindCamera": False},
+                    {"x": 1.2, "y": 0.4, "z": 2.0, "isBehindCamera": False},
+                    {"x": 0.2, "y": 0.2, "z": -1.0, "isBehindCamera": True},
+                ],
+            },
+        },
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    result = await vision.project_world_points([[0, 0, 3], [10, 0, 3], [0, 0, -1]])
+
+    assert result.success is True
+    assert [point.is_behind_camera for point in result.screen_points] == [False, False, True]
+    assert result.screen_points[1].x == 1.2
+    assert fake_bridge.code is not None
+    assert "WorldToViewportPoint" in fake_bridge.code
+
+
+@pytest.mark.anyio
+async def test_project_world_points_rejects_invalid_points() -> None:
+    result = await vision.project_world_points([[0, 1]])
+
+    assert result.success is False
+    assert result.error == "each world point must contain exactly 3 coordinates"
+
+
+@pytest.mark.anyio
+async def test_diagnose_camera_framing_reports_centered_subject(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        {
+            "success": True,
+            "result": {
+                "subjectPath": "Avatar",
+                "cameraName": "Main Camera",
+                "viewportBounds": [0.25, 0.1, 0.75, 0.9],
+                "visibleRatio": 1.0,
+                "isVisible": True,
+                "isBehindCamera": False,
+                "isClipped": False,
+                "framingStatus": "centered",
+                "warnings": [],
+            },
+        },
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    result = await vision.diagnose_camera_framing(subject_path="Avatar")
+
+    assert isinstance(result, CameraFramingDiagnosticsResult)
+    assert result.success is True
+    assert result.subject_path == "Avatar"
+    assert result.viewport_bounds == [0.25, 0.1, 0.75, 0.9]
+    assert result.visible_ratio == 1.0
+    assert result.framing_status == "centered"
+    assert fake_bridge.code is not None
+    assert "WorldToViewportPoint" in fake_bridge.code
+    assert "bounds.Encapsulate" in fake_bridge.code
+
+
+@pytest.mark.anyio
+async def test_diagnose_camera_framing_reports_unity_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(vision, "bridge", FakeBridge({"success": False, "error": "Subject not found: Missing"}))
+
+    result = await vision.diagnose_camera_framing(subject_path="Missing")
+
+    assert result.success is False
+    assert result.error == "Subject not found: Missing"
+    assert result.is_visible is False
 
 
 def test_diagnostic_scene_capture_uses_orthographic_bounds_framing() -> None:

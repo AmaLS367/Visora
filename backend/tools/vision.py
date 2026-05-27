@@ -9,7 +9,10 @@ from PIL import Image, UnidentifiedImageError
 from backend.app import mcp
 from backend.bridge import UnityBridge
 from backend.schemas import (
+    CameraFramingDiagnosticsResult,
     ProjectWorldPointsResult,
+    SceneCameraInfo,
+    ScreenPoint,
     ScreenshotResult,
     VisualCapture,
     VisualComparisonResult,
@@ -18,6 +21,46 @@ from backend.schemas import (
 
 logger = logging.getLogger("backend.tools.vision")
 bridge = UnityBridge()
+
+
+def _hierarchy_path_code(transform_expr: str) -> str:
+    return f"""
+var pathParts = new System.Collections.Generic.List<string>();
+var currentTransform = {transform_expr};
+while (currentTransform != null)
+{{
+    pathParts.Insert(0, currentTransform.name);
+    currentTransform = currentTransform.parent;
+}}
+var hierarchyPath = string.Join("/", pathParts);
+"""
+
+
+def _list_scene_cameras_code() -> str:
+    return f"""
+var cameras = UnityEngine.Object.FindObjectsByType<UnityEngine.Camera>(UnityEngine.FindObjectsSortMode.None);
+var items = new System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, object>>();
+foreach (var camera in cameras)
+{{
+    {_hierarchy_path_code("camera.transform")}
+    items.Add(new System.Collections.Generic.Dictionary<string, object>
+    {{
+        {{ "name", camera.gameObject.name }},
+        {{ "path", hierarchyPath }},
+        {{ "enabled", camera.enabled }},
+        {{ "active", camera.gameObject.activeInHierarchy }},
+        {{ "tag", camera.gameObject.tag }},
+        {{ "depth", camera.depth }},
+        {{ "fieldOfView", camera.fieldOfView }},
+        {{ "orthographic", camera.orthographic }},
+        {{ "orthographicSize", camera.orthographicSize }},
+    }});
+}}
+return new System.Collections.Generic.Dictionary<string, object>
+{{
+    {{ "cameras", items }},
+}};
+"""
 
 
 def _camera_screenshot_code(camera_name: str, width: int, height: int) -> str:
@@ -74,6 +117,159 @@ finally
     renderTexture.Release();
     UnityEngine.Object.DestroyImmediate(renderTexture);
 }}
+"""
+
+
+def _project_world_points_code(points: list[list[float]], camera_name: str) -> str:
+    camera_name_literal = json.dumps(camera_name)
+    point_rows = ",\n    ".join(
+        f"new float[] {{ {float(point[0])}f, {float(point[1])}f, {float(point[2])}f }}" for point in points
+    )
+    return f"""
+var cameraName = {camera_name_literal};
+var cameraObject = UnityEngine.GameObject.Find(cameraName);
+var camera = cameraObject != null ? cameraObject.GetComponent<UnityEngine.Camera>() : null;
+if (camera == null)
+{{
+    throw new System.Exception("Camera not found: " + cameraName);
+}}
+var points = new float[][]
+{{
+    {point_rows}
+}};
+var projected = new System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, object>>();
+foreach (var point in points)
+{{
+    var viewportPoint = camera.WorldToViewportPoint(new UnityEngine.Vector3(point[0], point[1], point[2]));
+    projected.Add(new System.Collections.Generic.Dictionary<string, object>
+    {{
+        {{ "x", viewportPoint.x }},
+        {{ "y", viewportPoint.y }},
+        {{ "z", viewportPoint.z }},
+        {{ "isBehindCamera", viewportPoint.z < 0f }},
+    }});
+}}
+return new System.Collections.Generic.Dictionary<string, object>
+{{
+    {{ "screenPoints", projected }},
+}};
+"""
+
+
+def _camera_framing_diagnostics_code(subject_path: str, camera_name: str) -> str:
+    subject_literal = json.dumps(subject_path)
+    camera_literal = json.dumps(camera_name)
+    return f"""
+var subjectPath = {subject_literal};
+var cameraName = {camera_literal};
+var subject = UnityEngine.GameObject.Find(subjectPath);
+if (subject == null)
+{{
+    throw new System.Exception("Subject not found: " + subjectPath);
+}}
+var cameraObject = UnityEngine.GameObject.Find(cameraName);
+var camera = cameraObject != null ? cameraObject.GetComponent<UnityEngine.Camera>() : null;
+if (camera == null)
+{{
+    throw new System.Exception("Camera not found: " + cameraName);
+}}
+var renderers = new System.Collections.Generic.List<UnityEngine.Renderer>();
+renderers.AddRange(subject.GetComponentsInChildren<UnityEngine.Renderer>());
+if (renderers.Count == 0)
+{{
+    throw new System.Exception("No renderers found for subject: " + subjectPath);
+}}
+var bounds = renderers[0].bounds;
+for (var index = 1; index < renderers.Count; index++)
+{{
+    bounds.Encapsulate(renderers[index].bounds);
+}}
+var min = bounds.min;
+var max = bounds.max;
+var corners = new UnityEngine.Vector3[]
+{{
+    new UnityEngine.Vector3(min.x, min.y, min.z),
+    new UnityEngine.Vector3(min.x, min.y, max.z),
+    new UnityEngine.Vector3(min.x, max.y, min.z),
+    new UnityEngine.Vector3(min.x, max.y, max.z),
+    new UnityEngine.Vector3(max.x, min.y, min.z),
+    new UnityEngine.Vector3(max.x, min.y, max.z),
+    new UnityEngine.Vector3(max.x, max.y, min.z),
+    new UnityEngine.Vector3(max.x, max.y, max.z),
+}};
+var minX = float.PositiveInfinity;
+var minY = float.PositiveInfinity;
+var maxX = float.NegativeInfinity;
+var maxY = float.NegativeInfinity;
+var behindCount = 0;
+var depthClipped = false;
+foreach (var corner in corners)
+{{
+    var viewportPoint = camera.WorldToViewportPoint(corner);
+    minX = System.Math.Min(minX, viewportPoint.x);
+    minY = System.Math.Min(minY, viewportPoint.y);
+    maxX = System.Math.Max(maxX, viewportPoint.x);
+    maxY = System.Math.Max(maxY, viewportPoint.y);
+    if (viewportPoint.z < 0f)
+    {{
+        behindCount++;
+    }}
+    if (viewportPoint.z < camera.nearClipPlane || viewportPoint.z > camera.farClipPlane)
+    {{
+        depthClipped = true;
+    }}
+}}
+var boundsWidth = System.Math.Max(0.0001f, maxX - minX);
+var boundsHeight = System.Math.Max(0.0001f, maxY - minY);
+var visibleWidth = System.Math.Max(0f, System.Math.Min(1f, maxX) - System.Math.Max(0f, minX));
+var visibleHeight = System.Math.Max(0f, System.Math.Min(1f, maxY) - System.Math.Max(0f, minY));
+var visibleRatio = (visibleWidth * visibleHeight) / (boundsWidth * boundsHeight);
+var isBehindCamera = behindCount == corners.Length;
+var isVisible = !isBehindCamera && visibleRatio > 0f;
+var viewportClipped = minX < 0f || minY < 0f || maxX > 1f || maxY > 1f;
+var isClipped = depthClipped || viewportClipped;
+var framingStatus = "centered";
+if (!isVisible)
+{{
+    framingStatus = "offscreen";
+}}
+else if (isClipped)
+{{
+    framingStatus = "clipped";
+}}
+else if (boundsHeight < 0.2f && boundsWidth < 0.2f)
+{{
+    framingStatus = "too_small";
+}}
+else if (boundsHeight > 0.95f || boundsWidth > 0.95f)
+{{
+    framingStatus = "too_large";
+}}
+var warnings = new System.Collections.Generic.List<string>();
+if (isBehindCamera)
+{{
+    warnings.Add("subject is behind the camera");
+}}
+if (viewportClipped)
+{{
+    warnings.Add("subject viewport bounds extend outside the camera frame");
+}}
+if (depthClipped)
+{{
+    warnings.Add("subject intersects camera near/far clipping range");
+}}
+return new System.Collections.Generic.Dictionary<string, object>
+{{
+    {{ "subjectPath", subjectPath }},
+    {{ "cameraName", cameraName }},
+    {{ "viewportBounds", new float[] {{ minX, minY, maxX, maxY }} }},
+    {{ "visibleRatio", visibleRatio }},
+    {{ "isVisible", isVisible }},
+    {{ "isBehindCamera", isBehindCamera }},
+    {{ "isClipped", isClipped }},
+    {{ "framingStatus", framingStatus }},
+    {{ "warnings", warnings }},
+}};
 """
 
 
@@ -268,6 +464,12 @@ def _payload_warnings(payload: dict[str, Any]) -> list[str]:
     return [str(warning) for warning in warnings]
 
 
+def _payload_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    return float(value)
+
+
 def _capture_from_payload(mode: str, payload: dict[str, Any], fallback_camera_name: str) -> VisualCapture:
     image_base64 = payload.get("imageBase64") or payload.get("image_base64")
     if not isinstance(image_base64, str) or not image_base64:
@@ -280,6 +482,37 @@ def _capture_from_payload(mode: str, payload: dict[str, Any], fallback_camera_na
         camera_name=str(payload.get("cameraName", fallback_camera_name)),
         warnings=_payload_warnings(payload),
     )
+
+
+@mcp.tool()
+async def list_scene_cameras() -> list[SceneCameraInfo]:
+    """
+    Lists active Unity scene cameras so agents can choose a real camera before rendering or projection.
+
+    Returns:
+        A compact list of scene camera metadata.
+    """
+    response = await bridge.execute_code(_list_scene_cameras_code())
+    payload = _extract_result_payload(response)
+    cameras = payload.get("cameras", [])
+    if not isinstance(cameras, list):
+        raise RuntimeError("Unity camera inventory response did not include cameras")
+
+    return [
+        SceneCameraInfo(
+            name=str(camera.get("name", "")),
+            path=str(camera.get("path", "")),
+            enabled=bool(camera.get("enabled", False)),
+            active=bool(camera.get("active", False)),
+            tag=str(camera.get("tag", "")),
+            depth=_payload_float(camera.get("depth")),
+            field_of_view=_payload_float(camera.get("fieldOfView", camera.get("field_of_view"))),
+            orthographic=bool(camera.get("orthographic", False)),
+            orthographic_size=_payload_float(camera.get("orthographicSize", camera.get("orthographic_size"))),
+        )
+        for camera in cameras
+        if isinstance(camera, dict)
+    ]
 
 
 @mcp.tool()
@@ -481,5 +714,77 @@ async def project_world_points(
     Returns:
         A ProjectWorldPointsResult with a list of 2D screen positions.
     """
-    # Empty decorated stub - no implementation yet
-    return ProjectWorldPointsResult(success=True)
+    if any(len(point) != 3 for point in points):
+        return ProjectWorldPointsResult(
+            success=False,
+            error="each world point must contain exactly 3 coordinates",
+        )
+
+    try:
+        response = await bridge.execute_code(_project_world_points_code(points, camera_name))
+        payload = _extract_result_payload(response)
+        raw_points = payload.get("screenPoints", payload.get("screen_points", []))
+        if not isinstance(raw_points, list):
+            return ProjectWorldPointsResult(
+                success=False, error="Unity projection response did not include screenPoints"
+            )
+
+        return ProjectWorldPointsResult(
+            success=True,
+            screen_points=[
+                ScreenPoint(
+                    x=float(point.get("x", 0.0)),
+                    y=float(point.get("y", 0.0)),
+                    z=float(point.get("z", 0.0)),
+                    is_behind_camera=bool(point.get("isBehindCamera", point.get("is_behind_camera", False))),
+                )
+                for point in raw_points
+                if isinstance(point, dict)
+            ],
+        )
+    except Exception as exc:
+        logger.exception("World point projection failed")
+        return ProjectWorldPointsResult(success=False, error=str(exc))
+
+
+@mcp.tool()
+async def diagnose_camera_framing(
+    subject_path: str,
+    camera_name: str = "Main Camera",
+) -> CameraFramingDiagnosticsResult:
+    """
+    Diagnoses whether a subject renderer bounds are visible and well framed by a Unity camera.
+
+    Args:
+        subject_path: Hierarchy path or GameObject name for the inspected subject.
+        camera_name: Name of the Unity camera used for viewport projection.
+
+    Returns:
+        A CameraFramingDiagnosticsResult with viewport bounds and framing status.
+    """
+    try:
+        response = await bridge.execute_code(_camera_framing_diagnostics_code(subject_path, camera_name))
+        payload = _extract_result_payload(response)
+        viewport_bounds = payload.get("viewportBounds", payload.get("viewport_bounds"))
+        return CameraFramingDiagnosticsResult(
+            success=True,
+            subject_path=str(payload.get("subjectPath", subject_path)),
+            camera_name=str(payload.get("cameraName", camera_name)),
+            viewport_bounds=[float(value) for value in viewport_bounds] if isinstance(viewport_bounds, list) else None,
+            visible_ratio=float(payload.get("visibleRatio", payload.get("visible_ratio", 0.0))),
+            is_visible=bool(payload.get("isVisible", payload.get("is_visible", False))),
+            is_behind_camera=bool(payload.get("isBehindCamera", payload.get("is_behind_camera", False))),
+            is_clipped=bool(payload.get("isClipped", payload.get("is_clipped", False))),
+            framing_status=str(payload.get("framingStatus", payload.get("framing_status", "unknown"))),
+            warnings=_payload_warnings(payload),
+        )
+    except Exception as exc:
+        logger.exception("Camera framing diagnostics failed")
+        return CameraFramingDiagnosticsResult(
+            success=False,
+            error=str(exc),
+            subject_path=subject_path,
+            camera_name=camera_name,
+            is_visible=False,
+            warnings=[],
+        )
