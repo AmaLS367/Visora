@@ -1,0 +1,129 @@
+import base64
+import struct
+import zlib
+
+import pytest
+
+from backend.schemas import VisualComparisonResult
+from backend.tools import vision
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+class FakeBridge:
+    def __init__(self, response: dict[str, object]) -> None:
+        self.response = response
+        self.code: str | None = None
+
+    async def execute_code(self, code: str) -> dict[str, object]:
+        self.code = code
+        return self.response
+
+
+def _png_base64(
+    color: tuple[int, int, int],
+    size: tuple[int, int] = (2, 2),
+    changed_pixel: tuple[int, int, tuple[int, int, int]] | None = None,
+) -> str:
+    width, height = size
+    rows = []
+    for y in range(height):
+        row = bytearray([0])
+        for x in range(width):
+            pixel = color
+            if changed_pixel and (x, y) == changed_pixel[:2]:
+                pixel = changed_pixel[2]
+            row.extend(pixel)
+        rows.append(bytes(row))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(b"".join(rows)))
+        + chunk(b"IEND", b"")
+    )
+    return base64.b64encode(png).decode("ascii")
+
+
+@pytest.mark.anyio
+async def test_screenshot_returns_unity_camera_capture(monkeypatch: pytest.MonkeyPatch) -> None:
+    image_base64 = _png_base64((255, 0, 0), (4, 3))
+    fake_bridge = FakeBridge(
+        {
+            "success": True,
+            "result": {
+                "imageBase64": image_base64,
+                "width": 4,
+                "height": 3,
+                "cameraName": "Scene Camera",
+                "warnings": ["camera disabled"],
+            },
+        },
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    result = await vision.screenshot(camera_name="Scene Camera", width=4, height=3)
+
+    assert result.success is True
+    assert result.error is None
+    assert result.image_base64 == image_base64
+    assert result.width == 4
+    assert result.height == 3
+    assert result.camera_name == "Scene Camera"
+    assert result.warnings == ["camera disabled"]
+    assert fake_bridge.code is not None
+    assert "RenderTexture.active" in fake_bridge.code
+    assert "targetTexture" in fake_bridge.code
+
+
+@pytest.mark.anyio
+async def test_screenshot_reports_unity_execution_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(vision, "bridge", FakeBridge({"success": False, "error": "Camera not found: Missing"}))
+
+    result = await vision.screenshot(camera_name="Missing", width=16, height=16)
+
+    assert result.success is False
+    assert result.error == "Camera not found: Missing"
+    assert result.image_base64 is None
+
+
+@pytest.mark.anyio
+async def test_screenshot_rejects_invalid_dimensions() -> None:
+    result = await vision.screenshot(width=0, height=16)
+
+    assert result.success is False
+    assert result.error == "width and height must be positive integers"
+
+
+def test_compare_screenshots_reports_changed_area() -> None:
+    before = _png_base64((0, 0, 0), (2, 2))
+    after = _png_base64((0, 0, 0), (2, 2), changed_pixel=(1, 0, (255, 255, 255)))
+
+    result = vision.compare_screenshots(before_image_base64=before, after_image_base64=after, threshold=1)
+
+    assert isinstance(result, VisualComparisonResult)
+    assert result.success is True
+    assert result.same_dimensions is True
+    assert result.width == 2
+    assert result.height == 2
+    assert result.changed_pixel_ratio == 0.25
+    assert result.changed_bounds == [1, 0, 1, 0]
+    assert result.max_delta == 255
+    assert result.mean_delta > 0
+
+
+def test_compare_screenshots_reports_dimension_mismatch() -> None:
+    result = vision.compare_screenshots(
+        before_image_base64=_png_base64((0, 0, 0), (2, 2)),
+        after_image_base64=_png_base64((0, 0, 0), (3, 2)),
+    )
+
+    assert result.success is False
+    assert result.same_dimensions is False
+    assert result.error == "screenshots must have matching dimensions"

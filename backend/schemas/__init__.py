@@ -16,6 +16,25 @@ class ScreenshotResult(BaseToolResult):
     image_base64: str | None = Field(default=None, description="Base64 encoded PNG/JPEG image data")
     width: int | None = Field(default=None, description="Width of the captured screenshot in pixels")
     height: int | None = Field(default=None, description="Height of the captured screenshot in pixels")
+    camera_name: str | None = Field(default=None, description="Unity camera used for the capture")
+    image_format: str = Field(default="png", description="Screenshot image format")
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking screenshot warnings")
+
+
+class VisualComparisonResult(BaseToolResult):
+    """Result schema for screenshot visual comparison diagnostics."""
+
+    same_dimensions: bool = Field(default=False, description="True when compared screenshots have matching dimensions")
+    width: int | None = Field(default=None, description="Compared image width in pixels when dimensions match")
+    height: int | None = Field(default=None, description="Compared image height in pixels when dimensions match")
+    changed_pixel_ratio: float = Field(default=0.0, description="Ratio of pixels whose delta exceeded the threshold")
+    mean_delta: float = Field(default=0.0, description="Mean per-channel absolute delta across all pixels")
+    max_delta: int = Field(default=0, description="Largest per-channel absolute delta observed")
+    changed_bounds: list[int] | None = Field(
+        default=None,
+        description="Bounding rectangle for changed pixels as [min_x, min_y, max_x, max_y]",
+    )
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking comparison warnings")
 
 
 class ScreenPoint(BaseModel):
