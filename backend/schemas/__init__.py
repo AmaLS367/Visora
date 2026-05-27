@@ -110,6 +110,67 @@ class CameraFramingDiagnosticsResult(BaseToolResult):
     warnings: list[str] = Field(default_factory=list, description="Non-blocking framing diagnostic warnings")
 
 
+class VideoFrame(BaseModel):
+    """Single sampled frame from a camera sequence."""
+
+    frame_index: int = Field(..., description="Zero-based frame index in the sampled sequence")
+    timestamp_seconds: float = Field(..., description="Timestamp offset from capture start")
+    camera_name: str = Field(..., description="Camera used for this frame")
+    mode: str = Field(..., description="Capture mode, such as game_camera or diagnostic_lit")
+    image_base64: str = Field(..., description="Base64 encoded PNG frame")
+    width: int = Field(..., description="Frame width in pixels")
+    height: int = Field(..., description="Frame height in pixels")
+    warnings: list[str] = Field(default_factory=list, description="Frame-specific warnings")
+
+
+class FrameMotionMetrics(BaseModel):
+    """Pixel-diff motion metrics between two adjacent sampled frames."""
+
+    from_frame: int = Field(..., description="Source frame index")
+    to_frame: int = Field(..., description="Target frame index")
+    changed_pixel_ratio: float = Field(..., description="Ratio of changed pixels")
+    mean_delta: float = Field(..., description="Mean per-channel absolute delta")
+    max_delta: int = Field(..., description="Largest per-channel absolute delta")
+    changed_bounds: list[int] | None = Field(
+        default=None, description="Changed pixel bounds [min_x, min_y, max_x, max_y]"
+    )
+
+
+class VideoFrameSequence(BaseModel):
+    """Sampled frame sequence for one camera and capture mode."""
+
+    camera_name: str = Field(..., description="Camera used for this sequence")
+    mode: str = Field(..., description="Capture mode")
+    duration_seconds: float = Field(..., description="Requested capture duration")
+    fps: int = Field(..., description="Requested frame sampling rate")
+    frames: list[VideoFrame] = Field(default_factory=list, description="Sampled PNG frames")
+    motion_metrics: list[FrameMotionMetrics] = Field(default_factory=list, description="Adjacent-frame motion metrics")
+    warnings: list[str] = Field(default_factory=list, description="Sequence-level warnings")
+
+
+class VideoFramesResult(BaseToolResult):
+    """Result schema for sampled camera frame sequences."""
+
+    sequences: list[VideoFrameSequence] = Field(default_factory=list, description="Captured camera frame sequences")
+    warnings: list[str] = Field(default_factory=list, description="Workflow-level warnings")
+    recommended_interpretation: str = Field(..., description="Text guidance for how agents should inspect frames")
+
+
+class VideoMp4Result(BaseToolResult):
+    """Result schema for MP4 video export from sampled camera frames."""
+
+    video_base64: str | None = Field(default=None, description="Base64 encoded MP4 bytes")
+    artifact_path: str | None = Field(default=None, description="Local artifact path for the MP4 file")
+    format: str = Field(default="mp4", description="Video container format")
+    camera_name: str = Field(..., description="Camera used for the video")
+    mode: str = Field(..., description="Capture mode")
+    duration_seconds: float = Field(..., description="Requested capture duration")
+    fps: int = Field(..., description="Requested video frame rate")
+    width: int = Field(..., description="Video width in pixels")
+    height: int = Field(..., description="Video height in pixels")
+    warnings: list[str] = Field(default_factory=list, description="Video export warnings")
+
+
 class ClipInspectorResult(BaseToolResult):
     """Result schema for the animation clip inspector tool."""
 

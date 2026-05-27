@@ -1,19 +1,31 @@
+import asyncio
 import base64
 import io
 import json
 import logging
+import math
+import uuid
+from itertools import pairwise
+from pathlib import Path
 from typing import Any, cast
 
+import imageio.v2 as imageio
+import numpy as np
 from PIL import Image, UnidentifiedImageError
 
 from backend.app import mcp
 from backend.bridge import UnityBridge
 from backend.schemas import (
     CameraFramingDiagnosticsResult,
+    FrameMotionMetrics,
     ProjectWorldPointsResult,
     SceneCameraInfo,
     ScreenPoint,
     ScreenshotResult,
+    VideoFrame,
+    VideoFrameSequence,
+    VideoFramesResult,
+    VideoMp4Result,
     VisualCapture,
     VisualComparisonResult,
     VisualInspectionResult,
@@ -21,6 +33,10 @@ from backend.schemas import (
 
 logger = logging.getLogger("backend.tools.vision")
 bridge = UnityBridge()
+
+
+async def _sleep(seconds: float) -> None:
+    await asyncio.sleep(seconds)
 
 
 def _hierarchy_path_code(transform_expr: str) -> str:
@@ -457,6 +473,26 @@ def _normalize_threshold(threshold: int) -> int:
     return max(0, min(255, threshold))
 
 
+def _validate_video_request(
+    duration_seconds: float,
+    fps: int,
+    width: int,
+    height: int,
+    max_fps: int,
+) -> str | None:
+    if duration_seconds < 0.1 or duration_seconds > 10.0:
+        return "duration_seconds must be between 0.1 and 10.0"
+    if fps < 1 or fps > max_fps:
+        return f"fps must be between 1 and {max_fps}"
+    if width <= 0 or height <= 0:
+        return "width and height must be positive integers"
+    if width > 1920 or height > 1080:
+        return "width and height must not exceed 1920x1080"
+    if math.ceil(duration_seconds * fps) > 120:
+        return "video capture must not exceed 120 sampled frames"
+    return None
+
+
 def _payload_warnings(payload: dict[str, Any]) -> list[str]:
     warnings = payload.get("warnings", [])
     if not isinstance(warnings, list):
@@ -468,6 +504,37 @@ def _payload_float(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
     return float(value)
+
+
+def _frame_count(duration_seconds: float, fps: int) -> int:
+    return max(1, math.ceil(duration_seconds * fps))
+
+
+def _motion_metric_from_frames(
+    from_frame: int, to_frame: int, before_base64: str, after_base64: str
+) -> FrameMotionMetrics:
+    comparison = compare_screenshots(before_base64, after_base64)
+    return FrameMotionMetrics(
+        from_frame=from_frame,
+        to_frame=to_frame,
+        changed_pixel_ratio=comparison.changed_pixel_ratio,
+        mean_delta=comparison.mean_delta,
+        max_delta=comparison.max_delta,
+        changed_bounds=comparison.changed_bounds,
+    )
+
+
+def _encode_frames_to_mp4(frame_images_base64: list[str], fps: int, width: int, height: int) -> tuple[bytes, Path]:
+    artifacts_dir = Path("artifacts")
+    artifacts_dir.mkdir(exist_ok=True)
+    output_path = artifacts_dir / f"visora-video-{uuid.uuid4().hex}.mp4"
+
+    with cast(Any, imageio.get_writer(output_path, fps=fps, codec="libx264", macro_block_size=None)) as writer:
+        for image_base64 in frame_images_base64:
+            image = _decode_image(image_base64).resize((width, height))
+            writer.append_data(np.asarray(image))
+
+    return output_path.read_bytes(), output_path.resolve()
 
 
 def _capture_from_payload(mode: str, payload: dict[str, Any], fallback_camera_name: str) -> VisualCapture:
@@ -696,6 +763,244 @@ async def inspect_scene_visual(
             "Do not conclude the scene is empty, broken, or missing from a dark game_camera capture alone. "
             "Use game_camera only for authored lighting, final composition, and player-facing framing checks."
         ),
+    )
+
+
+async def _capture_video_frame(  # noqa: PLR0913
+    frame_index: int,
+    timestamp_seconds: float,
+    camera_name: str,
+    subject_path: str | None,
+    mode: str,
+    width: int,
+    height: int,
+) -> VideoFrame:
+    if mode == "diagnostic_lit":
+        response = await bridge.execute_code(_diagnostic_scene_capture_code(subject_path, width, height))
+        fallback_camera_name = "Visora Diagnostic Camera"
+    elif mode == "game_camera":
+        response = await bridge.execute_code(_camera_screenshot_code(camera_name, width, height))
+        fallback_camera_name = camera_name
+    else:
+        raise ValueError("mode must be either diagnostic_lit or game_camera")
+
+    payload = _extract_result_payload(response)
+    image_base64 = payload.get("imageBase64") or payload.get("image_base64")
+    if not isinstance(image_base64, str) or not image_base64:
+        raise RuntimeError("Unity video frame response did not include imageBase64")
+
+    return VideoFrame(
+        frame_index=frame_index,
+        timestamp_seconds=timestamp_seconds,
+        camera_name=str(payload.get("cameraName", fallback_camera_name)),
+        mode=mode,
+        image_base64=image_base64,
+        width=int(payload.get("width", width)),
+        height=int(payload.get("height", height)),
+        warnings=_payload_warnings(payload),
+    )
+
+
+@mcp.tool()
+async def get_video_frames(  # noqa: PLR0913
+    camera_names: list[str] | None = None,
+    subject_path: str | None = None,
+    mode: str = "diagnostic_lit",
+    duration_seconds: float = 2.0,
+    fps: int = 6,
+    width: int = 1280,
+    height: int = 720,
+    enter_play_mode: bool = True,
+    include_motion_metrics: bool = True,
+) -> VideoFramesResult:
+    """
+    Captures sampled camera frames for agents that reason over frame sequences instead of raw video.
+    """
+    validation_error = _validate_video_request(duration_seconds, fps, width, height, max_fps=12)
+    if validation_error is not None:
+        return VideoFramesResult(
+            success=False,
+            error=validation_error,
+            recommended_interpretation="No frames were captured because the request exceeded v1 validation limits.",
+        )
+    if mode not in {"diagnostic_lit", "game_camera"}:
+        return VideoFramesResult(
+            success=False,
+            error="mode must be either diagnostic_lit or game_camera",
+            recommended_interpretation="Use diagnostic_lit for model motion inspection or game_camera for authored camera checks.",
+        )
+
+    camera_names = camera_names or ["Main Camera"]
+    count = _frame_count(duration_seconds, fps)
+    warnings: list[str] = [
+        "Use sampled frames and motion_metrics for temporal reasoning when the model cannot inspect MP4 directly.",
+    ]
+    sequences: list[VideoFrameSequence] = []
+    started_play_mode = False
+
+    try:
+        state = await bridge.get_editor_state()
+        was_playing = bool(state.get("isPlaying", False))
+        if enter_play_mode and not was_playing:
+            await bridge.set_play_mode(True)
+            started_play_mode = True
+            await _sleep(0.5)
+
+        for camera_name in camera_names:
+            frames: list[VideoFrame] = []
+            sequence_warnings: list[str] = []
+            for frame_index in range(count):
+                timestamp_seconds = frame_index / fps
+                try:
+                    frame = await _capture_video_frame(
+                        frame_index=frame_index,
+                        timestamp_seconds=timestamp_seconds,
+                        camera_name=camera_name,
+                        subject_path=subject_path,
+                        mode=mode,
+                        width=width,
+                        height=height,
+                    )
+                    frames.append(frame)
+                    sequence_warnings.extend(f"frame {frame_index}: {warning}" for warning in frame.warnings)
+                except Exception as exc:
+                    logger.exception("Video frame capture failed")
+                    sequence_warnings.append(f"frame {frame_index} capture failed: {exc}")
+                    break
+
+                if frame_index < count - 1:
+                    await _sleep(1 / fps)
+
+            motion_metrics: list[FrameMotionMetrics] = []
+            if include_motion_metrics:
+                motion_metrics = [
+                    _motion_metric_from_frames(
+                        from_frame=previous.frame_index,
+                        to_frame=current.frame_index,
+                        before_base64=previous.image_base64,
+                        after_base64=current.image_base64,
+                    )
+                    for previous, current in pairwise(frames)
+                ]
+                if motion_metrics and max(metric.changed_pixel_ratio for metric in motion_metrics) < 0.001:
+                    sequence_warnings.append("near-zero visual motion detected across sampled frames")
+
+            sequences.append(
+                VideoFrameSequence(
+                    camera_name=camera_name,
+                    mode=mode,
+                    duration_seconds=duration_seconds,
+                    fps=fps,
+                    frames=frames,
+                    motion_metrics=motion_metrics,
+                    warnings=sequence_warnings,
+                ),
+            )
+
+        success = any(sequence.frames for sequence in sequences)
+        return VideoFramesResult(
+            success=success,
+            error=None if success else "no video frames were captured",
+            sequences=sequences,
+            warnings=warnings,
+            recommended_interpretation=(
+                "Use diagnostic_lit frames for model and animation motion. Use motion_metrics to find changed intervals; "
+                "use MP4 only when the consuming model can inspect video directly."
+            ),
+        )
+    except Exception as exc:
+        logger.exception("Video frame sequence capture failed")
+        return VideoFramesResult(
+            success=False,
+            error=str(exc),
+            sequences=sequences,
+            warnings=warnings,
+            recommended_interpretation="Video frame capture failed before Visora could produce a reliable sequence.",
+        )
+    finally:
+        if started_play_mode:
+            await bridge.set_play_mode(False)
+
+
+@mcp.tool()
+async def get_video_mp4(  # noqa: PLR0913
+    camera_name: str = "Main Camera",
+    subject_path: str | None = None,
+    mode: str = "diagnostic_lit",
+    duration_seconds: float = 2.0,
+    fps: int = 24,
+    width: int = 1280,
+    height: int = 720,
+    enter_play_mode: bool = True,
+) -> VideoMp4Result:
+    """
+    Captures a short camera video and returns MP4 bytes for video-capable models.
+    """
+    validation_error = _validate_video_request(duration_seconds, fps, width, height, max_fps=30)
+    if validation_error is not None:
+        return VideoMp4Result(
+            success=False,
+            error=validation_error,
+            camera_name=camera_name,
+            mode=mode,
+            duration_seconds=duration_seconds,
+            fps=fps,
+            width=width,
+            height=height,
+        )
+
+    frames_result = await get_video_frames(
+        camera_names=[camera_name],
+        subject_path=subject_path,
+        mode=mode,
+        duration_seconds=duration_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        enter_play_mode=enter_play_mode,
+        include_motion_metrics=False,
+    )
+    if not frames_result.success or not frames_result.sequences or not frames_result.sequences[0].frames:
+        return VideoMp4Result(
+            success=False,
+            error=frames_result.error or "no frames available for MP4 export",
+            camera_name=camera_name,
+            mode=mode,
+            duration_seconds=duration_seconds,
+            fps=fps,
+            width=width,
+            height=height,
+            warnings=frames_result.warnings,
+        )
+
+    frame_images = [frame.image_base64 for frame in frames_result.sequences[0].frames]
+    try:
+        video_bytes, artifact_path = _encode_frames_to_mp4(frame_images, fps, width, height)
+    except Exception as exc:
+        logger.exception("MP4 export failed")
+        return VideoMp4Result(
+            success=False,
+            error=str(exc),
+            camera_name=camera_name,
+            mode=mode,
+            duration_seconds=duration_seconds,
+            fps=fps,
+            width=width,
+            height=height,
+            warnings=frames_result.warnings,
+        )
+
+    return VideoMp4Result(
+        success=True,
+        video_base64=base64.b64encode(video_bytes).decode("ascii"),
+        artifact_path=str(artifact_path),
+        camera_name=camera_name,
+        mode=mode,
+        duration_seconds=duration_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        warnings=frames_result.warnings,
     )
 
 

@@ -1,12 +1,17 @@
 import base64
 import struct
 import zlib
+from pathlib import Path
 
 import pytest
 
 from backend.schemas import (
     CameraFramingDiagnosticsResult,
     SceneCameraInfo,
+    VideoFrame,
+    VideoFrameSequence,
+    VideoFramesResult,
+    VideoMp4Result,
     VisualComparisonResult,
     VisualInspectionResult,
 )
@@ -360,3 +365,223 @@ async def test_inspect_scene_visual_keeps_diagnostic_capture_when_game_camera_is
     assert [capture.mode for capture in result.captures] == ["diagnostic_lit"]
     assert any("game camera capture failed" in warning.lower() for warning in result.warnings)
     assert "Do not conclude the scene is empty" in result.recommended_interpretation
+
+
+@pytest.mark.anyio
+async def test_get_video_frames_enters_and_restores_play_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    dark_frame = _png_base64((0, 0, 0), (4, 3))
+    moving_frame = _png_base64((0, 0, 0), (4, 3), changed_pixel=(1, 1, (255, 255, 255)))
+    fake_bridge = FakeBridge(
+        [
+            {
+                "success": True,
+                "result": {
+                    "imageBase64": dark_frame,
+                    "width": 4,
+                    "height": 3,
+                    "cameraName": "Visora Diagnostic Camera",
+                    "warnings": [],
+                },
+            },
+            {
+                "success": True,
+                "result": {
+                    "imageBase64": moving_frame,
+                    "width": 4,
+                    "height": 3,
+                    "cameraName": "Visora Diagnostic Camera",
+                    "warnings": [],
+                },
+            },
+            {
+                "success": True,
+                "result": {
+                    "imageBase64": moving_frame,
+                    "width": 4,
+                    "height": 3,
+                    "cameraName": "Visora Diagnostic Camera",
+                    "warnings": [],
+                },
+            },
+        ],
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(vision, "_sleep", no_sleep)
+
+    result = await vision.get_video_frames(
+        camera_names=["Main Camera"],
+        duration_seconds=1.0,
+        fps=3,
+        width=4,
+        height=3,
+    )
+
+    assert isinstance(result, VideoFramesResult)
+    assert result.success is True
+    assert fake_bridge.play_mode_changes == [True, False]
+    assert len(result.sequences) == 1
+    assert isinstance(result.sequences[0], VideoFrameSequence)
+    assert [frame.timestamp_seconds for frame in result.sequences[0].frames] == [
+        0.0,
+        pytest.approx(1 / 3),
+        pytest.approx(2 / 3),
+    ]
+    assert len(result.sequences[0].motion_metrics) == 2
+    assert result.sequences[0].motion_metrics[0].changed_pixel_ratio > 0
+    assert result.sequences[0].motion_metrics[1].changed_pixel_ratio == 0
+    assert "diagnostic_lit" in result.recommended_interpretation
+
+
+@pytest.mark.anyio
+async def test_get_video_frames_does_not_stop_existing_play_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        {
+            "success": True,
+            "result": {
+                "imageBase64": _png_base64((0, 0, 0), (2, 2)),
+                "width": 2,
+                "height": 2,
+                "cameraName": "Main Camera",
+                "warnings": [],
+            },
+        },
+    )
+    fake_bridge.editor_state = {"isPlaying": True}
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(vision, "_sleep", no_sleep)
+
+    result = await vision.get_video_frames(
+        camera_names=["Main Camera"],
+        mode="game_camera",
+        duration_seconds=0.5,
+        fps=1,
+        width=2,
+        height=2,
+    )
+
+    assert result.success is True
+    assert fake_bridge.play_mode_changes == []
+
+
+@pytest.mark.anyio
+async def test_get_video_frames_rejects_invalid_limits() -> None:
+    result = await vision.get_video_frames(duration_seconds=20.0, fps=60, width=4096, height=2160)
+
+    assert result.success is False
+    assert "duration_seconds must be between 0.1 and 10.0" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_get_video_mp4_returns_base64_and_artifact_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    frame = _png_base64((0, 0, 0), (2, 2))
+    frames_result = VideoFramesResult(
+        success=True,
+        sequences=[
+            VideoFrameSequence(
+                camera_name="Main Camera",
+                mode="diagnostic_lit",
+                duration_seconds=1.0,
+                fps=2,
+                frames=[
+                    VideoFrame(
+                        frame_index=0,
+                        timestamp_seconds=0.0,
+                        camera_name="Main Camera",
+                        mode="diagnostic_lit",
+                        image_base64=frame,
+                        width=2,
+                        height=2,
+                        warnings=[],
+                    ),
+                    VideoFrame(
+                        frame_index=1,
+                        timestamp_seconds=0.5,
+                        camera_name="Main Camera",
+                        mode="diagnostic_lit",
+                        image_base64=frame,
+                        width=2,
+                        height=2,
+                        warnings=[],
+                    ),
+                ],
+                motion_metrics=[],
+                warnings=[],
+            ),
+        ],
+        warnings=[],
+        recommended_interpretation="Use video for temporal inspection.",
+    )
+
+    async def fake_get_video_frames(**_kwargs: object) -> VideoFramesResult:
+        return frames_result
+
+    def fake_encode(_frames: list[str], _fps: int, _width: int, _height: int) -> tuple[bytes, Path]:
+        path = tmp_path / "visora-video-test.mp4"
+        path.write_bytes(b"mp4-bytes")
+        return b"mp4-bytes", path
+
+    monkeypatch.setattr(vision, "get_video_frames", fake_get_video_frames)
+    monkeypatch.setattr(vision, "_encode_frames_to_mp4", fake_encode)
+
+    result = await vision.get_video_mp4(duration_seconds=1.0, fps=2, width=2, height=2)
+
+    assert isinstance(result, VideoMp4Result)
+    assert result.success is True
+    assert result.video_base64 == base64.b64encode(b"mp4-bytes").decode("ascii")
+    assert result.artifact_path is not None
+    assert result.artifact_path.endswith("visora-video-test.mp4")
+    assert result.format == "mp4"
+
+
+@pytest.mark.anyio
+async def test_get_video_mp4_reports_encoder_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame = _png_base64((0, 0, 0), (2, 2))
+    frames_result = VideoFramesResult(
+        success=True,
+        sequences=[
+            VideoFrameSequence(
+                camera_name="Main Camera",
+                mode="diagnostic_lit",
+                duration_seconds=1.0,
+                fps=1,
+                frames=[
+                    VideoFrame(
+                        frame_index=0,
+                        timestamp_seconds=0.0,
+                        camera_name="Main Camera",
+                        mode="diagnostic_lit",
+                        image_base64=frame,
+                        width=2,
+                        height=2,
+                        warnings=[],
+                    ),
+                ],
+                motion_metrics=[],
+                warnings=[],
+            ),
+        ],
+        warnings=[],
+        recommended_interpretation="Use video for temporal inspection.",
+    )
+
+    async def fake_get_video_frames(**_kwargs: object) -> VideoFramesResult:
+        return frames_result
+
+    def failing_encode(_frames: list[str], _fps: int, _width: int, _height: int) -> tuple[bytes, Path]:
+        raise RuntimeError("ffmpeg unavailable")
+
+    monkeypatch.setattr(vision, "get_video_frames", fake_get_video_frames)
+    monkeypatch.setattr(vision, "_encode_frames_to_mp4", failing_encode)
+
+    result = await vision.get_video_mp4(duration_seconds=1.0, fps=1, width=2, height=2)
+
+    assert result.success is False
+    assert result.error == "ffmpeg unavailable"
