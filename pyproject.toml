@@ -32,7 +32,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "A", "COM", "C4", "PT", "ARG", "PTH", "TD", "ERA", "PL", "RUF"]
-ignore = ["E402", "F401", "UP035", "PLR2004", "E501", "ARG001"] # Ignore late import, unused, type deprecation, magic value, line-length, and unused argument warnings
+ignore = ["E402", "F401", "UP035", "PLR2004", "E501", "ARG001", "COM812"] # Ignore late import, unused, type deprecation, magic value, line-length, unused argument warnings, and formatter-conflicting trailing comma lint
 
 [tool.mypy]
 python_version = "3.10"
