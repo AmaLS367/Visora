@@ -8,7 +8,7 @@ Legend: ✅ done · pending
 
 | # | Feature | Scope | Status |
 |---|---------|-------|--------|
-| 1 | Visual scene understanding | Agent can look at the Unity scene through camera screenshots, compare what changed, and understand visual problems instead of relying only on logs. | |
+| 1 | Visual scene understanding | Agent can look at the Unity scene through camera screenshots, compare what changed, and understand visual problems instead of relying only on logs. | ✅ |
 | 2 | Camera-aware verification | Agent can render from any Unity camera, project world points/transforms into viewport space, detect off-screen objects, depth issues, clipping, and bad framing. | |
 | 3 | Safe Unity scene operations | Agent can execute editor operations without corrupting the scene: handle Play Mode/Edit Mode, wait for Unity idle state, save only when safe, and restore temporary changes. | |
 | 4 | Animation inspection and sampling | Agent can inspect AnimationClips, see all bindings and curves, detect dangerous position/scale curves, sample animation at a specific time, and verify the sampled result. | |
@@ -22,4 +22,4 @@ Legend: ✅ done · pending
 
 * * *
 
-Progress: 0 / 11 done
+Progress: 1 / 11 done
