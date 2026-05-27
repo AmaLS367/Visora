@@ -802,7 +802,7 @@ async def _capture_video_frame(  # noqa: PLR0913
 
 
 @mcp.tool()
-async def get_video_frames(  # noqa: PLR0913
+async def get_video_frames(  # noqa: PLR0912, PLR0913, PLR0915
     camera_names: list[str] | None = None,
     subject_path: str | None = None,
     mode: str = "diagnostic_lit",
@@ -898,7 +898,7 @@ async def get_video_frames(  # noqa: PLR0913
             )
 
         success = any(sequence.frames for sequence in sequences)
-        return VideoFramesResult(
+        result = VideoFramesResult(
             success=success,
             error=None if success else "no video frames were captured",
             sequences=sequences,
@@ -908,18 +908,27 @@ async def get_video_frames(  # noqa: PLR0913
                 "use MP4 only when the consuming model can inspect video directly."
             ),
         )
+        return result
     except Exception as exc:
         logger.exception("Video frame sequence capture failed")
-        return VideoFramesResult(
+        result = VideoFramesResult(
             success=False,
             error=str(exc),
             sequences=sequences,
             warnings=warnings,
             recommended_interpretation="Video frame capture failed before Visora could produce a reliable sequence.",
         )
+        return result
     finally:
         if started_play_mode:
-            await bridge.set_play_mode(False)
+            try:
+                await bridge.set_play_mode(False)
+            except Exception as exc:
+                logger.exception("Failed to restore Play Mode after video capture")
+                restore_warning = f"failed to restore play mode: {exc}"
+                warnings.append(restore_warning)
+                if "result" in locals():
+                    result.warnings.append(restore_warning)
 
 
 @mcp.tool()

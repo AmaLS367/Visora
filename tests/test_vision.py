@@ -29,6 +29,7 @@ class FakeBridge:
         self.codes: list[str] = []
         self.play_mode_changes: list[bool] = []
         self.editor_state: dict[str, object] = {"isPlaying": False}
+        self.fail_stop_play_mode = False
 
     async def execute_code(self, code: str) -> dict[str, object]:
         self.codes.append(code)
@@ -38,6 +39,8 @@ class FakeBridge:
         return self.editor_state
 
     async def set_play_mode(self, active: bool) -> dict[str, object]:
+        if self.fail_stop_play_mode and not active:
+            raise RuntimeError("bridge unavailable during play mode restore")
         self.play_mode_changes.append(active)
         self.editor_state = {"isPlaying": active}
         return {"success": True, "isPlaying": active}
@@ -477,6 +480,23 @@ async def test_get_video_frames_rejects_invalid_limits() -> None:
 
     assert result.success is False
     assert "duration_seconds must be between 0.1 and 10.0" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_get_video_frames_reports_restore_failure_as_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge({"success": False, "error": "capture failed"})
+    fake_bridge.fail_stop_play_mode = True
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(vision, "_sleep", no_sleep)
+
+    result = await vision.get_video_frames(duration_seconds=0.5, fps=1, width=2, height=2)
+
+    assert result.success is False
+    assert any("failed to restore play mode" in warning.lower() for warning in result.warnings)
 
 
 @pytest.mark.anyio
