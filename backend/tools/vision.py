@@ -844,7 +844,7 @@ async def get_video_frames(  # noqa: PLR0912, PLR0913, PLR0915
         if enter_play_mode and not was_playing:
             await bridge.set_play_mode(True)
             started_play_mode = True
-            await _sleep(0.5)
+            await _sleep(5.0)
 
         for camera_name in camera_names:
             frames: list[VideoFrame] = []
