@@ -4,7 +4,7 @@ import zlib
 
 import pytest
 
-from backend.schemas import VisualComparisonResult
+from backend.schemas import VisualComparisonResult, VisualInspectionResult
 from backend.tools import vision
 
 
@@ -14,13 +14,17 @@ def anyio_backend() -> str:
 
 
 class FakeBridge:
-    def __init__(self, response: dict[str, object]) -> None:
-        self.response = response
-        self.code: str | None = None
+    def __init__(self, response: dict[str, object] | list[dict[str, object]]) -> None:
+        self.responses = response if isinstance(response, list) else [response]
+        self.codes: list[str] = []
 
     async def execute_code(self, code: str) -> dict[str, object]:
-        self.code = code
-        return self.response
+        self.codes.append(code)
+        return self.responses.pop(0)
+
+    @property
+    def code(self) -> str | None:
+        return self.codes[-1] if self.codes else None
 
 
 def _png_base64(
@@ -136,3 +140,96 @@ def test_camera_screenshot_code_is_valid_inside_bridge_method_wrapper() -> None:
     assert "using UnityEngine;" not in code
     assert "System.Convert.ToBase64String" in code
     assert "UnityEngine.RenderTexture.active" in code
+
+
+def test_diagnostic_scene_capture_uses_orthographic_bounds_framing() -> None:
+    code = vision._diagnostic_scene_capture_code(None, 640, 360)
+
+    assert "diagnosticCamera.orthographic = true" in code
+    assert "diagnosticCamera.orthographicSize" in code
+    assert "diagnosticCamera.cullingMask = ~0" in code
+    assert "HDAdditionalCameraData" in code
+    assert "volumeLayerMask" in code
+    assert "Visora Diagnostic Key Light" in code
+    assert "Visora Diagnostic Fill Light" in code
+    assert "RenderSettings.fog = false" in code
+    assert "RenderSettings" in code
+    assert "DestroyImmediate(diagnosticRoot)" in code
+
+
+@pytest.mark.anyio
+async def test_inspect_scene_visual_returns_raw_and_diagnostic_captures(monkeypatch: pytest.MonkeyPatch) -> None:
+    game_image = _png_base64((2, 2, 2), (4, 3))
+    diagnostic_image = _png_base64((180, 180, 180), (4, 3))
+    fake_bridge = FakeBridge(
+        [
+            {
+                "success": True,
+                "result": {
+                    "imageBase64": game_image,
+                    "width": 4,
+                    "height": 3,
+                    "cameraName": "Main Camera",
+                    "warnings": [],
+                },
+            },
+            {
+                "success": True,
+                "result": {
+                    "imageBase64": diagnostic_image,
+                    "width": 4,
+                    "height": 3,
+                    "cameraName": "Visora Diagnostic Camera",
+                    "mode": "diagnostic_lit",
+                    "subjectPath": "Avatar",
+                    "warnings": ["diagnostic lighting was temporary"],
+                },
+            },
+        ],
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    result = await vision.inspect_scene_visual(subject_path="Avatar", camera_name="Main Camera", width=4, height=3)
+
+    assert isinstance(result, VisualInspectionResult)
+    assert result.success is True
+    assert result.subject_path == "Avatar"
+    assert [capture.mode for capture in result.captures] == ["game_camera", "diagnostic_lit"]
+    assert result.captures[0].image_base64 == game_image
+    assert result.captures[1].image_base64 == diagnostic_image
+    assert result.captures[1].camera_name == "Visora Diagnostic Camera"
+    assert any("diagnostic" in warning.lower() for warning in result.warnings)
+    assert "Use diagnostic_lit" in result.recommended_interpretation
+    assert len(fake_bridge.codes) == 2
+    assert "RenderSettings" in fake_bridge.codes[1]
+    assert "DestroyImmediate" in fake_bridge.codes[1]
+
+
+@pytest.mark.anyio
+async def test_inspect_scene_visual_keeps_diagnostic_capture_when_game_camera_is_dark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostic_image = _png_base64((180, 180, 180), (4, 3))
+    fake_bridge = FakeBridge(
+        [
+            {"success": False, "error": "Camera not found: Main Camera"},
+            {
+                "success": True,
+                "result": {
+                    "imageBase64": diagnostic_image,
+                    "width": 4,
+                    "height": 3,
+                    "cameraName": "Visora Diagnostic Camera",
+                    "warnings": [],
+                },
+            },
+        ],
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    result = await vision.inspect_scene_visual(width=4, height=3)
+
+    assert result.success is True
+    assert [capture.mode for capture in result.captures] == ["diagnostic_lit"]
+    assert any("game camera capture failed" in warning.lower() for warning in result.warnings)
+    assert "Do not conclude the scene is empty" in result.recommended_interpretation

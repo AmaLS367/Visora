@@ -37,6 +37,27 @@ class VisualComparisonResult(BaseToolResult):
     warnings: list[str] = Field(default_factory=list, description="Non-blocking comparison warnings")
 
 
+class VisualCapture(BaseModel):
+    """Single visual inspection capture returned by a higher-level scene inspection workflow."""
+
+    mode: str = Field(..., description="Capture mode, such as game_camera or diagnostic_lit")
+    image_base64: str = Field(..., description="Base64 encoded PNG image data")
+    width: int = Field(..., description="Capture width in pixels")
+    height: int = Field(..., description="Capture height in pixels")
+    camera_name: str = Field(..., description="Camera used for this capture")
+    image_format: str = Field(default="png", description="Capture image format")
+    warnings: list[str] = Field(default_factory=list, description="Capture-specific warnings")
+
+
+class VisualInspectionResult(BaseToolResult):
+    """Result schema for multi-pass visual scene inspection."""
+
+    subject_path: str | None = Field(default=None, description="Optional inspected scene object path")
+    captures: list[VisualCapture] = Field(default_factory=list, description="Ordered visual captures for inspection")
+    warnings: list[str] = Field(default_factory=list, description="Workflow-level warnings for agents")
+    recommended_interpretation: str = Field(..., description="Text guidance for how agents should inspect the captures")
+
+
 class ScreenPoint(BaseModel):
     """Represents a projected 2D screen point."""
 
