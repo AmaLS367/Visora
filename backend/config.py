@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    unity_bridge_url: str = Field(default="http://localhost", validation_alias="UNITY_BRIDGE_URL")
+    unity_bridge_url: str = Field(default="http://127.0.0.1", validation_alias="UNITY_BRIDGE_URL")
     unity_bridge_port: int = Field(default=7890, validation_alias="UNITY_BRIDGE_PORT")
     unity_bridge_fallback_port: int = Field(default=7891, validation_alias="UNITY_BRIDGE_FALLBACK_PORT")
     unity_bridge_timeout_seconds: float = Field(default=10.0, validation_alias="UNITY_BRIDGE_TIMEOUT_SECONDS")

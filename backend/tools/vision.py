@@ -17,18 +17,15 @@ bridge = UnityBridge()
 def _camera_screenshot_code(camera_name: str, width: int, height: int) -> str:
     camera_name_literal = json.dumps(camera_name)
     return f"""
-using System;
-using System.Collections.Generic;
-using UnityEngine;
-
 var cameraName = {camera_name_literal};
 var width = {width};
 var height = {height};
-var warnings = new List<string>();
-var camera = GameObject.Find(cameraName)?.GetComponent<Camera>();
+var warnings = new System.Collections.Generic.List<string>();
+var gameObject = UnityEngine.GameObject.Find(cameraName);
+var camera = gameObject != null ? gameObject.GetComponent<UnityEngine.Camera>() : null;
 if (camera == null)
 {{
-    throw new Exception("Camera not found: " + cameraName);
+    throw new System.Exception("Camera not found: " + cameraName);
 }}
 if (!camera.enabled)
 {{
@@ -36,24 +33,24 @@ if (!camera.enabled)
 }}
 
 var previousTargetTexture = camera.targetTexture;
-var previousActive = RenderTexture.active;
-var renderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
-Texture2D texture = null;
+var previousActive = UnityEngine.RenderTexture.active;
+var renderTexture = new UnityEngine.RenderTexture(width, height, 24, UnityEngine.RenderTextureFormat.ARGB32);
+UnityEngine.Texture2D texture = null;
 
 try
 {{
     camera.targetTexture = renderTexture;
-    RenderTexture.active = renderTexture;
+    UnityEngine.RenderTexture.active = renderTexture;
     camera.Render();
 
-    texture = new Texture2D(width, height, TextureFormat.RGB24, false);
-    texture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+    texture = new UnityEngine.Texture2D(width, height, UnityEngine.TextureFormat.RGB24, false);
+    texture.ReadPixels(new UnityEngine.Rect(0, 0, width, height), 0, 0);
     texture.Apply();
 
     var pngBytes = texture.EncodeToPNG();
-    return new Dictionary<string, object>
+    return new System.Collections.Generic.Dictionary<string, object>
     {{
-        {{ "imageBase64", Convert.ToBase64String(pngBytes) }},
+        {{ "imageBase64", System.Convert.ToBase64String(pngBytes) }},
         {{ "width", width }},
         {{ "height", height }},
         {{ "cameraName", cameraName }},
@@ -63,7 +60,7 @@ try
 finally
 {{
     camera.targetTexture = previousTargetTexture;
-    RenderTexture.active = previousActive;
+    UnityEngine.RenderTexture.active = previousActive;
     if (texture != null)
     {{
         UnityEngine.Object.DestroyImmediate(texture);

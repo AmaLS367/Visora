@@ -127,3 +127,12 @@ def test_compare_screenshots_reports_dimension_mismatch() -> None:
     assert result.success is False
     assert result.same_dimensions is False
     assert result.error == "screenshots must have matching dimensions"
+
+
+def test_camera_screenshot_code_is_valid_inside_bridge_method_wrapper() -> None:
+    code = vision._camera_screenshot_code("Main Camera", 640, 360)
+
+    assert "using System;" not in code
+    assert "using UnityEngine;" not in code
+    assert "System.Convert.ToBase64String" in code
+    assert "UnityEngine.RenderTexture.active" in code
