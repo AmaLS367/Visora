@@ -14,7 +14,15 @@ from backend.schemas.animation import (
     TransformPose,
 )
 from backend.schemas.base import BaseToolResult
-from backend.schemas.mesh import SkinnedMeshDiagnosticsResult
+from backend.schemas.mesh import (
+    BoneBindingInfo,
+    BoundsInfo,
+    DeformationInfo,
+    DiagnosticIssue,
+    MaterialSlotInfo,
+    SkinnedMeshDiagnosticsResult,
+    SubMeshInfo,
+)
 from backend.schemas.queue import QueueStatusResult
 from backend.schemas.scene import (
     EditorStateResult,
@@ -44,16 +52,21 @@ __all__ = [
     "AnimationBindingCurve",
     "AnimationEventInfo",
     "BaseToolResult",
+    "BoneBindingInfo",
     "BoneMatch",
     "BoneNode",
     "BoneSearchResult",
+    "BoundsInfo",
     "CameraFramingDiagnosticsResult",
     "ClipInspectorResult",
     "DangerousCurveWarning",
+    "DeformationInfo",
+    "DiagnosticIssue",
     "DuplicateBoneGroup",
     "EditorStateResult",
     "FrameMotionMetrics",
     "HelperBoneWarning",
+    "MaterialSlotInfo",
     "MmdBoneChain",
     "PlayModeManagementResult",
     "ProjectWorldPointsResult",
@@ -67,6 +80,7 @@ __all__ = [
     "ScreenshotResult",
     "SkeletonMapperResult",
     "SkinnedMeshDiagnosticsResult",
+    "SubMeshInfo",
     "TransformPose",
     "VideoFrame",
     "VideoFrameSequence",
