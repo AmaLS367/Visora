@@ -151,15 +151,93 @@ class SampleAnimationResult(BaseToolResult):
     )
 
 
+class BoneNode(BaseModel):
+    """A single transform node within a walked skeleton hierarchy."""
+
+    path: str = Field(description="Hierarchy path relative to the skeleton root ('' for the root itself)")
+    name: str = Field(description="GameObject name of this bone")
+    parent_path: str | None = Field(default=None, description="Relative path of the parent bone, None for the root")
+    depth: int = Field(default=0, description="Depth of this bone relative to the root (root is 0)")
+    child_count: int = Field(default=0, description="Number of direct child transforms")
+    local_position: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0], description="Local position [x, y, z]")
+    local_rotation_euler: list[float] = Field(
+        default_factory=lambda: [0.0, 0.0, 0.0], description="Local rotation in Euler angles [x, y, z]"
+    )
+    local_scale: list[float] = Field(default_factory=lambda: [1.0, 1.0, 1.0], description="Local scale [x, y, z]")
+
+
+class DuplicateBoneGroup(BaseModel):
+    """A set of bones sharing the exact same name within one hierarchy."""
+
+    name: str = Field(description="The bone name shared by every path in this group")
+    paths: list[str] = Field(description="All hierarchy paths carrying this duplicated name")
+
+
+class HelperBoneWarning(BaseModel):
+    """A bone flagged as a likely helper/dummy/twist bone by naming convention."""
+
+    path: str = Field(description="Hierarchy path of the flagged bone")
+    name: str = Field(description="Name of the flagged bone")
+    reason: str = Field(description="Which helper-naming pattern matched and why")
+
+
+class MmdBoneChain(BaseModel):
+    """A paired primary/physics bone chain following the MMD '_D' dynamics-bone convention."""
+
+    base_name: str = Field(description="Shared base bone name (without the physics-bone suffix)")
+    primary_path: str = Field(description="Hierarchy path of the animation-driven primary bone")
+    d_bone_path: str = Field(description="Hierarchy path of the physics-driven dynamics ('_D') bone")
+
+
+class BoneMatch(BaseModel):
+    """A single bone name search result."""
+
+    path: str = Field(description="Hierarchy path of the matched bone")
+    name: str = Field(description="Name of the matched bone")
+    match_type: str = Field(description="'exact' or 'fuzzy'")
+    score: float = Field(description="Match confidence: 1.0 for exact matches, similarity ratio (0-1) for fuzzy")
+
+
 class SkeletonMapperResult(BaseToolResult):
     """Result schema for the skeleton mapper tool."""
 
+    root_transform_path: str | None = Field(default=None, description="Hierarchy path to the inspected root")
+    bone_count: int = Field(default=0, description="Total number of bones/transforms found under the root")
+    bones: list[BoneNode] = Field(default_factory=list, description="Every bone found under the root")
+    mapping_source: str = Field(
+        default="none",
+        description="How the humanoid mapping was derived: 'avatar' (authoritative), 'heuristic' (fuzzy), or 'none'",
+    )
     is_valid: bool = Field(default=False, description="True if the skeleton mapping is valid/complete")
     mappings: dict[str, str] = Field(
         default_factory=dict,
-        description="Dictionary mapping bone names to their transform paths",
+        description="Dictionary mapping standard humanoid bone names to their transform paths",
     )
     missing_bones: list[str] = Field(
         default_factory=list,
         description="List of required bones that are missing from the mapping",
     )
+    duplicate_bones: list[DuplicateBoneGroup] = Field(
+        default_factory=list,
+        description="Groups of bones sharing the exact same name",
+    )
+    helper_bones: list[HelperBoneWarning] = Field(
+        default_factory=list,
+        description="Bones flagged as likely helper/dummy/twist bones by naming convention",
+    )
+    mmd_bone_chains: list[MmdBoneChain] = Field(
+        default_factory=list,
+        description="Detected MMD-style primary/physics ('_D') bone chain pairs",
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="General warnings about the skeleton inspection (e.g. no humanoid avatar found)",
+    )
+
+
+class BoneSearchResult(BaseToolResult):
+    """Result schema for the bone search tool."""
+
+    root_transform_path: str | None = Field(default=None, description="Hierarchy path to the searched root")
+    query: str | None = Field(default=None, description="The bone name query that was searched for")
+    matches: list[BoneMatch] = Field(default_factory=list, description="Matching bones, best matches first")

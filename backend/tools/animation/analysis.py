@@ -1,11 +1,33 @@
+import difflib
 import math
+import re
 from typing import Any
 
 from backend.schemas.animation import (
     AnimationBindingCurve,
+    BoneMatch,
+    BoneNode,
     DangerousCurveWarning,
+    DuplicateBoneGroup,
+    HelperBoneWarning,
+    MmdBoneChain,
     TransformPose,
 )
+
+HELPER_BONE_NAME_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?i)\bhelper\b"), "matches helper naming pattern 'helper'"),
+    (re.compile(r"(?i)\bdummy\b"), "matches helper naming pattern 'dummy'"),
+    (re.compile(r"(?i)\btwist\b"), "matches helper naming pattern 'twist'"),
+    (re.compile(r"(?i)\badjust\b"), "matches helper naming pattern 'adjust'"),
+    (re.compile(r"(?i)\baux\b"), "matches helper naming pattern 'aux'"),
+    (re.compile(r"(?i)\broll\b"), "matches helper naming pattern 'roll'"),
+    (re.compile(r"(?i)_end$"), "matches helper naming pattern '_end' suffix"),
+    (re.compile(r"(?i)^ik[_ ]"), "matches helper naming pattern 'ik_' prefix"),
+]
+
+MMD_D_BONE_SUFFIX_RE = re.compile(r"(?i)^(?P<base>.+)_d$")
+
+HUMANOID_MATCH_THRESHOLD = 0.6
 
 
 def _check_nan_inf_and_extremes(b: AnimationBindingCurve) -> list[DangerousCurveWarning]:
@@ -228,3 +250,133 @@ def analyze_sampled_pose(
                 )
 
     return anomalies, warnings
+
+
+def detect_duplicate_bones(bones: list[BoneNode]) -> list[DuplicateBoneGroup]:
+    """
+    Groups bones by their exact name and reports every name shared by two or more bones.
+
+    Returns:
+        A list of DuplicateBoneGroup, one per duplicated name.
+    """
+    by_name: dict[str, list[str]] = {}
+    for b in bones:
+        by_name.setdefault(b.name, []).append(b.path)
+
+    return [DuplicateBoneGroup(name=name, paths=paths) for name, paths in sorted(by_name.items()) if len(paths) > 1]
+
+
+def detect_helper_bones(bones: list[BoneNode]) -> list[HelperBoneWarning]:
+    """
+    Flags bones whose name matches a common helper/dummy/twist/IK naming convention.
+
+    Returns:
+        A list of HelperBoneWarning, one per flagged bone.
+    """
+    warnings: list[HelperBoneWarning] = []
+    for b in bones:
+        for pattern, reason in HELPER_BONE_NAME_PATTERNS:
+            if pattern.search(b.name):
+                warnings.append(HelperBoneWarning(path=b.path, name=b.name, reason=reason))
+                break
+    return warnings
+
+
+def detect_mmd_bone_chains(bones: list[BoneNode]) -> list[MmdBoneChain]:
+    """
+    Detects MMD-style primary/physics bone chains, where a physics ("dynamics") bone is
+    named as the primary bone's base name with a '_D' (or '_d') suffix.
+
+    Returns:
+        A list of MmdBoneChain, one per matched primary/D-bone pair.
+    """
+    path_by_name: dict[str, str] = {b.name: b.path for b in bones}
+    chains: list[MmdBoneChain] = []
+
+    for b in bones:
+        match = MMD_D_BONE_SUFFIX_RE.match(b.name)
+        if not match:
+            continue
+        base_name = match.group("base")
+        primary_path = path_by_name.get(base_name)
+        if primary_path is not None:
+            chains.append(MmdBoneChain(base_name=base_name, primary_path=primary_path, d_bone_path=b.path))
+
+    return chains
+
+
+def match_bones_fuzzy(
+    query: str,
+    bones: list[BoneNode],
+    limit: int = 10,
+    exact_only: bool = False,
+) -> list[BoneMatch]:
+    """
+    Finds bones matching a query name, exact (case-insensitive) matches first, followed by
+    fuzzy matches ranked by similarity ratio.
+
+    Returns:
+        A list of BoneMatch, best matches first, capped at `limit`.
+    """
+    if limit <= 0 or not bones:
+        return []
+
+    query_lower = query.lower()
+    matches: list[BoneMatch] = []
+    matched_paths: set[str] = set()
+
+    for b in bones:
+        if b.name.lower() == query_lower:
+            matches.append(BoneMatch(path=b.path, name=b.name, match_type="exact", score=1.0))
+            matched_paths.add(b.path)
+
+    if not exact_only and len(matches) < limit:
+        remaining = [b for b in bones if b.path not in matched_paths]
+        scored = sorted(
+            ((difflib.SequenceMatcher(a=query_lower, b=b.name.lower()).ratio(), b) for b in remaining),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        for score, b in scored:
+            if len(matches) >= limit:
+                break
+            if score <= 0.0:
+                continue
+            matches.append(BoneMatch(path=b.path, name=b.name, match_type="fuzzy", score=round(score, 4)))
+
+    return matches[:limit]
+
+
+def map_humanoid_bones(
+    bones: list[BoneNode],
+    required_names: list[str],
+    avatar_human_bones: list[tuple[str, str]] | None,
+) -> tuple[bool, str, dict[str, str], list[str]]:
+    """
+    Maps standard humanoid bone names to transform paths, preferring an authoritative Unity
+    Avatar mapping when available and falling back to fuzzy name matching otherwise.
+
+    Returns:
+        A tuple of (is_valid, mapping_source, mappings, missing_bones).
+    """
+    path_by_name: dict[str, str] = {b.name: b.path for b in bones}
+
+    if avatar_human_bones:
+        mappings = {
+            human_name: path_by_name[bone_name]
+            for human_name, bone_name in avatar_human_bones
+            if bone_name in path_by_name
+        }
+        missing_bones = [name for name in required_names if name not in mappings]
+        return len(missing_bones) == 0, "avatar", mappings, missing_bones
+
+    mappings = {}
+    missing_bones = []
+    for required_name in required_names:
+        candidates = match_bones_fuzzy(required_name, bones, limit=1)
+        if candidates and candidates[0].score >= HUMANOID_MATCH_THRESHOLD:
+            mappings[required_name] = candidates[0].path
+        else:
+            missing_bones.append(required_name)
+
+    return len(missing_bones) == 0, "heuristic", mappings, missing_bones

@@ -315,3 +315,114 @@ return new System.Collections.Generic.Dictionary<string, object>
     {{ "rootMotionDelta", rootMotionDelta }},
 }};
 """
+
+
+def _skeleton_hierarchy_code(root_transform_path: str) -> str:
+    """
+    Generates C# script to walk a bone hierarchy from a root GameObject and, if present,
+    read its Humanoid Avatar mapping and Unity's canonical required-bone list.
+    """
+    root_path_literal = json.dumps(root_transform_path)
+
+    return f"""
+var rootPath = {root_path_literal};
+var rootGo = UnityEngine.GameObject.Find(rootPath);
+if (rootGo == null)
+{{
+    return new System.Collections.Generic.Dictionary<string, object>
+    {{
+        {{ "success", false }},
+        {{ "error", "Root GameObject not found at hierarchy path: " + rootPath }},
+    }};
+}}
+
+var rootTransform = rootGo.transform;
+var allTransforms = rootGo.GetComponentsInChildren<UnityEngine.Transform>(true);
+
+string RelativePath(UnityEngine.Transform t)
+{{
+    if (t == rootTransform)
+    {{
+        return "";
+    }}
+    var current = t;
+    var parts = new System.Collections.Generic.List<string>();
+    while (current != null && current != rootTransform)
+    {{
+        parts.Insert(0, current.name);
+        current = current.parent;
+    }}
+    return string.Join("/", parts);
+}}
+
+var bonesList = new System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, object>>();
+foreach (var t in allTransforms)
+{{
+    string relativePath = RelativePath(t);
+    string parentPath = null;
+    int depth = 0;
+    if (relativePath == "")
+    {{
+        parentPath = null;
+        depth = 0;
+    }}
+    else
+    {{
+        var segments = relativePath.Split('/');
+        depth = segments.Length;
+        parentPath = segments.Length > 1 ? string.Join("/", segments, 0, segments.Length - 1) : "";
+    }}
+
+    var bDict = new System.Collections.Generic.Dictionary<string, object>
+    {{
+        {{ "path", relativePath }},
+        {{ "name", t.name }},
+        {{ "parentPath", parentPath }},
+        {{ "depth", depth }},
+        {{ "childCount", t.childCount }},
+        {{ "localPosition", new float[] {{ t.localPosition.x, t.localPosition.y, t.localPosition.z }} }},
+        {{ "localRotationEuler", new float[] {{ t.localEulerAngles.x, t.localEulerAngles.y, t.localEulerAngles.z }} }},
+        {{ "localScale", new float[] {{ t.localScale.x, t.localScale.y, t.localScale.z }} }},
+    }};
+    bonesList.Add(bDict);
+}}
+
+var animator = rootGo.GetComponentInChildren<UnityEngine.Animator>(true);
+bool hasAvatar = animator != null && animator.avatar != null;
+bool isHumanoidAvatar = hasAvatar && animator.avatar.isValid && animator.avatar.isHuman;
+
+var avatarHumanBonesList = new System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, object>>();
+if (isHumanoidAvatar)
+{{
+    var humanBones = animator.avatar.humanDescription.human;
+    foreach (var hb in humanBones)
+    {{
+        avatarHumanBonesList.Add(new System.Collections.Generic.Dictionary<string, object>
+        {{
+            {{ "humanName", hb.humanName ?? "" }},
+            {{ "boneName", hb.boneName ?? "" }},
+        }});
+    }}
+}}
+
+var requiredHumanBoneNames = new System.Collections.Generic.List<string>();
+var allHumanBoneNames = UnityEngine.HumanTrait.BoneName;
+for (int i = 0; i < allHumanBoneNames.Length; i++)
+{{
+    if (UnityEngine.HumanTrait.RequiredBone(i))
+    {{
+        requiredHumanBoneNames.Add(allHumanBoneNames[i]);
+    }}
+}}
+
+return new System.Collections.Generic.Dictionary<string, object>
+{{
+    {{ "success", true }},
+    {{ "rootPath", rootPath }},
+    {{ "bones", bonesList }},
+    {{ "hasAvatar", hasAvatar }},
+    {{ "isHumanoidAvatar", isHumanoidAvatar }},
+    {{ "avatarHumanBones", avatarHumanBonesList }},
+    {{ "requiredHumanBoneNames", requiredHumanBoneNames }},
+}};
+"""

@@ -6,7 +6,6 @@ from backend.schemas import (
     AnimationBindingCurve,
     ClipInspectorResult,
     SampleAnimationResult,
-    SkeletonMapperResult,
     TransformPose,
 )
 from backend.tools import animation
@@ -534,10 +533,3 @@ async def test_analyze_animation_curves_tool(monkeypatch: pytest.MonkeyPatch) ->
     assert result.success is True
     assert result.clip_name == "Jump"
     assert result.curves_count == 1
-
-
-@pytest.mark.anyio
-async def test_skeleton_mapper_stub() -> None:
-    result = await animation.skeleton_mapper("Root/Armature")
-    assert isinstance(result, SkeletonMapperResult)
-    assert result.success is True
