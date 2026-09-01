@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/banner.png" alt="Visora Banner" width="100%">
+</p>
+
 # Visora 👁️
 
 Visora is a high-level Model Context Protocol (MCP) server wrapper designed to interface with the Unity Editor via an HTTP bridge (AnkleBreaker plugin). It exposes specialized tools for Unity scene manipulation, screenshot capturing, world-to-screen projections, skinned mesh diagnostics, animation inspections, and async task execution queueing.
