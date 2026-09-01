@@ -54,9 +54,9 @@ Do not start by building a custom Unity package unless the current bridge become
 
 To optimize development speed and resource usage, follow these validation rules:
 
-1. **Micro-changes (e.g., typos, prompt updates, variable name changes, folder renames):** If a change does not affect code structure or types, **do not run unnecessary tests or linting checks**.
-2. **Isolated changes affecting tools (e.g., typing a variable):** Run linting/typing gates **only on the modified files** to be token-efficient.
-3. **Large-scale changes (e.g., new test files, core logic additions):** Perform a full validation gate.
+1. **Non-functional edits & Micro-changes (e.g., comments, docstrings, typing hints in docs, typos, prompt updates, variable/file renames):** If a change does not alter runtime code logic or type signatures, **NEVER run tests or full test suites**.
+2. **Isolated changes affecting tools (e.g., typing a variable, local helper tweak):** Run linting/typing gates **only on the modified files** to be token-efficient.
+3. **Large-scale changes (e.g., new test files, core logic additions, architectural refactoring):** Perform a full validation gate.
 
 #### Running a Full Validation Gate
 

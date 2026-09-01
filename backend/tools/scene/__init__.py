@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import time
 import uuid
@@ -15,6 +14,19 @@ from backend.schemas import (
     SaveSceneResult,
     WaitForEditorIdleResult,
 )
+from backend.tools.scene.scripts import (
+    _begin_undo_group_code,
+    _get_scene_details_code,
+    _reload_scene_code,
+    _save_scene_code,
+    _undo_transaction_code,
+)
+from backend.tools.scene.transactions import (
+    _execute_undo_rollback,
+    _handle_post_transaction_save,
+    _handle_pre_transaction_save,
+    _register_undo_group,
+)
 
 logger = logging.getLogger("backend.tools.scene")
 bridge = UnityBridge()
@@ -23,143 +35,6 @@ bridge = UnityBridge()
 async def _sleep(seconds: float) -> None:
     """Sleep helper to facilitate deterministic testing."""
     await asyncio.sleep(seconds)
-
-
-def _get_scene_details_code() -> str:
-    """C# snippet to inspect active scene and editor state."""
-    return """
-var activeScene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
-return new System.Collections.Generic.Dictionary<string, object>
-{
-    { "sceneName", activeScene.name },
-    { "scenePath", activeScene.path },
-    { "isDirty", activeScene.isDirty },
-    { "sceneCount", UnityEditor.SceneManagement.EditorSceneManager.sceneCount },
-    { "isPlaying", UnityEditor.EditorApplication.isPlaying },
-    { "isPaused", UnityEditor.EditorApplication.isPaused },
-    { "isCompiling", UnityEditor.EditorApplication.isCompiling },
-    { "isUpdating", UnityEditor.EditorApplication.isUpdating },
-};
-"""
-
-
-def _save_scene_code(target_path: str | None = None) -> str:
-    """C# snippet to save active scene safely."""
-    path_literal = json.dumps(target_path) if target_path else "null"
-    return f"""
-var targetPath = {path_literal};
-var activeScene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
-var wasDirty = activeScene.isDirty;
-bool saved;
-if (string.IsNullOrEmpty(targetPath))
-{{
-    saved = UnityEditor.SceneManagement.EditorSceneManager.SaveScene(activeScene);
-}}
-else
-{{
-    saved = UnityEditor.SceneManagement.EditorSceneManager.SaveScene(activeScene, targetPath);
-}}
-return new System.Collections.Generic.Dictionary<string, object>
-{{
-    {{ "saved", saved }},
-    {{ "wasDirty", wasDirty }},
-    {{ "sceneName", activeScene.name }},
-    {{ "scenePath", string.IsNullOrEmpty(targetPath) ? activeScene.path : targetPath }},
-}};
-"""
-
-
-def _begin_undo_group_code(undo_name: str) -> str:
-    """C# snippet to create and name a new Undo group."""
-    name_literal = json.dumps(undo_name)
-    return f"""
-UnityEditor.Undo.IncrementCurrentGroup();
-UnityEditor.Undo.SetCurrentGroupName({name_literal});
-var currentGroup = UnityEditor.Undo.GetCurrentGroup();
-return new System.Collections.Generic.Dictionary<string, object>
-{{
-    {{ "undoGroup", currentGroup }},
-}};
-"""
-
-
-def _undo_transaction_code(undo_group: int) -> str:
-    """C# snippet to revert changes down to an Undo group."""
-    return f"""
-UnityEditor.Undo.RevertAllDownToGroup({undo_group});
-return new System.Collections.Generic.Dictionary<string, object>
-{{
-    {{ "reverted", true }},
-    {{ "undoGroup", {undo_group} }},
-}};
-"""
-
-
-def _reload_scene_code() -> str:
-    """C# snippet to reload active scene from disk."""
-    return """
-var activeScene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
-if (string.IsNullOrEmpty(activeScene.path))
-{
-    throw new System.Exception("Active scene has never been saved to disk and cannot be reloaded.");
-}
-var opened = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(activeScene.path, UnityEditor.SceneManagement.OpenSceneMode.Single);
-return new System.Collections.Generic.Dictionary<string, object>
-{
-    { "reloaded", opened.IsValid() },
-    { "sceneName", opened.name },
-    { "scenePath", opened.path },
-};
-"""
-
-
-async def _execute_undo_rollback(undo_group: int | None, warnings: list[str]) -> bool:
-    """Helper to revert changes to a recorded Undo group."""
-    if undo_group is None:
-        return False
-    try:
-        await bridge.execute_code(_undo_transaction_code(undo_group))
-        return True
-    except Exception as rb_err:
-        warnings.append(f"Undo rollback failed: {rb_err}")
-        return False
-
-
-async def _register_undo_group(record_undo: bool, undo_name: str, warnings: list[str]) -> int | None:
-    """Helper to register and name an Undo group."""
-    if not record_undo:
-        return None
-    try:
-        undo_res = await bridge.execute_code(_begin_undo_group_code(undo_name))
-        if undo_res.get("success") and isinstance(undo_res.get("result"), dict):
-            return cast(int, undo_res["result"].get("undoGroup"))
-    except Exception as e:
-        logger.warning(f"Could not record undo group: {e}")
-        warnings.append(f"Undo group registration failed: {e}")
-    return None
-
-
-async def _handle_pre_transaction_save(auto_save: bool, is_playing: bool, warnings: list[str]) -> bool:
-    """Helper for pre-transaction auto-save in Edit Mode."""
-    if not auto_save:
-        return False
-    if is_playing:
-        warnings.append("Pre-transaction auto-save skipped because editor is in Play Mode.")
-        return False
-    save_res = await save_scene()
-    if not save_res.success:
-        warnings.append(f"Pre-transaction scene save warning: {save_res.error}")
-    return bool(save_res.is_saved)
-
-
-async def _handle_post_transaction_save(auto_save: bool, is_playing: bool, warnings: list[str]) -> bool:
-    """Helper for post-transaction auto-save in Edit Mode."""
-    if not auto_save or is_playing:
-        return True
-    post_save = await save_scene()
-    if not post_save.success:
-        warnings.append(f"Post-transaction scene save warning: {post_save.error}")
-    return bool(post_save.is_saved)
 
 
 @mcp.tool()
@@ -505,8 +380,8 @@ async def safe_transaction(  # noqa: PLR0913
                 )
 
         # Step 2: Pre-transaction save and undo group registration
-        scene_saved = await _handle_pre_transaction_save(auto_save, state.is_playing, warnings)
-        undo_group = await _register_undo_group(record_undo, undo_name, warnings)
+        scene_saved = await _handle_pre_transaction_save(auto_save, state.is_playing, warnings, save_scene)
+        undo_group = await _register_undo_group(bridge, record_undo, undo_name, warnings)
 
         # Step 3: Execute editor code
         result: dict[str, Any] = await bridge.execute_code(editor_code)
@@ -515,7 +390,7 @@ async def safe_transaction(  # noqa: PLR0913
         if not result.get("success", True) or result.get("error"):
             err_msg = str(result.get("error", "Code execution failed"))
             if restore_on_failure:
-                rolled_back = await _execute_undo_rollback(undo_group, warnings)
+                rolled_back = await _execute_undo_rollback(bridge, undo_group, warnings)
 
             return SafeTransactionResult(
                 success=False,
@@ -531,7 +406,7 @@ async def safe_transaction(  # noqa: PLR0913
             )
 
         # Step 4: Post-transaction save
-        post_saved = await _handle_post_transaction_save(auto_save, state.is_playing, warnings)
+        post_saved = await _handle_post_transaction_save(auto_save, state.is_playing, warnings, save_scene)
         scene_saved = scene_saved and post_saved if auto_save else False
 
         return SafeTransactionResult(
@@ -548,7 +423,7 @@ async def safe_transaction(  # noqa: PLR0913
     except Exception as exc:
         logger.exception(f"Safe transaction {transaction_id} failed with exception")
         if restore_on_failure:
-            rolled_back = await _execute_undo_rollback(undo_group, warnings)
+            rolled_back = await _execute_undo_rollback(bridge, undo_group, warnings)
 
         return SafeTransactionResult(
             success=False,
@@ -645,3 +520,24 @@ async def restore_scene_state(
             warnings=[*warnings, f"Restore exception: {exc}"],
             message="Scene state restore failed.",
         )
+
+
+__all__ = [
+    "_begin_undo_group_code",
+    "_execute_undo_rollback",
+    "_get_scene_details_code",
+    "_handle_post_transaction_save",
+    "_handle_pre_transaction_save",
+    "_register_undo_group",
+    "_reload_scene_code",
+    "_save_scene_code",
+    "_sleep",
+    "_undo_transaction_code",
+    "bridge",
+    "get_editor_state",
+    "playmode_management",
+    "restore_scene_state",
+    "safe_transaction",
+    "save_scene",
+    "wait_for_editor_idle",
+]
