@@ -1,208 +1,43 @@
-# Visora — Setup & Integration Guide ⚙️
+# Visora setup
 
-This document explains how to set up **Visora**, configure its connection to Unity Editor via the **AnkleBreaker HTTP bridge**, and connect it to various **AI Agent clients** (Claude Desktop, Cursor, Antigravity, OpenCode, and CLI).
+## Prerequisites
 
----
+- Python 3.10+ and `uv`
+- Unity 2021.3 LTS or newer
+- AnkleBreaker for the default legacy transport, or the bundled `com.visora.editor` package for native mode
 
-## 📑 Table of Contents
+## Unity bridge
 
-1. [Prerequisites](#1-prerequisites)
-2. [Unity Editor & AnkleBreaker Setup](#2-unity-editor--anklebreaker-setup)
-3. [Environment Configuration (`.env`)](#3-environment-configuration-env)
-4. [Connecting MCP Clients](#4-connecting-mcp-clients)
-   - [Claude Desktop](#claude-desktop)
-   - [Cursor / Windsurf](#cursor--windsurf)
-   - [Antigravity / OpenCode](#antigravity--opencode)
-   - [CLI / Standalone Mode](#cli--standalone-mode)
-5. [Bridge Health & Troubleshooting](#5-bridge-health--troubleshooting)
+### Legacy default
 
----
+Install AnkleBreaker in the Unity project and start the Editor. Keep `UNITY_BRIDGE_MODE=legacy` (or omit it). Visora discovers configured ports and ignores native bridges in this mode.
 
-## 1. Prerequisites
+### Native package
 
-- **Python 3.10+** (managed via [`uv`](https://github.com/astral-sh/uv) recommended)
-- **Unity 2021.3 LTS or newer** (Unity 2022 LTS / Unity 6 supported)
-- **AnkleBreaker Unity HTTP Bridge** installed into your Unity Project
+Install `unity-package` through Unity Package Manager or a local package path, then set `UNITY_BRIDGE_MODE=native`. The package listens only on `127.0.0.1` and `localhost`; its `/api/ping` response reports `flavor: "visora-native"` and version `1.1.0`.
 
----
+Native mode includes typed camera endpoints and the same local statement-body C# executor used by `safe_transaction`. Compilation, runtime, and timeout failures return structured errors. `auto` is available for mixed installations but prefers legacy when both bridges respond.
 
-## 2. Unity Editor Setup: Native Package vs AnkleBreaker Bridge
+## Configuration
 
-Visora communicates with Unity Editor over a lightweight local HTTP bridge. You can use either the **Dedicated Visora Unity Package** (`com.visora.editor`) or the legacy **AnkleBreaker HTTP Bridge**.
-
-### Option A: Dedicated Visora Package (`com.visora.editor`) [Recommended]
-
-The native package provides high-performance rendering, zero C# compilation overhead, built-in task queues, undo-transaction management, and persistent diagnostics.
-
-1. **Install via Unity Package Manager (Git URL)**:
-   - In Unity Editor, open **Window > Package Manager**.
-   - Click the **+** button and select **Add package from git URL...**.
-   - Enter: `https://github.com/AmaLS367/Visora.git?path=unity-package`
-2. **Or Install via Local Path**:
-   - Add to `Packages/manifest.json`:
-     ```json
-     {
-       "dependencies": {
-         "com.visora.editor": "file:../../Visora/unity-package"
-       }
-     }
-     ```
-3. **Verify Server**:
-   - Open **Window > Visora > Server Monitor** to view status.
-   - Test in terminal:
-     ```bash
-     curl http://127.0.0.1:7890/api/ping
-     ```
-   - Expected response: `{"success": true, "flavor": "visora-native", "version": "1.0.0"}`.
-
-### Option B: AnkleBreaker Unity HTTP Bridge [Legacy]
-
-1. **Install AnkleBreaker**:
-   - Import the AnkleBreaker package or place its Editor scripts inside your Unity project's `Assets/Plugins/` or `Assets/Editor/` directory.
-2. **Start Unity Editor**:
-   - Open your project in Unity Editor. The bridge server starts automatically on port `7890` (or `7891`).
-3. **Verify Bridge**:
-   - Open terminal: `curl http://127.0.0.1:7890/api/ping`.
-
----
-
-## 3. Environment Configuration (`.env`)
-
-Visora is configured using Pydantic Settings and supports `.env` files.
-
-### Configuration Reference
-
-Create a `.env` file in the project root based on [.env.example](file:///d:/Coding_projects/active/Visora/.env.example):
-
-```bash
-# Base URL of the Unity Editor HTTP bridge
+```dotenv
 UNITY_BRIDGE_URL=http://127.0.0.1
-
-# Primary port (default for AnkleBreaker)
 UNITY_BRIDGE_PORT=7890
-
-# Secondary fallback port if primary is busy
 UNITY_BRIDGE_FALLBACK_PORT=7891
-
-# Full port scan range for multi-instance discovery (comma-separated)
 UNITY_BRIDGE_PORTS_TO_SCAN=7890,7891,7892,7893
-
-# Connection timeouts in seconds
-UNITY_BRIDGE_TIMEOUT_SECONDS=10.0
-UNITY_BRIDGE_PING_TIMEOUT_SECONDS=2.0
-
-# Retry policy for resilient networking
+UNITY_BRIDGE_TIMEOUT_SECONDS=10
+UNITY_BRIDGE_PING_TIMEOUT_SECONDS=2
+UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS=60
 UNITY_BRIDGE_MAX_RETRIES=2
 UNITY_BRIDGE_RETRY_BACKOFF=0.5
-
-# Server logging level (DEBUG, INFO, WARNING, ERROR)
+UNITY_BRIDGE_MODE=legacy
 LOG_LEVEL=INFO
 ```
 
----
+## MCP client
 
-## 4. Connecting MCP Clients
+Run the server through `uv run visora` or `uv run -- python -m backend.server`. Configure the client command as `uv` with arguments `run`, `--directory`, `<absolute Visora path>`, `visora`.
 
-Visora runs as a standard Model Context Protocol (MCP) server over `stdio`.
+## Verification and recovery
 
-### Claude Desktop
-
-Add Visora to your `claude_desktop_config.json` (located at `%APPDATA%\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "visora": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "d:/Coding_projects/active/Visora",
-        "python",
-        "-m",
-        "backend.server"
-      ]
-    }
-  }
-}
-```
-
----
-
-### Cursor / Windsurf
-
-In Cursor or Windsurf MCP settings (or `.cursor/mcp.json` / workspace configuration):
-
-```json
-{
-  "mcpServers": {
-    "visora": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "d:/Coding_projects/active/Visora",
-        "python",
-        "-m",
-        "backend.server"
-      ]
-    }
-  }
-}
-```
-
----
-
-### Antigravity / OpenCode
-
-Add to `.mcp.json` or `.opencode.json`:
-
-```json
-{
-  "mcpServers": {
-    "visora": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "d:/Coding_projects/active/Visora",
-        "python",
-        "-m",
-        "backend.server"
-      ],
-      "type": "stdio"
-    }
-  }
-}
-```
-
----
-
-### CLI / Standalone Mode
-
-To start the MCP server manually for debugging or inspection:
-
-```bash
-# Run via uv
-uv run python -m backend.server
-
-# Or using the package entrypoint CLI
-uv run visora
-```
-
----
-
-## 5. Bridge Health & Troubleshooting
-
-### Diagnostic Tool: `unity_bridge_health`
-If tools fail to reach Unity, ask the agent to call `unity_bridge_health`. It will scan all configured ports (`7890`, `7891`, `7892`, `7893`), test response latencies, and report the active bridge port.
-
-### Common Issues & Resolutions
-
-| Issue | Root Cause | Solution |
-| :--- | :--- | :--- |
-| `BridgeUnreachableError` / Connection refused | Unity is not running or AnkleBreaker bridge is disabled. | Start Unity Editor with the project open. Verify port `7890` is listening (`netstat -an`). |
-| Timeout on tool execution | Heavy operation or Unity is paused on breakpoint/modal dialog. | Ensure no modal dialogs (e.g. Unsaved Changes, Package Manager prompt) are open in Unity. |
-| Compilation Lock Error | C# scripts in `Assets/` have syntax or compilation errors. | Call `unity_compilation_errors` to diagnose errors and fix the offending C# files before continuing. |
-| Port mismatch | Unity instance opened on port `7891` instead of `7890`. | Visora will automatically fall back to `7891`. You can set `UNITY_BRIDGE_PORT=7891` in `.env` if desired. |
-| Saving rejected | Attempted to save scene while in Play Mode. | Call `unity_play_mode` with `action: "stop"` first, then save. |
+Call `get_bridge_status` to identify the selected port and flavor. For a busy editor, use `wait_for_editor_idle`. For an unreachable bridge, confirm that Unity is open and the configured mode matches the bridge flavor. The exact tool names and parameters are maintained in [AGENT_WORKFLOWS.md](AGENT_WORKFLOWS.md).

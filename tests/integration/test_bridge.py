@@ -113,7 +113,9 @@ async def test_legacy_mode_ignores_native_bridge(mock_settings: Settings) -> Non
 @pytest.mark.anyio
 async def test_auto_mode_prefers_legacy_bridge(mock_settings: Settings) -> None:
     bridge = UnityBridge(
-        settings=mock_settings.model_copy(update={"unity_bridge_mode": "auto", "unity_bridge_ports_to_scan": [7890, 7891]})
+        settings=mock_settings.model_copy(
+            update={"unity_bridge_mode": "auto", "unity_bridge_ports_to_scan": [7890, 7891]}
+        )
     )
 
     def side_effect(url: str, **_kwargs: Any) -> httpx.Response:
@@ -540,7 +542,13 @@ async def test_native_bridge_flavor_and_info(mock_settings: Settings) -> None:
     )
     mock_info = httpx.Response(
         200,
-        json={"success": True, "flavor": "visora-native", "version": "1.1.0", "apiVersion": 2, "supportedFeatures": ["camera_render"]},
+        json={
+            "success": True,
+            "flavor": "visora-native",
+            "version": "1.1.0",
+            "apiVersion": 2,
+            "supportedFeatures": ["camera_render"],
+        },
         request=httpx.Request("GET", "http://127.0.0.1:7890/api/visora/info"),
     )
 
@@ -586,7 +594,9 @@ async def test_render_camera_uses_native_endpoint_in_native_mode(mock_settings: 
     bridge._bridge_flavor = "visora-native"
     request = httpx.Request("POST", "http://127.0.0.1:7890/api/visora/camera/render")
 
-    with patch.object(bridge.client, "request", return_value=httpx.Response(200, json={"success": True}, request=request)):
+    with patch.object(
+        bridge.client, "request", return_value=httpx.Response(200, json={"success": True}, request=request)
+    ):
         result = await bridge.render_camera("return null;", "Main Camera", 320, 180)
 
     assert result == {"success": True}

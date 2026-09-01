@@ -4,7 +4,7 @@
 
 # Visora 👁️
 
-Visora is a high-level Model Context Protocol (MCP) server designed to interface AI agents with the Unity Editor via an HTTP bridge (AnkleBreaker plugin). It exposes specialized, typed tools for camera rendering, viewport projection, visual diagnostics, safe scene transactions, skinned mesh analysis, animation clip inspection, and async task queueing.
+Visora is a high-level Model Context Protocol (MCP) server for Unity Editor. It supports AnkleBreaker as the default compatibility transport and the bundled native Unity package, with typed tools for visual diagnostics, safe scene work, animation, rigging, meshes, and queue polling.
 
 ---
 
@@ -88,24 +88,4 @@ uv run visora
 
 ## 🧰 Available MCP Tools
 
-| Category | Tool | Description |
-| :--- | :--- | :--- |
-| **Vision** | `unity_screenshot` | High-resolution capture from scene or specified camera |
-| | `unity_render_camera` | Isolated camera render texture with custom resolution/HDR/MSAA |
-| | `unity_project_world_points` | Project 3D points into camera viewport and screen pixels |
-| | `unity_detect_visual_issues` | Check clipping planes, off-screen bounds, and occlusion |
-| | `unity_record_video` | Record viewport frame sequence |
-| **Scene** | `unity_get_scene_state` | Retrieve active scene hierarchy, cameras, lights, and play mode |
-| | `unity_safe_transaction` | Execute C# modifications protected by Undo registration |
-| | `unity_execute_code` | Run arbitrary C# snippet with structured return |
-| | `unity_play_mode` | Safely control Play / Pause / Stop mode |
-| | `unity_save_scene` | Persist scene changes (guarded against Play Mode) |
-| | `unity_compilation_errors` | Query script compilation errors/warnings |
-| **Animation** | `unity_inspect_skeleton` | Inspect bone hierarchies with fuzzy matching and MMD support |
-| | `unity_inspect_animation_clip` | Audit curve types, root motion, and scale anomalies |
-| | `unity_sample_animation` | Sample pose and bone transforms at timestamp `t` |
-| **Mesh** | `unity_diagnose_skinned_mesh` | Audit bounds, null bones, bindposes, and submesh materials |
-| **Bridge** | `unity_ping` | Ping bridge endpoint |
-| | `unity_bridge_health` | Multi-port diagnostic and scan |
-| | `unity_queue_status` | Check async queue ticket progress |
-| | `unity_wait_for_ticket` | Non-blocking async loop for long operations |
+The generated, source-of-truth list of all 24 registered tools and their current parameters is in [docs/AGENT_WORKFLOWS.md](docs/AGENT_WORKFLOWS.md#tool-catalog).
