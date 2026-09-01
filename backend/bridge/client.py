@@ -27,6 +27,7 @@ class UnityBridge:
         self.default_port = self.settings.unity_bridge_port
         self.fallback_port = self.settings.unity_bridge_fallback_port
         self._active_port: int | None = None
+        self._bridge_flavor: str | None = None
         self.client = httpx.AsyncClient(timeout=self.settings.unity_bridge_timeout_seconds)
 
     @property
@@ -57,14 +58,22 @@ class UnityBridge:
         for port in ports:
             test_url = f"{self.base_url}:{port}/api/ping"
             try:
-                logger.debug(f"Pinging AnkleBreaker on {test_url}...")
+                logger.debug(f"Pinging Unity Bridge on {test_url}...")
                 response = await self.client.get(test_url, timeout=self.settings.unity_bridge_ping_timeout_seconds)
                 if response.status_code == 200:
-                    logger.info(f"Successfully connected to AnkleBreaker on port {port}")
+                    data = (
+                        response.json()
+                        if response.headers.get("content-type", "").startswith("application/json")
+                        else {}
+                    )
+                    self._bridge_flavor = (
+                        data.get("flavor", "anklebreaker") if isinstance(data, dict) else "anklebreaker"
+                    )
+                    logger.info(f"Successfully connected to Unity Bridge ({self._bridge_flavor}) on port {port}")
                     self._active_port = port
                     return port
             except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
-                logger.debug(f"AnkleBreaker not responding on port {port}")
+                logger.debug(f"Unity Bridge not responding on port {port}")
                 continue
 
         msg = f"AnkleBreaker is not reachable on any configured port ({', '.join(str(p) for p in ports)})."
@@ -194,6 +203,144 @@ class UnityBridge:
         Checks the status of a long-running ticket in the AnkleBreaker task queue.
         """
         response = await self._request("GET", "/api/queue/status", params={"ticketId": ticket_id})
+        return cast(dict[str, Any], response.json())
+
+    async def get_bridge_flavor(self, force_refresh: bool = False) -> str:
+        """
+        Returns the detected bridge flavor ('visora-native' or 'anklebreaker').
+        """
+        if self._bridge_flavor is None or force_refresh:
+            await self.get_active_port(force_refresh=force_refresh)
+        return self._bridge_flavor or "anklebreaker"
+
+    async def is_native_bridge(self, force_refresh: bool = False) -> bool:
+        """
+        Returns True if connected to the dedicated Visora native Unity package.
+        """
+        if self.settings.unity_bridge_mode == "native":
+            return True
+        if self.settings.unity_bridge_mode == "legacy":
+            return False
+        flavor = await self.get_bridge_flavor(force_refresh=force_refresh)
+        return flavor == "visora-native"
+
+    async def get_bridge_info(self) -> dict[str, Any]:
+        """
+        Retrieves detailed information about the active bridge, Unity editor version, and supported features.
+        """
+        if await self.is_native_bridge():
+            try:
+                response = await self._request("GET", "/api/visora/info")
+                return cast(dict[str, Any], response.json())
+            except Exception as e:
+                logger.warning(f"Failed to fetch native bridge info, falling back: {e}")
+
+        # Fallback synthesis for AnkleBreaker bridge
+        state = await self.get_editor_state()
+        return {
+            "success": True,
+            "flavor": "anklebreaker",
+            "version": "legacy",
+            "unityVersion": "unknown",
+            "isPlaying": state.get("isPlaying", False),
+            "isCompiling": state.get("isCompiling", False),
+            "activeScene": state.get("activeSceneName", ""),
+            "supportedFeatures": [
+                "execute_code",
+                "editor_state",
+                "play_mode",
+                "save_scene",
+                "compilation_errors",
+                "task_queue",
+            ],
+        }
+
+    async def render_camera_native(
+        self,
+        camera_name: str = "Main Camera",
+        width: int = 1920,
+        height: int = 1080,
+        image_format: str = "PNG",
+    ) -> dict[str, Any]:
+        """Direct native high-performance camera render via /api/visora/camera/render."""
+        response = await self._request(
+            "POST",
+            "/api/visora/camera/render",
+            json={"cameraName": camera_name, "width": width, "height": height, "format": image_format},
+        )
+        return cast(dict[str, Any], response.json())
+
+    async def capture_sequence_native(
+        self,
+        camera_name: str = "Main Camera",
+        width: int = 1280,
+        height: int = 720,
+        frame_count: int = 10,
+        interval: float = 0.1,
+    ) -> dict[str, Any]:
+        """Direct native sequence capture via /api/visora/camera/sequence."""
+        response = await self._request(
+            "POST",
+            "/api/visora/camera/sequence",
+            json={
+                "cameraName": camera_name,
+                "width": width,
+                "height": height,
+                "frameCount": frame_count,
+                "frameIntervalSeconds": interval,
+            },
+        )
+        return cast(dict[str, Any], response.json())
+
+    async def diagnose_mesh_native(self, target_name: str = "") -> dict[str, Any]:
+        """Direct native mesh diagnostics via /api/visora/mesh/diagnose."""
+        response = await self._request("POST", "/api/visora/mesh/diagnose", json={"targetName": target_name})
+        return cast(dict[str, Any], response.json())
+
+    async def diagnose_skeleton_native(self, root_object_name: str = "", search_query: str = "") -> dict[str, Any]:
+        """Direct native skeleton diagnostics via /api/visora/skeleton/diagnose."""
+        response = await self._request(
+            "POST",
+            "/api/visora/skeleton/diagnose",
+            json={"rootObjectName": root_object_name, "searchQuery": search_query},
+        )
+        return cast(dict[str, Any], response.json())
+
+    async def inspect_clip_native(self, clip_name: str) -> dict[str, Any]:
+        """Direct native AnimationClip curve inspection via /api/visora/animation/inspect."""
+        response = await self._request("POST", "/api/visora/animation/inspect", json={"clipName": clip_name})
+        return cast(dict[str, Any], response.json())
+
+    async def sample_clip_native(self, clip_name: str, target_object_name: str, sample_time: float) -> dict[str, Any]:
+        """Direct native AnimationClip sampling via /api/visora/animation/sample."""
+        response = await self._request(
+            "POST",
+            "/api/visora/animation/sample",
+            json={"clipName": clip_name, "targetObjectName": target_object_name, "sampleTime": sample_time},
+        )
+        return cast(dict[str, Any], response.json())
+
+    async def begin_transaction_native(self, description: str = "Visora Agent Operation") -> dict[str, Any]:
+        """Direct native scene transaction begin via /api/visora/transaction/begin."""
+        response = await self._request("POST", "/api/visora/transaction/begin", json={"description": description})
+        return cast(dict[str, Any], response.json())
+
+    async def commit_transaction_native(self, transaction_id: str, save_scene: bool = False) -> dict[str, Any]:
+        """Direct native scene transaction commit via /api/visora/transaction/commit."""
+        response = await self._request(
+            "POST",
+            "/api/visora/transaction/commit",
+            json={"transactionId": transaction_id, "saveScene": save_scene},
+        )
+        return cast(dict[str, Any], response.json())
+
+    async def rollback_transaction_native(self, transaction_id: str) -> dict[str, Any]:
+        """Direct native scene transaction rollback via /api/visora/transaction/rollback."""
+        response = await self._request(
+            "POST",
+            "/api/visora/transaction/rollback",
+            json={"transactionId": transaction_id},
+        )
         return cast(dict[str, Any], response.json())
 
     async def cancel_queue_ticket(self, ticket_id: str) -> dict[str, Any]:

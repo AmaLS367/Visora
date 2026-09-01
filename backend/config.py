@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     )
     unity_bridge_max_retries: int = Field(default=2, validation_alias="UNITY_BRIDGE_MAX_RETRIES")
     unity_bridge_retry_backoff: float = Field(default=0.5, validation_alias="UNITY_BRIDGE_RETRY_BACKOFF")
+    unity_bridge_mode: str = Field(default="auto", validation_alias="UNITY_BRIDGE_MODE")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
 
     @field_validator("unity_bridge_ports_to_scan", mode="before")
@@ -43,6 +44,12 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("unity_bridge_mode")
+    @classmethod
+    def normalize_bridge_mode(cls, value: str) -> str:
+        val = value.lower().strip()
+        return val if val in {"auto", "native", "legacy"} else "auto"
 
 
 @lru_cache(maxsize=1)

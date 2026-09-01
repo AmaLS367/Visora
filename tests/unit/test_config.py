@@ -14,7 +14,15 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_ports_to_scan == [7890, 7891, 7892, 7893]
     assert settings.unity_bridge_max_retries == 2
     assert settings.unity_bridge_retry_backoff == 0.5
+    assert settings.unity_bridge_mode == "auto"
     assert settings.log_level == "INFO"
+
+
+def test_normalize_bridge_mode() -> None:
+    assert Settings(unity_bridge_mode="NATIVE").unity_bridge_mode == "native"
+    assert Settings(unity_bridge_mode="Legacy").unity_bridge_mode == "legacy"
+    assert Settings(unity_bridge_mode="AUTO").unity_bridge_mode == "auto"
+    assert Settings(unity_bridge_mode="invalid_val").unity_bridge_mode == "auto"
 
 
 def test_normalize_bridge_url_trailing_slashes() -> None:

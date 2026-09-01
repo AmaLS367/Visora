@@ -494,3 +494,132 @@ async def test_wait_for_ticket_timeout() -> None:
         assert result.success is False
         assert result.status == "timeout"
         assert "timed out" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_native_bridge_flavor_and_info(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+
+    mock_ping = httpx.Response(
+        200,
+        json={"success": True, "flavor": "visora-native", "version": "1.0.0"},
+        request=httpx.Request("GET", "http://127.0.0.1:7890/api/ping"),
+    )
+    mock_info = httpx.Response(
+        200,
+        json={"success": True, "flavor": "visora-native", "version": "1.0.0", "supportedFeatures": ["camera_render"]},
+        request=httpx.Request("GET", "http://127.0.0.1:7890/api/visora/info"),
+    )
+
+    def side_effect(method: str, url: str, **kwargs: Any) -> httpx.Response:
+        if "/api/ping" in url:
+            return mock_ping
+        if "/api/visora/info" in url:
+            return mock_info
+        return httpx.Response(404, request=httpx.Request(method, url))
+
+    with patch.object(bridge.client, "request", side_effect=side_effect):
+        with patch.object(bridge.client, "get", return_value=mock_ping):
+            flavor = await bridge.get_bridge_flavor()
+            assert flavor == "visora-native"
+            assert await bridge.is_native_bridge() is True
+
+            info = await bridge.get_bridge_info()
+            assert info["flavor"] == "visora-native"
+            assert "camera_render" in info["supportedFeatures"]
+
+
+@pytest.mark.anyio
+async def test_native_endpoints_execution(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = 7890
+
+    # Test camera render native
+    mock_render_resp = httpx.Response(
+        200,
+        json={"success": True, "imageBase64": "abc"},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/camera/render"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_render_resp):
+        res = await bridge.render_camera_native(camera_name="Main Camera")
+        assert res["success"] is True
+        assert res["imageBase64"] == "abc"
+
+    # Test sequence capture native
+    mock_seq_resp = httpx.Response(
+        200,
+        json={"success": True, "frames": [{"frameIndex": 0, "imageBase64": "f0"}]},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/camera/sequence"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_seq_resp):
+        res = await bridge.capture_sequence_native(camera_name="Main Camera", frame_count=1)
+        assert res["success"] is True
+        assert len(res["frames"]) == 1
+
+    # Test mesh diagnose native
+    mock_mesh_resp = httpx.Response(
+        200,
+        json={"success": True, "vertexCount": 100},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/mesh/diagnose"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_mesh_resp):
+        res = await bridge.diagnose_mesh_native("Character")
+        assert res["vertexCount"] == 100
+
+    # Test skeleton diagnose native
+    mock_skel_resp = httpx.Response(
+        200,
+        json={"success": True, "totalBones": 20},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/skeleton/diagnose"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_skel_resp):
+        res = await bridge.diagnose_skeleton_native("Root", "Hand")
+        assert res["totalBones"] == 20
+
+    # Test animation inspect native
+    mock_anim_resp = httpx.Response(
+        200,
+        json={"success": True, "clipName": "Walk", "length": 1.5},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/animation/inspect"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_anim_resp):
+        res = await bridge.inspect_clip_native("Walk")
+        assert res["clipName"] == "Walk"
+
+    # Test animation sample native
+    mock_sample_resp = httpx.Response(
+        200,
+        json={"success": True, "clipName": "Walk", "sampleTime": 0.5},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/animation/sample"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_sample_resp):
+        res = await bridge.sample_clip_native("Walk", "Target", 0.5)
+        assert res["sampleTime"] == 0.5
+
+    # Test transactions native
+    mock_tx_begin = httpx.Response(
+        200,
+        json={"success": True, "transactionId": "tx_123"},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/transaction/begin"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_tx_begin):
+        res = await bridge.begin_transaction_native("Test Op")
+        assert res["transactionId"] == "tx_123"
+
+    mock_tx_commit = httpx.Response(
+        200,
+        json={"success": True, "transactionId": "tx_123"},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/transaction/commit"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_tx_commit):
+        res = await bridge.commit_transaction_native("tx_123")
+        assert res["success"] is True
+
+    mock_tx_rollback = httpx.Response(
+        200,
+        json={"success": True, "transactionId": "tx_123"},
+        request=httpx.Request("POST", "http://127.0.0.1:7890/api/visora/transaction/rollback"),
+    )
+    with patch.object(bridge.client, "request", return_value=mock_tx_rollback):
+        res = await bridge.rollback_transaction_native("tx_123")
+        assert res["success"] is True

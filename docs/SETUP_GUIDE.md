@@ -26,21 +26,43 @@ This document explains how to set up **Visora**, configure its connection to Uni
 
 ---
 
-## 2. Unity Editor & AnkleBreaker Setup
+## 2. Unity Editor Setup: Native Package vs AnkleBreaker Bridge
 
-Visora communicates with the Unity Editor over a lightweight local HTTP bridge provided by AnkleBreaker.
+Visora communicates with Unity Editor over a lightweight local HTTP bridge. You can use either the **Dedicated Visora Unity Package** (`com.visora.editor`) or the legacy **AnkleBreaker HTTP Bridge**.
+
+### Option A: Dedicated Visora Package (`com.visora.editor`) [Recommended]
+
+The native package provides high-performance rendering, zero C# compilation overhead, built-in task queues, undo-transaction management, and persistent diagnostics.
+
+1. **Install via Unity Package Manager (Git URL)**:
+   - In Unity Editor, open **Window > Package Manager**.
+   - Click the **+** button and select **Add package from git URL...**.
+   - Enter: `https://github.com/AmaLS367/Visora.git?path=unity-package`
+2. **Or Install via Local Path**:
+   - Add to `Packages/manifest.json`:
+     ```json
+     {
+       "dependencies": {
+         "com.visora.editor": "file:../../Visora/unity-package"
+       }
+     }
+     ```
+3. **Verify Server**:
+   - Open **Window > Visora > Server Monitor** to view status.
+   - Test in terminal:
+     ```bash
+     curl http://127.0.0.1:7890/api/ping
+     ```
+   - Expected response: `{"success": true, "flavor": "visora-native", "version": "1.0.0"}`.
+
+### Option B: AnkleBreaker Unity HTTP Bridge [Legacy]
 
 1. **Install AnkleBreaker**:
    - Import the AnkleBreaker package or place its Editor scripts inside your Unity project's `Assets/Plugins/` or `Assets/Editor/` directory.
 2. **Start Unity Editor**:
-   - Open your project in Unity Editor.
-   - The AnkleBreaker bridge server starts automatically in background on port `7890` (or `7891` if 7890 is occupied).
+   - Open your project in Unity Editor. The bridge server starts automatically on port `7890` (or `7891`).
 3. **Verify Bridge**:
-   - Open a browser or terminal and test the ping endpoint:
-     ```bash
-     curl http://127.0.0.1:7890/api/ping
-     ```
-   - Expected response: `{"status": "ok"}` or `{"pong": true}`.
+   - Open terminal: `curl http://127.0.0.1:7890/api/ping`.
 
 ---
 
