@@ -36,6 +36,17 @@ class FakeBridge:
         self.codes.append(code)
         return self.responses.pop(0)
 
+    async def render_camera(
+        self, code: str, _camera_name: str, _width: int, _height: int, _image_format: str = "PNG"
+    ) -> dict[str, object]:
+        return await self.execute_code(code)
+
+    async def execute_capability(
+        self, code: str, *, native_path: str | None = None, native_payload: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        del native_path, native_payload
+        return await self.execute_code(code)
+
     async def get_editor_state(self) -> dict[str, object]:
         return self.editor_state
 

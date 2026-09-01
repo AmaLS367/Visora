@@ -41,7 +41,9 @@ async def screenshot(
         return ScreenshotResult(success=False, error="width and height must be positive integers")
 
     try:
-        response = await vision_pkg.bridge.execute_code(_camera_screenshot_code(camera_name, width, height))
+        response = await vision_pkg.bridge.render_camera(
+            _camera_screenshot_code(camera_name, width, height), camera_name, width, height
+        )
         payload = _extract_result_payload(response)
         if not payload.get("success", True) or payload.get("error"):
             return ScreenshotResult(
@@ -122,7 +124,9 @@ async def inspect_scene_visual(
     ]
 
     try:
-        game_response = await vision_pkg.bridge.execute_code(_camera_screenshot_code(camera_name, width, height))
+        game_response = await vision_pkg.bridge.render_camera(
+            _camera_screenshot_code(camera_name, width, height), camera_name, width, height
+        )
         game_payload = _extract_result_payload(game_response)
         captures.append(_capture_from_payload("game_camera", game_payload, camera_name))
         warnings.extend(f"game_camera: {warning}" for warning in _payload_warnings(game_payload))

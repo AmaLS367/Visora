@@ -208,6 +208,34 @@ class UnityBridge:
         )
         return cast(dict[str, Any], response.json())
 
+    async def execute_capability(
+        self,
+        legacy_code: str,
+        *,
+        native_path: str | None = None,
+        native_payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Runs a capability through native HTTP when available, otherwise through the compatible executor."""
+        if native_path is not None and await self.is_native_bridge():
+            response = await self._request("POST", native_path, json=native_payload or {})
+            return cast(dict[str, Any], response.json())
+        return await self.execute_code(legacy_code)
+
+    async def render_camera(
+        self,
+        legacy_code: str,
+        camera_name: str,
+        width: int,
+        height: int,
+        image_format: str = "PNG",
+    ) -> dict[str, Any]:
+        """Renders through the native camera endpoint or the legacy-compatible executor."""
+        return await self.execute_capability(
+            legacy_code,
+            native_path="/api/visora/camera/render",
+            native_payload={"cameraName": camera_name, "width": width, "height": height, "format": image_format},
+        )
+
     async def get_editor_state(self) -> dict[str, Any]:
         """Returns current Unity editor state including play mode, compilation, and active scene."""
         response = await self._request("POST", "/api/editor/state")

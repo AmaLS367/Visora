@@ -30,7 +30,9 @@ async def list_scene_cameras() -> ListSceneCamerasResult:
         A ListSceneCamerasResult containing total camera count, detailed camera metadata, and warnings.
     """
     try:
-        response = await vision_pkg.bridge.execute_code(_list_scene_cameras_code())
+        response = await vision_pkg.bridge.execute_capability(
+            _list_scene_cameras_code(), native_path="/api/visora/camera/list"
+        )
         payload = _extract_result_payload(response)
         if not payload.get("success", True) or payload.get("error"):
             return ListSceneCamerasResult(
@@ -106,7 +108,11 @@ async def project_world_points(
         )
 
     try:
-        response = await vision_pkg.bridge.execute_code(_project_world_points_code(points, camera_name))
+        response = await vision_pkg.bridge.execute_capability(
+            _project_world_points_code(points, camera_name),
+            native_path="/api/visora/camera/project",
+            native_payload={"cameraName": camera_name, "points": points},
+        )
         payload = _extract_result_payload(response)
         if not payload.get("success", True) or payload.get("error"):
             return ProjectWorldPointsResult(
@@ -154,7 +160,11 @@ async def diagnose_camera_framing(
         A CameraFramingDiagnosticsResult with viewport bounds, framing status, and clipping metrics.
     """
     try:
-        response = await vision_pkg.bridge.execute_code(_camera_framing_diagnostics_code(subject_path, camera_name))
+        response = await vision_pkg.bridge.execute_capability(
+            _camera_framing_diagnostics_code(subject_path, camera_name),
+            native_path="/api/visora/camera/framing",
+            native_payload={"cameraName": camera_name, "subjectPath": subject_path},
+        )
         payload = _extract_result_payload(response)
         if not payload.get("success", True) or payload.get("error"):
             return CameraFramingDiagnosticsResult(

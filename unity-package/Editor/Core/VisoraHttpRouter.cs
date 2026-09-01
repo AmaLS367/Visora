@@ -50,6 +50,20 @@ namespace Visora.Editor.Core
     }
 
     [Serializable]
+    public class CameraProjectRequest
+    {
+        public string cameraName = "Main Camera";
+        public float[][] points;
+    }
+
+    [Serializable]
+    public class CameraFramingRequest
+    {
+        public string cameraName = "Main Camera";
+        public string subjectPath;
+    }
+
+    [Serializable]
     public class MeshDiagnoseRequest
     {
         public string targetName;
@@ -260,6 +274,27 @@ namespace Visora.Editor.Core
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         CameraRenderingService.CaptureSequence(p.cameraName, p.width, p.height, p.frameCount, p.frameIntervalSeconds));
                     responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/camera/list")
+                {
+                    var result = await MainThreadDispatcher.EnqueueAsync(CameraDiagnosticsService.ListCameras);
+                    responseJson = VisoraJson.Serialize(result);
+                }
+                else if (method == "POST" && path == "/api/visora/camera/project")
+                {
+                    var body = ReadBody(req);
+                    var payload = JsonUtility.FromJson<CameraProjectRequest>(body) ?? new CameraProjectRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        CameraDiagnosticsService.ProjectWorldPoints(payload.cameraName, payload.points));
+                    responseJson = VisoraJson.Serialize(result);
+                }
+                else if (method == "POST" && path == "/api/visora/camera/framing")
+                {
+                    var body = ReadBody(req);
+                    var payload = JsonUtility.FromJson<CameraFramingRequest>(body) ?? new CameraFramingRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        CameraDiagnosticsService.DiagnoseFraming(payload.subjectPath, payload.cameraName));
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/mesh/diagnose")
                 {

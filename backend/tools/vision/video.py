@@ -37,7 +37,9 @@ async def _capture_video_frame(  # noqa: PLR0913
         response = await vision_pkg.bridge.execute_code(_diagnostic_scene_capture_code(subject_path, width, height))
         fallback_camera_name = "Visora Diagnostic Camera"
     elif mode == "game_camera":
-        response = await vision_pkg.bridge.execute_code(_camera_screenshot_code(camera_name, width, height))
+        response = await vision_pkg.bridge.render_camera(
+            _camera_screenshot_code(camera_name, width, height), camera_name, width, height
+        )
         fallback_camera_name = camera_name
     else:
         raise ValueError("mode must be either diagnostic_lit or game_camera")

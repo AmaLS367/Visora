@@ -77,6 +77,17 @@ class FailingBridge:
     async def execute_code(self, _code: str) -> dict[str, Any]:
         raise BridgeError("Bridge connection refused")
 
+    async def render_camera(
+        self, _code: str, _camera_name: str, _width: int, _height: int, _image_format: str = "PNG"
+    ) -> dict[str, Any]:
+        raise BridgeError("Bridge connection refused")
+
+    async def execute_capability(
+        self, _code: str, *, native_path: str | None = None, native_payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        del native_path, native_payload
+        raise BridgeError("Bridge connection refused")
+
     async def get_editor_state(self) -> dict[str, Any]:
         raise BridgeError("Bridge connection refused")
 
@@ -102,6 +113,17 @@ class ErrorResponseBridge:
     base_url = "http://localhost:7890"
 
     async def execute_code(self, _code: str) -> dict[str, Any]:
+        return {"success": False, "error": "Unity C# compilation or runtime error"}
+
+    async def render_camera(
+        self, _code: str, _camera_name: str, _width: int, _height: int, _image_format: str = "PNG"
+    ) -> dict[str, Any]:
+        return {"success": False, "error": "Unity C# compilation or runtime error"}
+
+    async def execute_capability(
+        self, _code: str, *, native_path: str | None = None, native_payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        del native_path, native_payload
         return {"success": False, "error": "Unity C# compilation or runtime error"}
 
     async def get_editor_state(self) -> dict[str, Any]:
