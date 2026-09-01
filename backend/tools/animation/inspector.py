@@ -25,7 +25,7 @@ async def inspect_animation_clip(clip_path: str) -> ClipInspectorResult:
     """
     try:
         code = _inspect_clip_code(clip_path)
-        resp = await animation_pkg.bridge.execute_code(code)
+        resp = await animation_pkg.bridge.execute_capability(code)
 
         result_data = resp.get("result")
         if not isinstance(result_data, dict):

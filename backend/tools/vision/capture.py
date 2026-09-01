@@ -135,7 +135,7 @@ async def inspect_scene_visual(
         warnings.append(f"game camera capture failed: {exc}")
 
     try:
-        diagnostic_response = await vision_pkg.bridge.execute_code(
+        diagnostic_response = await vision_pkg.bridge.execute_capability(
             _diagnostic_scene_capture_code(subject_path, width, height)
         )
         diagnostic_payload = _extract_result_payload(diagnostic_response)

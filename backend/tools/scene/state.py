@@ -35,7 +35,7 @@ async def get_editor_state(include_scene_details: bool = True) -> EditorStateRes
 
         if include_scene_details:
             try:
-                scene_res = await scene_pkg.bridge.execute_code(_get_scene_details_code())
+                scene_res = await scene_pkg.bridge.execute_capability(_get_scene_details_code())
                 if scene_res.get("success") and isinstance(scene_res.get("result"), dict):
                     data = cast(dict[str, Any], scene_res["result"])
                     active_scene_name = cast(str | None, data.get("sceneName", active_scene_name))

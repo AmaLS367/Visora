@@ -29,7 +29,7 @@ async def skinned_mesh_diagnostics(mesh_renderer_path: str) -> SkinnedMeshDiagno
     """
     try:
         code = _skinned_mesh_diagnostics_code(mesh_renderer_path)
-        resp = await mesh_pkg.bridge.execute_code(code)
+        resp = await mesh_pkg.bridge.execute_capability(code)
 
         result_data = resp.get("result")
         if not isinstance(result_data, dict):

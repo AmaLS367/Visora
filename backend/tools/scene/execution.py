@@ -80,7 +80,7 @@ async def safe_transaction(  # noqa: PLR0913
         undo_group = await _register_undo_group(scene_pkg.bridge, record_undo, undo_name, warnings)
 
         # Step 3: Execute editor code
-        result: dict[str, Any] = await scene_pkg.bridge.execute_code(editor_code)
+        result: dict[str, Any] = await scene_pkg.bridge.execute_capability(editor_code)
         logs: list[str] = cast(list[str], result.get("logs", []))
 
         if not result.get("success", True) or result.get("error"):
@@ -155,7 +155,7 @@ async def restore_scene_state(
 
     try:
         if undo_group is not None:
-            undo_res = await scene_pkg.bridge.execute_code(_undo_transaction_code(undo_group))
+            undo_res = await scene_pkg.bridge.execute_capability(_undo_transaction_code(undo_group))
             if undo_res.get("success") and isinstance(undo_res.get("result"), dict):
                 reverted_undo = bool(undo_res["result"].get("reverted", False))
             else:
@@ -173,7 +173,7 @@ async def restore_scene_state(
                     message="Restore aborted: scene cannot be reloaded during Play Mode.",
                 )
 
-            reload_res = await scene_pkg.bridge.execute_code(_reload_scene_code())
+            reload_res = await scene_pkg.bridge.execute_capability(_reload_scene_code())
             if reload_res.get("success") and isinstance(reload_res.get("result"), dict):
                 reloaded_data = cast(dict[str, Any], reload_res["result"])
                 reloaded_scene = bool(reloaded_data.get("reloaded", False))

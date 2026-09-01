@@ -18,7 +18,7 @@ async def _execute_undo_rollback(bridge: UnityBridge, undo_group: int | None, wa
     if undo_group is None:
         return False
     try:
-        await bridge.execute_code(_undo_transaction_code(undo_group))
+        await bridge.execute_capability(_undo_transaction_code(undo_group))
         return True
     except _BRIDGE_ERRORS as rb_err:
         warnings.append(f"Undo rollback failed: {rb_err}")
@@ -32,7 +32,7 @@ async def _register_undo_group(
     if not record_undo:
         return None
     try:
-        undo_res = await bridge.execute_code(_begin_undo_group_code(undo_name))
+        undo_res = await bridge.execute_capability(_begin_undo_group_code(undo_name))
         if undo_res.get("success") and isinstance(undo_res.get("result"), dict):
             return cast(int, undo_res["result"].get("undoGroup"))
     except _BRIDGE_ERRORS as e:

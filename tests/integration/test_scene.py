@@ -50,6 +50,9 @@ class FakeBridge:
             return resp
         return {"success": True, "result": {}}
 
+    async def execute_capability(self, code: str, **_kwargs: Any) -> dict[str, Any]:
+        return await self.execute_code(code)
+
     async def set_play_mode(self, active: bool) -> dict[str, Any]:
         self.play_mode_calls.append(active)
         if isinstance(self.editor_state, dict):

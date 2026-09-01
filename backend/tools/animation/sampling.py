@@ -54,7 +54,7 @@ async def sample_animation_clip(  # noqa: PLR0913
             tracked_bone_paths=track_transforms,
         )
 
-        resp = await animation_pkg.bridge.execute_code(code)
+        resp = await animation_pkg.bridge.execute_capability(code)
         result_data = resp.get("result")
         if not isinstance(result_data, dict):
             result_data = resp

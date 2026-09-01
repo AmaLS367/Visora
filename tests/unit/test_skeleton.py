@@ -32,6 +32,9 @@ class FakeBridge:
             return resp
         return {"success": True, "result": {"success": True}}
 
+    async def execute_capability(self, code: str, **_kwargs: Any) -> dict[str, Any]:
+        return await self.execute_code(code)
+
 
 def _bone(path: str, name: str, parent_path: str | None = None, depth: int = 0) -> BoneNode:
     return BoneNode(path=path, name=name, parent_path=parent_path, depth=depth)

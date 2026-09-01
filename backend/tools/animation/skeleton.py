@@ -22,7 +22,7 @@ async def _fetch_bone_hierarchy(root_transform_path: str) -> tuple[list[BoneNode
         RuntimeError: if Unity reports the hierarchy walk failed (root not found, etc.).
     """
     code = _skeleton_hierarchy_code(root_transform_path)
-    resp = await animation_pkg.bridge.execute_code(code)
+    resp = await animation_pkg.bridge.execute_capability(code)
 
     result_data = resp.get("result")
     if not isinstance(result_data, dict):

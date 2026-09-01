@@ -125,7 +125,7 @@ async def save_scene(
             )
 
         # Attempt high-level C# save via EditorSceneManager
-        save_res = await scene_pkg.bridge.execute_code(_save_scene_code(save_as_path))
+        save_res = await scene_pkg.bridge.execute_capability(_save_scene_code(save_as_path))
         if save_res.get("success") and isinstance(save_res.get("result"), dict):
             res_data = cast(dict[str, Any], save_res["result"])
             saved = bool(res_data.get("saved", False))

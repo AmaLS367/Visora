@@ -40,6 +40,9 @@ class FakeBridge:
             return resp
         return {"success": True, "result": {"success": True}}
 
+    async def execute_capability(self, code: str, **_kwargs: Any) -> dict[str, Any]:
+        return await self.execute_code(code)
+
 
 # ---------------------------------------------------------------------------
 # Test Pure Analysis Logic: Bounds
