@@ -14,6 +14,11 @@ from backend.schemas.animation import (
     TransformPose,
 )
 from backend.schemas.base import BaseToolResult
+from backend.schemas.bridge import (
+    BridgeStatusResult,
+    EditorStateInfo,
+    PortScanResult,
+)
 from backend.schemas.mesh import (
     BoneBindingInfo,
     BoundsInfo,
@@ -57,18 +62,21 @@ __all__ = [
     "BoneNode",
     "BoneSearchResult",
     "BoundsInfo",
+    "BridgeStatusResult",
     "CameraFramingDiagnosticsResult",
     "ClipInspectorResult",
     "DangerousCurveWarning",
     "DeformationInfo",
     "DiagnosticIssue",
     "DuplicateBoneGroup",
+    "EditorStateInfo",
     "EditorStateResult",
     "FrameMotionMetrics",
     "HelperBoneWarning",
     "MaterialSlotInfo",
     "MmdBoneChain",
     "PlayModeManagementResult",
+    "PortScanResult",
     "ProjectWorldPointsResult",
     "QueueStatusResult",
     "RestoreSceneResult",
