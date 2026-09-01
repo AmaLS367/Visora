@@ -65,6 +65,14 @@ class SceneCameraInfo(BaseModel):
     orthographic_size: float = Field(..., description="Orthographic camera size")
 
 
+class ListSceneCamerasResult(BaseToolResult):
+    """Result schema for listing active Unity scene cameras."""
+
+    camera_count: int = Field(default=0, description="Total number of cameras found in the active scene")
+    cameras: list[SceneCameraInfo] = Field(default_factory=list, description="List of detected scene camera metadata")
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking warnings during camera inspection")
+
+
 class ScreenPoint(BaseModel):
     """Represents a projected 2D screen point."""
 

@@ -73,6 +73,20 @@ async def get_video_frames(  # noqa: PLR0912, PLR0913, PLR0915
 ) -> VideoFramesResult:
     """
     Captures sampled camera frames for agents that reason over frame sequences instead of raw video.
+
+    Args:
+        camera_names: Optional list of Unity camera names to sample from. Defaults to ["Main Camera"].
+        subject_path: Optional hierarchy path to the subject GameObject to frame.
+        mode: Capture mode ("diagnostic_lit" or "game_camera"). Defaults to "diagnostic_lit".
+        duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
+        fps: Sampling frame rate (1 to 12). Defaults to 6.
+        width: Frame width in pixels. Defaults to 1280.
+        height: Frame height in pixels. Defaults to 720.
+        enter_play_mode: If True, temporarily enters Play Mode during capture.
+        include_motion_metrics: If True, computes delta motion metrics between adjacent frames.
+
+    Returns:
+        A VideoFramesResult containing captured frame sequences, motion metrics, and interpretation guidance.
     """
     validation_error = _validate_video_request(duration_seconds, fps, width, height, max_fps=12)
     if validation_error is not None:
@@ -202,6 +216,19 @@ async def get_video_mp4(  # noqa: PLR0913
 ) -> VideoMp4Result:
     """
     Captures a short camera video and returns MP4 bytes for video-capable models.
+
+    Args:
+        camera_name: Name of the Unity camera used for video recording. Defaults to "Main Camera".
+        subject_path: Optional hierarchy path to the subject GameObject to frame.
+        mode: Capture mode ("diagnostic_lit" or "game_camera"). Defaults to "diagnostic_lit".
+        duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
+        fps: Recording frame rate (1 to 30). Defaults to 24.
+        width: Video width in pixels. Defaults to 1280.
+        height: Video height in pixels. Defaults to 720.
+        enter_play_mode: If True, temporarily enters Play Mode during capture.
+
+    Returns:
+        A VideoMp4Result containing base64-encoded MP4 bytes, saved artifact path, and video metadata.
     """
     validation_error = _validate_video_request(duration_seconds, fps, width, height, max_fps=30)
     if validation_error is not None:

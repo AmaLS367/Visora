@@ -40,6 +40,7 @@ from backend.schemas.scene import (
 from backend.schemas.vision import (
     CameraFramingDiagnosticsResult,
     FrameMotionMetrics,
+    ListSceneCamerasResult,
     ProjectWorldPointsResult,
     SceneCameraInfo,
     ScreenPoint,
@@ -73,6 +74,7 @@ __all__ = [
     "EditorStateResult",
     "FrameMotionMetrics",
     "HelperBoneWarning",
+    "ListSceneCamerasResult",
     "MaterialSlotInfo",
     "MmdBoneChain",
     "PlayModeManagementResult",

@@ -7,6 +7,7 @@ import pytest
 
 from backend.schemas import (
     CameraFramingDiagnosticsResult,
+    ListSceneCamerasResult,
     SceneCameraInfo,
     VideoFrame,
     VideoFrameSequence,
@@ -191,13 +192,30 @@ async def test_list_scene_cameras_returns_camera_inventory(monkeypatch: pytest.M
 
     result = await vision.list_scene_cameras()
 
-    assert len(result) == 1
-    assert isinstance(result[0], SceneCameraInfo)
-    assert result[0].name == "Main Camera"
-    assert result[0].field_of_view == 60.0
-    assert result[0].orthographic is False
+    assert isinstance(result, ListSceneCamerasResult)
+    assert result.success is True
+    assert result.error is None
+    assert result.camera_count == 1
+    assert len(result.cameras) == 1
+    assert isinstance(result.cameras[0], SceneCameraInfo)
+    assert result.cameras[0].name == "Main Camera"
+    assert result.cameras[0].field_of_view == 60.0
+    assert result.cameras[0].orthographic is False
     assert fake_bridge.code is not None
     assert "FindObjectsByType<UnityEngine.Camera>" in fake_bridge.code
+
+
+@pytest.mark.anyio
+async def test_list_scene_cameras_handles_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(vision, "bridge", FakeBridge({"success": False, "error": "Unity execution failed"}))
+
+    result = await vision.list_scene_cameras()
+
+    assert isinstance(result, ListSceneCamerasResult)
+    assert result.success is False
+    assert result.error == "Unity execution failed"
+    assert result.camera_count == 0
+    assert result.cameras == []
 
 
 @pytest.mark.anyio

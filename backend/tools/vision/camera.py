@@ -4,6 +4,7 @@ import backend.tools.vision as vision_pkg
 from backend.app import mcp
 from backend.schemas import (
     CameraFramingDiagnosticsResult,
+    ListSceneCamerasResult,
     ProjectWorldPointsResult,
     SceneCameraInfo,
     ScreenPoint,
@@ -21,34 +22,66 @@ from backend.tools.vision.scripts import (
 
 
 @mcp.tool()
-async def list_scene_cameras() -> list[SceneCameraInfo]:
+async def list_scene_cameras() -> ListSceneCamerasResult:
     """
     Lists active Unity scene cameras so agents can choose a real camera before rendering or projection.
 
     Returns:
-        A compact list of scene camera metadata.
+        A ListSceneCamerasResult containing total camera count, detailed camera metadata, and warnings.
     """
-    response = await vision_pkg.bridge.execute_code(_list_scene_cameras_code())
-    payload = _extract_result_payload(response)
-    cameras = payload.get("cameras", [])
-    if not isinstance(cameras, list):
-        raise RuntimeError("Unity camera inventory response did not include cameras")
+    try:
+        response = await vision_pkg.bridge.execute_code(_list_scene_cameras_code())
+        payload = _extract_result_payload(response)
+        if not payload.get("success", True) or payload.get("error"):
+            return ListSceneCamerasResult(
+                success=False,
+                error=str(payload.get("error", "Failed to list scene cameras")),
+                camera_count=0,
+                cameras=[],
+                warnings=_payload_warnings(payload),
+            )
 
-    return [
-        SceneCameraInfo(
-            name=str(camera.get("name", "")),
-            path=str(camera.get("path", "")),
-            enabled=bool(camera.get("enabled", False)),
-            active=bool(camera.get("active", False)),
-            tag=str(camera.get("tag", "")),
-            depth=_payload_float(camera.get("depth")),
-            field_of_view=_payload_float(camera.get("fieldOfView", camera.get("field_of_view"))),
-            orthographic=bool(camera.get("orthographic", False)),
-            orthographic_size=_payload_float(camera.get("orthographicSize", camera.get("orthographic_size"))),
+        raw_cameras = payload.get("cameras", [])
+        if not isinstance(raw_cameras, list):
+            return ListSceneCamerasResult(
+                success=False,
+                error="Unity camera inventory response did not include a valid cameras list",
+                camera_count=0,
+                cameras=[],
+                warnings=_payload_warnings(payload),
+            )
+
+        cameras = [
+            SceneCameraInfo(
+                name=str(camera.get("name", "")),
+                path=str(camera.get("path", "")),
+                enabled=bool(camera.get("enabled", False)),
+                active=bool(camera.get("active", False)),
+                tag=str(camera.get("tag", "")),
+                depth=_payload_float(camera.get("depth")),
+                field_of_view=_payload_float(camera.get("fieldOfView", camera.get("field_of_view"))),
+                orthographic=bool(camera.get("orthographic", False)),
+                orthographic_size=_payload_float(camera.get("orthographicSize", camera.get("orthographic_size"))),
+            )
+            for camera in raw_cameras
+            if isinstance(camera, dict)
+        ]
+
+        return ListSceneCamerasResult(
+            success=True,
+            camera_count=len(cameras),
+            cameras=cameras,
+            warnings=_payload_warnings(payload),
         )
-        for camera in cameras
-        if isinstance(camera, dict)
-    ]
+    except Exception as exc:
+        vision_pkg.logger.exception("Listing scene cameras failed")
+        return ListSceneCamerasResult(
+            success=False,
+            error=str(exc),
+            camera_count=0,
+            cameras=[],
+            warnings=[],
+        )
 
 
 @mcp.tool()
@@ -64,7 +97,7 @@ async def project_world_points(
         camera_name: Name of the Unity camera used to compute projections.
 
     Returns:
-        A ProjectWorldPointsResult with a list of 2D screen positions.
+        A ProjectWorldPointsResult with a list of 2D screen positions and depth information.
     """
     if any(len(point) != 3 for point in points):
         return ProjectWorldPointsResult(
@@ -75,6 +108,12 @@ async def project_world_points(
     try:
         response = await vision_pkg.bridge.execute_code(_project_world_points_code(points, camera_name))
         payload = _extract_result_payload(response)
+        if not payload.get("success", True) or payload.get("error"):
+            return ProjectWorldPointsResult(
+                success=False,
+                error=str(payload.get("error", "World point projection failed")),
+            )
+
         raw_points = payload.get("screenPoints", payload.get("screen_points", []))
         if not isinstance(raw_points, list):
             return ProjectWorldPointsResult(
@@ -112,11 +151,21 @@ async def diagnose_camera_framing(
         camera_name: Name of the Unity camera used for viewport projection.
 
     Returns:
-        A CameraFramingDiagnosticsResult with viewport bounds and framing status.
+        A CameraFramingDiagnosticsResult with viewport bounds, framing status, and clipping metrics.
     """
     try:
         response = await vision_pkg.bridge.execute_code(_camera_framing_diagnostics_code(subject_path, camera_name))
         payload = _extract_result_payload(response)
+        if not payload.get("success", True) or payload.get("error"):
+            return CameraFramingDiagnosticsResult(
+                success=False,
+                error=str(payload.get("error", "Camera framing diagnostics failed")),
+                subject_path=subject_path,
+                camera_name=camera_name,
+                is_visible=False,
+                warnings=_payload_warnings(payload),
+            )
+
         viewport_bounds = payload.get("viewportBounds", payload.get("viewport_bounds"))
         return CameraFramingDiagnosticsResult(
             success=True,

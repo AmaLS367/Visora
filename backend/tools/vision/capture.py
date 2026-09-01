@@ -43,9 +43,22 @@ async def screenshot(
     try:
         response = await vision_pkg.bridge.execute_code(_camera_screenshot_code(camera_name, width, height))
         payload = _extract_result_payload(response)
+        if not payload.get("success", True) or payload.get("error"):
+            return ScreenshotResult(
+                success=False,
+                error=str(payload.get("error", "Unity screenshot capture failed")),
+                camera_name=camera_name,
+                warnings=_payload_warnings(payload),
+            )
+
         image_base64 = payload.get("imageBase64") or payload.get("image_base64")
         if not isinstance(image_base64, str) or not image_base64:
-            return ScreenshotResult(success=False, error="Unity screenshot response did not include imageBase64")
+            return ScreenshotResult(
+                success=False,
+                error="Unity screenshot response did not include imageBase64",
+                camera_name=camera_name,
+                warnings=_payload_warnings(payload),
+            )
 
         return ScreenshotResult(
             success=True,
