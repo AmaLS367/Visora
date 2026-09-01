@@ -233,6 +233,36 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.success is False
     assert res.error is not None
 
+    # 17. analyze_animation_curves
+    res = await animation.inspector.analyze_animation_curves("Assets/Test.anim")
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
+    # 18. get_video_frames
+    res = await vision.video.get_video_frames(duration_seconds=0.1)
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
+    # 19. get_video_mp4
+    res = await vision.video.get_video_mp4(duration_seconds=0.1)
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
+    # 20. compare_screenshots
+    res = vision.capture.compare_screenshots(before_image_base64="invalid", after_image_base64="invalid")
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
+    # 21. inspect_scene_visual
+    res = await vision.capture.inspect_scene_visual()
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
 
 @pytest.mark.anyio
 async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -276,22 +306,37 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     assert res.success is False
     assert res.error is not None
 
-    # 7. sample_animation_clip with error
+    # 7. analyze_animation_curves with error
+    res = await animation.inspector.analyze_animation_curves("Assets/Test.anim")
+    assert res.success is False
+    assert res.error is not None
+
+    # 8. sample_animation_clip with error
     res = await animation.sampling.sample_animation_clip("Player", "Assets/Test.anim")
     assert res.success is False
     assert res.error is not None
 
-    # 8. skeleton_mapper with error
+    # 9. skeleton_mapper with error
     res = await animation.skeleton.skeleton_mapper("Root")
     assert res.success is False
     assert res.error is not None
 
-    # 9. find_bones with error
+    # 10. find_bones with error
     res = await animation.skeleton.find_bones("Root", "Head")
     assert res.success is False
     assert res.error is not None
 
-    # 10. skinned_mesh_diagnostics with error
+    # 11. skinned_mesh_diagnostics with error
     res = await mesh.diagnostics.skinned_mesh_diagnostics("Body")
+    assert res.success is False
+    assert res.error is not None
+
+    # 12. get_video_frames with error
+    res = await vision.video.get_video_frames(duration_seconds=0.1)
+    assert res.success is False
+    assert res.error is not None
+
+    # 13. get_video_mp4 with error
+    res = await vision.video.get_video_mp4(duration_seconds=0.1)
     assert res.success is False
     assert res.error is not None

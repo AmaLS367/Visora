@@ -22,8 +22,8 @@ class FakeBridge:
     def __init__(
         self,
         editor_state: dict[str, Any] | Exception | None = None,
-        execute_responses: list[dict[str, Any]] | None = None,
-        save_response: dict[str, Any] | None = None,
+        execute_responses: list[dict[str, Any] | Exception] | None = None,
+        save_response: dict[str, Any] | Exception | None = None,
     ) -> None:
         self.editor_state: dict[str, Any] | Exception = editor_state or {
             "isPlaying": False,
@@ -448,3 +448,152 @@ async def test_restore_scene_state_no_action_requested() -> None:
 
     assert result.success is False
     assert "No restore action" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_safe_transaction_editor_state_check_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(editor_state=RuntimeError("Editor connection lost"))
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.safe_transaction(editor_code="return;")
+    assert result.success is False
+    assert "Editor state check failed" in (result.error or "")
+    assert "aborted" in result.message
+
+
+@pytest.mark.anyio
+async def test_safe_transaction_compilation_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(editor_state={"isPlaying": False, "isCompiling": True, "isUpdating": False})
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+    monkeypatch.setattr(scene, "_sleep", _instant_sleep)
+
+    result = await scene.safe_transaction(editor_code="return;", timeout_seconds=0.001)
+    assert result.success is False
+    assert "did not become idle in time" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_safe_transaction_failure_without_restore(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},
+        execute_responses=[
+            {"success": True, "result": {"undoGroup": 77}},
+            {"success": False, "error": "Compilation error"},
+        ],
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.safe_transaction(
+        editor_code="invalid",
+        restore_on_failure=False,
+    )
+    assert result.success is False
+    assert result.rolled_back is False
+    assert result.undo_group == 77
+    assert "Compilation error" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_safe_transaction_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},
+        execute_responses=[
+            {"success": True, "result": {"undoGroup": 88}},
+            RuntimeError("Socket disconnected unexpectedly"),
+            {"success": True, "result": {"reverted": True}},
+        ],
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.safe_transaction(editor_code="throw;")
+    assert result.success is False
+    assert result.rolled_back is True
+    assert "Socket disconnected" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_restore_scene_state_both_undo_and_reload(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},
+        execute_responses=[
+            {"success": True, "result": {"reverted": True}},
+            {"success": True, "result": {"reloaded": True, "sceneName": "Level1"}},
+        ],
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.restore_scene_state(undo_group=55, reload_active_scene=True)
+    assert result.success is True
+    assert result.reverted_undo is True
+    assert result.reloaded_scene is True
+    assert result.active_scene_name == "Level1"
+
+
+@pytest.mark.anyio
+async def test_restore_scene_state_reload_csharp_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},
+        execute_responses=[
+            {"success": False, "error": "Cannot open scene path"},
+        ],
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.restore_scene_state(reload_active_scene=True)
+    assert result.success is False
+    assert "Cannot open scene path" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_restore_scene_state_undo_csharp_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        execute_responses=[
+            {"success": False, "error": "Invalid undo group"},
+        ],
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.restore_scene_state(undo_group=999)
+    assert result.success is False
+    assert result.reverted_undo is False
+    assert any("Undo revert failed" in w for w in result.warnings)
+
+
+@pytest.mark.anyio
+async def test_restore_scene_state_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        execute_responses=[
+            RuntimeError("Fatal bridge crash"),
+        ],
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.restore_scene_state(undo_group=1)
+    assert result.success is False
+    assert "Fatal bridge crash" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_save_scene_bridge_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},
+        execute_responses=[RuntimeError("Disk write error")],
+        save_response=RuntimeError("Disk write error"),
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.save_scene()
+    assert result.success is False
+    assert "Disk write error" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_playmode_management_bridge_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        editor_state=RuntimeError("Connection refused"),
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.playmode_management(play=True, wait_for_idle=False)
+    assert result.success is False
+    assert "Connection refused" in (result.error or "")

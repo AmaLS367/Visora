@@ -37,6 +37,36 @@ async def test_candidate_ports_ordering(mock_settings: Settings) -> None:
 
 
 @pytest.mark.anyio
+async def test_candidate_ports_with_custom_list_and_duplicates() -> None:
+    settings = Settings(
+        unity_bridge_port=8000,
+        unity_bridge_fallback_port=8001,
+        unity_bridge_ports_to_scan=[8000, 8001, 8002, 8003, 8000],
+    )
+    bridge = UnityBridge(settings=settings)
+    assert bridge.candidate_ports == [8000, 8001, 8002, 8003]
+
+
+@pytest.mark.anyio
+async def test_bridge_exceptions_attributes() -> None:
+    # BridgeConnectionError
+    conn_err = BridgeConnectionError("Unreachable", ports=[7890, 7891])
+    assert conn_err.ports == [7890, 7891]
+    assert "Unreachable" in str(conn_err)
+
+    # BridgeHTTPError
+    http_err = BridgeHTTPError("Bad Request", status_code=400, response_body='{"err": "bad"}')
+    assert http_err.status_code == 400
+    assert http_err.response_body == '{"err": "bad"}'
+    assert "Bad Request" in str(http_err)
+
+    # BridgeTimeoutError
+    time_err = BridgeTimeoutError("Timed out", timeout_seconds=12.5)
+    assert time_err.timeout_seconds == 12.5
+    assert "Timed out" in str(time_err)
+
+
+@pytest.mark.anyio
 async def test_get_active_port_default_success(mock_settings: Settings) -> None:
     bridge = UnityBridge(settings=mock_settings)
 
@@ -116,6 +146,29 @@ async def test_ping_success_and_failure(mock_settings: Settings) -> None:
 
 
 @pytest.mark.anyio
+async def test_ping_without_port_triggers_active_port_discovery(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+
+    mock_req = httpx.Request("GET", "http://127.0.0.1:7890/api/ping")
+    with patch.object(bridge.client, "get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = httpx.Response(200, json={"status": "ok"}, request=mock_req)
+        ok, latency = await bridge.ping()
+        assert ok is True
+        assert latency is not None
+        assert bridge._active_port == 7890
+
+
+@pytest.mark.anyio
+async def test_ping_without_port_when_bridge_unreachable(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+
+    with patch.object(bridge.client, "get", side_effect=httpx.ConnectError("Unreachable")):
+        ok, latency = await bridge.ping()
+        assert ok is False
+        assert latency is None
+
+
+@pytest.mark.anyio
 async def test_request_retry_and_cache_invalidation(mock_settings: Settings) -> None:
     bridge = UnityBridge(settings=mock_settings)
     bridge._active_port = 7890
@@ -177,6 +230,56 @@ async def test_request_timeout_error(mock_settings: Settings) -> None:
         with pytest.raises(BridgeTimeoutError) as excinfo:
             await bridge._request("POST", "/api/editor/execute-code")
         assert excinfo.value.timeout_seconds == 5.0
+
+
+@pytest.mark.anyio
+async def test_unity_bridge_methods(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+
+    mock_req = httpx.Request("POST", "http://127.0.0.1:7890")
+
+    with patch.object(bridge, "_request", new_callable=AsyncMock) as mock_request:
+        # execute_code
+        mock_request.return_value = httpx.Response(200, json={"success": True, "result": 123}, request=mock_req)
+        res = await bridge.execute_code("Debug.Log(1);")
+        assert res == {"success": True, "result": 123}
+        mock_request.assert_called_with("POST", "/api/editor/execute-code", json={"code": "Debug.Log(1);"})
+
+        # get_editor_state
+        mock_request.return_value = httpx.Response(200, json={"isPlaying": False}, request=mock_req)
+        res = await bridge.get_editor_state()
+        assert res == {"isPlaying": False}
+        mock_request.assert_called_with("POST", "/api/editor/state")
+
+        # set_play_mode
+        mock_request.return_value = httpx.Response(200, json={"isPlaying": True}, request=mock_req)
+        res = await bridge.set_play_mode(True)
+        assert res == {"isPlaying": True}
+        mock_request.assert_called_with("POST", "/api/editor/play-mode", json={"action": "play"})
+
+        # save_scene
+        mock_request.return_value = httpx.Response(200, json={"saved": True}, request=mock_req)
+        res = await bridge.save_scene()
+        assert res == {"saved": True}
+        mock_request.assert_called_with("POST", "/api/scene/save")
+
+        # get_compilation_errors
+        mock_request.return_value = httpx.Response(200, json={"errors": []}, request=mock_req)
+        res = await bridge.get_compilation_errors()
+        assert res == {"errors": []}
+        mock_request.assert_called_with("GET", "/api/compilation/errors")
+
+        # get_queue_status
+        mock_request.return_value = httpx.Response(200, json={"status": "completed"}, request=mock_req)
+        res = await bridge.get_queue_status("t-1")
+        assert res == {"status": "completed"}
+        mock_request.assert_called_with("GET", "/api/queue/status", params={"ticketId": "t-1"})
+
+        # cancel_queue_ticket
+        mock_request.return_value = httpx.Response(200, json={"cancelled": True}, request=mock_req)
+        res = await bridge.cancel_queue_ticket("t-1")
+        assert res == {"cancelled": True}
+        mock_request.assert_called_with("POST", "/api/queue/cancel", json={"ticketId": "t-1"})
 
 
 @pytest.mark.anyio
@@ -280,12 +383,51 @@ async def test_check_ticket_status_failed() -> None:
 
 
 @pytest.mark.anyio
+async def test_check_ticket_status_cancelled() -> None:
+    with patch("backend.tools.bridge.queue.bridge.get_queue_status", new_callable=AsyncMock) as mock_queue:
+        mock_queue.return_value = {
+            "status": "cancelled",
+            "progress": 0.3,
+        }
+
+        result = await check_ticket_status(ticket_id="ticket-cancel")
+        assert result.success is False
+        assert result.status == "cancelled"
+        assert result.error == "Task was cancelled"
+
+
+@pytest.mark.anyio
+async def test_check_ticket_status_running() -> None:
+    with patch("backend.tools.bridge.queue.bridge.get_queue_status", new_callable=AsyncMock) as mock_queue:
+        mock_queue.return_value = {
+            "status": "running",
+            "progress": 0.4,
+            "result": {"temp": True},
+        }
+
+        result = await check_ticket_status(ticket_id="ticket-run")
+        assert result.success is True
+        assert result.status == "running"
+        assert result.progress == 0.4
+        assert result.result == {"temp": True}
+
+
+@pytest.mark.anyio
 async def test_check_ticket_status_bridge_error() -> None:
     with patch("backend.tools.bridge.queue.bridge.get_queue_status", side_effect=BridgeError("Connection dropped")):
         result = await check_ticket_status(ticket_id="ticket-err")
         assert result.success is False
         assert result.status == "error"
         assert "Bridge communication error" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_check_ticket_status_unexpected_exception() -> None:
+    with patch("backend.tools.bridge.queue.bridge.get_queue_status", side_effect=ValueError("Corrupt JSON")):
+        result = await check_ticket_status(ticket_id="ticket-exc")
+        assert result.success is False
+        assert result.status == "error"
+        assert "Corrupt JSON" in (result.error or "")
 
 
 @pytest.mark.anyio
@@ -302,6 +444,44 @@ async def test_wait_for_ticket_completion() -> None:
         assert result.progress == 1.0
         assert result.result == "Baked"
         assert result.duration_seconds is not None
+
+
+@pytest.mark.anyio
+async def test_wait_for_ticket_cancelled() -> None:
+    with patch(
+        "backend.tools.bridge.queue.bridge.get_queue_status",
+        return_value={"status": "cancelled", "progress": 0.2},
+    ):
+        result = await wait_for_ticket(ticket_id="ticket-cancelled", timeout=5.0, poll_interval=0.01)
+        assert result.success is False
+        assert result.status == "cancelled"
+        assert "cancelled in Unity Editor" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_wait_for_ticket_failed_with_error_message() -> None:
+    with patch(
+        "backend.tools.bridge.queue.bridge.get_queue_status",
+        return_value={"status": "failed", "progress": 0.1, "errorMessage": "Out of memory"},
+    ):
+        result = await wait_for_ticket(ticket_id="ticket-fail-msg", timeout=5.0, poll_interval=0.01)
+        assert result.success is False
+        assert result.status == "failed"
+        assert result.error == "Out of memory"
+
+
+@pytest.mark.anyio
+async def test_wait_for_ticket_transient_error_recovery() -> None:
+    responses = [
+        httpx.ConnectError("Transient connection drop"),
+        {"status": "completed", "progress": 1.0, "result": {"baked": True}},
+    ]
+
+    with patch("backend.tools.bridge.queue.bridge.get_queue_status", side_effect=responses):
+        result = await wait_for_ticket(ticket_id="ticket-recover", timeout=5.0, poll_interval=0.01)
+        assert result.success is True
+        assert result.status == "completed"
+        assert result.result == {"baked": True}
 
 
 @pytest.mark.anyio
