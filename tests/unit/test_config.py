@@ -14,7 +14,8 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_ports_to_scan == [7890, 7891, 7892, 7893]
     assert settings.unity_bridge_max_retries == 2
     assert settings.unity_bridge_retry_backoff == 0.5
-    assert settings.unity_bridge_mode == "auto"
+    assert settings.unity_bridge_mode == "legacy"
+    assert settings.unity_bridge_execution_timeout_seconds == 60.0
     assert settings.log_level == "INFO"
 
 
@@ -75,6 +76,7 @@ def test_env_variable_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("UNITY_BRIDGE_PORTS_TO_SCAN", "[9999, 9998, 9997]")
     monkeypatch.setenv("UNITY_BRIDGE_MAX_RETRIES", "5")
     monkeypatch.setenv("UNITY_BRIDGE_RETRY_BACKOFF", "1.5")
+    monkeypatch.setenv("UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("LOG_LEVEL", "debug")
 
     settings = Settings()
@@ -87,6 +89,7 @@ def test_env_variable_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.unity_bridge_ports_to_scan == [9999, 9998, 9997]
     assert settings.unity_bridge_max_retries == 5
     assert settings.unity_bridge_retry_backoff == 1.5
+    assert settings.unity_bridge_execution_timeout_seconds == 45.0
     assert settings.log_level == "DEBUG"
 
 

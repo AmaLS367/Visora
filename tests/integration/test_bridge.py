@@ -243,7 +243,12 @@ async def test_unity_bridge_methods(mock_settings: Settings) -> None:
         mock_request.return_value = httpx.Response(200, json={"success": True, "result": 123}, request=mock_req)
         res = await bridge.execute_code("Debug.Log(1);")
         assert res == {"success": True, "result": 123}
-        mock_request.assert_called_with("POST", "/api/editor/execute-code", json={"code": "Debug.Log(1);"})
+        mock_request.assert_called_with(
+            "POST",
+            "/api/editor/execute-code",
+            json={"code": "Debug.Log(1);", "timeoutSeconds": 60.0},
+            timeout=60.0,
+        )
 
         # get_editor_state
         mock_request.return_value = httpx.Response(200, json={"isPlaying": False}, request=mock_req)
@@ -498,16 +503,16 @@ async def test_wait_for_ticket_timeout() -> None:
 
 @pytest.mark.anyio
 async def test_native_bridge_flavor_and_info(mock_settings: Settings) -> None:
-    bridge = UnityBridge(settings=mock_settings)
+    bridge = UnityBridge(settings=mock_settings.model_copy(update={"unity_bridge_mode": "native"}))
 
     mock_ping = httpx.Response(
         200,
-        json={"success": True, "flavor": "visora-native", "version": "1.0.0"},
+        json={"success": True, "flavor": "visora-native", "version": "1.1.0"},
         request=httpx.Request("GET", "http://127.0.0.1:7890/api/ping"),
     )
     mock_info = httpx.Response(
         200,
-        json={"success": True, "flavor": "visora-native", "version": "1.0.0", "supportedFeatures": ["camera_render"]},
+        json={"success": True, "flavor": "visora-native", "version": "1.1.0", "apiVersion": 2, "supportedFeatures": ["camera_render"]},
         request=httpx.Request("GET", "http://127.0.0.1:7890/api/visora/info"),
     )
 

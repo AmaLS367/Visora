@@ -55,6 +55,7 @@ class UnityBridge:
             return self._active_port
 
         ports = self.candidate_ports
+        native_candidate: tuple[int, str] | None = None
         for port in ports:
             test_url = f"{self.base_url}:{port}/api/ping"
             try:
@@ -66,19 +67,49 @@ class UnityBridge:
                         if response.headers.get("content-type", "").startswith("application/json")
                         else {}
                     )
-                    self._bridge_flavor = (
-                        data.get("flavor", "anklebreaker") if isinstance(data, dict) else "anklebreaker"
-                    )
-                    logger.info(f"Successfully connected to Unity Bridge ({self._bridge_flavor}) on port {port}")
+                    flavor = data.get("flavor", "anklebreaker") if isinstance(data, dict) else "anklebreaker"
+                    if not self._flavor_matches_mode(flavor):
+                        logger.debug(
+                            "Ignoring Unity Bridge flavor %s on port %s because UNITY_BRIDGE_MODE=%s",
+                            flavor,
+                            port,
+                            self.settings.unity_bridge_mode,
+                        )
+                        continue
+                    if self.settings.unity_bridge_mode == "auto" and flavor == "visora-native":
+                        native_candidate = (port, flavor)
+                        continue
+                    self._bridge_flavor = flavor
+                    logger.info("Successfully connected to Unity Bridge (%s) on port %s", flavor, port)
                     self._active_port = port
                     return port
             except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
                 logger.debug(f"Unity Bridge not responding on port {port}")
                 continue
 
-        msg = f"AnkleBreaker is not reachable on any configured port ({', '.join(str(p) for p in ports)})."
+        if native_candidate is not None:
+            self._active_port, self._bridge_flavor = native_candidate
+            logger.info(
+                "Successfully connected to Unity Bridge (%s) on port %s",
+                self._bridge_flavor,
+                self._active_port,
+            )
+            return self._active_port
+
+        msg = (
+            f"No Unity bridge matching mode '{self.settings.unity_bridge_mode}' is reachable "
+            f"on configured ports ({', '.join(str(p) for p in ports)})."
+        )
         logger.error(msg)
         raise BridgeConnectionError(message=msg, ports=ports)
+
+    def _flavor_matches_mode(self, flavor: str) -> bool:
+        """Returns whether a detected bridge flavor is permitted by the configured transport mode."""
+        if self.settings.unity_bridge_mode == "native":
+            return flavor == "visora-native"
+        if self.settings.unity_bridge_mode == "legacy":
+            return flavor != "visora-native"
+        return True
 
     async def scan_available_ports(self) -> list[dict[str, Any]]:
         """
@@ -169,7 +200,12 @@ class UnityBridge:
         Sends C# or Editor script code to Unity to be dynamically compiled and executed.
         Returns a dictionary containing execution status, results, and logs.
         """
-        response = await self._request("POST", "/api/editor/execute-code", json={"code": code})
+        response = await self._request(
+            "POST",
+            "/api/editor/execute-code",
+            json={"code": code, "timeoutSeconds": self.settings.unity_bridge_execution_timeout_seconds},
+            timeout=self.settings.unity_bridge_execution_timeout_seconds,
+        )
         return cast(dict[str, Any], response.json())
 
     async def get_editor_state(self) -> dict[str, Any]:
@@ -217,8 +253,6 @@ class UnityBridge:
         """
         Returns True if connected to the dedicated Visora native Unity package.
         """
-        if self.settings.unity_bridge_mode == "native":
-            return True
         if self.settings.unity_bridge_mode == "legacy":
             return False
         flavor = await self.get_bridge_flavor(force_refresh=force_refresh)

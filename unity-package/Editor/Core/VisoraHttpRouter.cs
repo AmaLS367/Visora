@@ -15,6 +15,7 @@ namespace Visora.Editor.Core
     public class ExecuteCodeRequest
     {
         public string code;
+        public float timeoutSeconds = 60f;
     }
 
     [Serializable]
@@ -121,7 +122,7 @@ namespace Visora.Editor.Core
                     {
                         success = true,
                         message = "Visora Editor Bridge active",
-                        version = "1.0.0",
+                        version = "1.1.0",
                         flavor = "visora-native",
                         unityVersion = Application.unityVersion
                     });
@@ -132,7 +133,8 @@ namespace Visora.Editor.Core
                     {
                         success = true,
                         flavor = "visora-native",
-                        version = "1.0.0",
+                        version = "1.1.0",
+                        apiVersion = 2,
                         unityVersion = Application.unityVersion,
                         isPlaying = EditorApplication.isPlaying,
                         isCompiling = EditorApplication.isCompiling,
@@ -147,7 +149,8 @@ namespace Visora.Editor.Core
                             "animation_sampling",
                             "scene_transactions",
                             "task_queue",
-                            "compilation_diagnostics"
+                            "compilation_diagnostics",
+                            "statement_code_execution"
                         }
                     });
                 }
@@ -181,6 +184,21 @@ namespace Visora.Editor.Core
                         success = true,
                         message = $"Play mode set to {enterPlay}"
                     });
+                }
+                else if (method == "POST" && path == "/api/editor/execute-code")
+                {
+                    var body = ReadBody(req);
+                    var payload = JsonUtility.FromJson<ExecuteCodeRequest>(body);
+                    if (payload == null || string.IsNullOrWhiteSpace(payload.code))
+                    {
+                        statusCode = 400;
+                        responseJson = "{\"success\": false, \"error\": \"Request must include non-empty code\"}";
+                    }
+                    else
+                    {
+                        var result = await NativeCodeExecutionService.ExecuteAsync(payload.code, payload.timeoutSeconds);
+                        responseJson = VisoraJson.Serialize(result);
+                    }
                 }
                 else if (method == "POST" && path == "/api/scene/save")
                 {
@@ -352,6 +370,7 @@ namespace Visora.Editor.Core
         public bool success;
         public string flavor;
         public string version;
+        public int apiVersion;
         public string unityVersion;
         public bool isPlaying;
         public bool isCompiling;

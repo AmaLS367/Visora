@@ -23,7 +23,10 @@ class Settings(BaseSettings):
     )
     unity_bridge_max_retries: int = Field(default=2, validation_alias="UNITY_BRIDGE_MAX_RETRIES")
     unity_bridge_retry_backoff: float = Field(default=0.5, validation_alias="UNITY_BRIDGE_RETRY_BACKOFF")
-    unity_bridge_mode: str = Field(default="auto", validation_alias="UNITY_BRIDGE_MODE")
+    unity_bridge_mode: str = Field(default="legacy", validation_alias="UNITY_BRIDGE_MODE")
+    unity_bridge_execution_timeout_seconds: float = Field(
+        default=60.0, validation_alias="UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS"
+    )
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
 
     @field_validator("unity_bridge_ports_to_scan", mode="before")
