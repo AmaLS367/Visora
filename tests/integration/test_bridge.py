@@ -591,6 +591,19 @@ async def test_render_camera_uses_native_endpoint_in_native_mode(mock_settings: 
 
     assert result == {"success": True}
 
+
+@pytest.mark.anyio
+async def test_native_capability_falls_back_to_native_executor_when_no_typed_endpoint(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings.model_copy(update={"unity_bridge_mode": "native"}))
+    bridge._active_port = 7890
+    bridge._bridge_flavor = "visora-native"
+
+    with patch.object(bridge, "execute_code", new_callable=AsyncMock, return_value={"success": True}) as execute_code:
+        result = await bridge.execute_capability("return null;")
+
+    assert result == {"success": True}
+    execute_code.assert_awaited_once_with("return null;")
+
     # Test sequence capture native
     mock_seq_resp = httpx.Response(
         200,

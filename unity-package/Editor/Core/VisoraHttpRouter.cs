@@ -157,14 +157,20 @@ namespace Visora.Editor.Core
                         {
                             "camera_render",
                             "camera_sequence",
+                            "camera_inventory",
+                            "camera_projection",
+                            "camera_framing",
                             "mesh_diagnostics",
                             "skeleton_diagnostics",
                             "animation_inspection",
                             "animation_sampling",
                             "scene_transactions",
+                            "scene_state",
+                            "scene_save",
                             "task_queue",
                             "compilation_diagnostics",
-                            "statement_code_execution"
+                            "statement_code_execution",
+                            "legacy_contract_parity"
                         }
                     });
                 }

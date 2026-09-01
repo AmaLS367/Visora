@@ -1,0 +1,11 @@
+{
+  "name": "Visora.Editor.Tests",
+  "rootNamespace": "Visora.Editor.Tests",
+  "references": [
+    "Visora.Editor",
+    "UnityEditor.TestRunner",
+    "UnityEngine.TestRunner"
+  ],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
