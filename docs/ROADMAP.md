@@ -16,11 +16,11 @@ Legend: ✅ done · pending
 | 6 | Skinned mesh diagnostics | Agent can diagnose mesh deformation, abnormal bounds, broken bone bindings, material/submesh mismatch, and distinguish geometry/skinning bugs from texture/material bugs. | ✅ |
 | 7 | Reliable Unity bridge layer | Agent gets a stable high-level MCP interface over Unity bridge transport: port discovery, queue/ticket handling, structured errors, timeouts, and clear bridge availability state. | ✅ |
 | 8 | Structured tool outputs | Every Visora tool returns typed, compact, agent-friendly data instead of raw Unity logs or fake success responses. | ✅ |
-| 9 | Agent workflow documentation | Clear setup docs for using Visora with agents, Unity projects, AnkleBreaker bridge, environment config, and practical debugging workflows. | |
+| 9 | Agent workflow documentation | Clear setup docs for using Visora with agents, Unity projects, AnkleBreaker bridge, environment config, and practical debugging workflows. | ✅ |
 | 10 | Production test coverage | Tests cover config, bridge behavior, queue polling, scene transactions, tool schemas, and mocked Unity responses so regressions are caught before real Unity sessions. | |
 | 11 | Dedicated Visora Unity package | If the AnkleBreaker bridge becomes a limitation, Visora gets its own Unity package for camera rendering, editor coroutines, persistent diagnostics, and stable custom endpoints. | |
 
 * * *
 
-Progress: 8 / 11 done
+Progress: 9 / 11 done
 
