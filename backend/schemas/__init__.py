@@ -1,6 +1,11 @@
 from backend.schemas.animation import (
+    AnimationBindingCurve,
+    AnimationEventInfo,
     ClipInspectorResult,
+    DangerousCurveWarning,
+    SampleAnimationResult,
     SkeletonMapperResult,
+    TransformPose,
 )
 from backend.schemas.base import BaseToolResult
 from backend.schemas.mesh import SkinnedMeshDiagnosticsResult
@@ -30,9 +35,12 @@ from backend.schemas.vision import (
 )
 
 __all__ = [
+    "AnimationBindingCurve",
+    "AnimationEventInfo",
     "BaseToolResult",
     "CameraFramingDiagnosticsResult",
     "ClipInspectorResult",
+    "DangerousCurveWarning",
     "EditorStateResult",
     "FrameMotionMetrics",
     "PlayModeManagementResult",
@@ -40,12 +48,14 @@ __all__ = [
     "QueueStatusResult",
     "RestoreSceneResult",
     "SafeTransactionResult",
+    "SampleAnimationResult",
     "SaveSceneResult",
     "SceneCameraInfo",
     "ScreenPoint",
     "ScreenshotResult",
     "SkeletonMapperResult",
     "SkinnedMeshDiagnosticsResult",
+    "TransformPose",
     "VideoFrame",
     "VideoFrameSequence",
     "VideoFramesResult",

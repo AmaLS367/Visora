@@ -72,4 +72,3 @@ async def _handle_post_transaction_save(
     if not post_save.success:
         warnings.append(f"Post-transaction scene save warning: {post_save.error}")
     return post_save.is_saved
-

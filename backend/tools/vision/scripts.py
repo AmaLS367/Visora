@@ -100,9 +100,7 @@ finally
 
 def _project_world_points_code(points: list[list[float]], camera_name: str) -> str:
     camera_name_literal = json.dumps(camera_name)
-    point_rows = ",\n    ".join(
-        f"new float[] {{ {point[0]}f, {point[1]}f, {point[2]}f }}" for point in points
-    )
+    point_rows = ",\n    ".join(f"new float[] {{ {point[0]}f, {point[1]}f, {point[2]}f }}" for point in points)
     return f"""
 var cameraName = {camera_name_literal};
 var cameraObject = UnityEngine.GameObject.Find(cameraName);
