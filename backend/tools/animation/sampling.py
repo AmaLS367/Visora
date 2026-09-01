@@ -39,12 +39,12 @@ async def sample_animation_clip(  # noqa: PLR0913
     try:
         sample_timestamp = 0.0
         if time is not None:
-            sample_timestamp = max(0.0, float(time))
+            sample_timestamp = max(0.0, time)
         elif normalized_time is not None:
             # Inspect clip to get length
             inspect_res = await inspect_animation_clip(clip_path)
             clip_len = inspect_res.length if inspect_res.success and inspect_res.length else 1.0
-            sample_timestamp = max(0.0, float(normalized_time) * clip_len)
+            sample_timestamp = max(0.0, normalized_time * clip_len)
 
         code = _sample_clip_code(
             target_game_object_path=target_game_object_path,

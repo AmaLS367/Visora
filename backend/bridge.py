@@ -87,7 +87,7 @@ class UnityBridge:
 
     async def get_editor_state(self) -> dict[str, Any]:
         """Returns current Unity editor state including play mode, compilation, and active scene."""
-        response = await self._request("GET", "/api/editor/state")
+        response = await self._request("POST", "/api/editor/state")
         return cast(dict[str, Any], response.json())
 
     async def set_play_mode(self, active: bool) -> dict[str, Any]:

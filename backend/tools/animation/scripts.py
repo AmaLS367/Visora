@@ -153,7 +153,7 @@ return new System.Collections.Generic.Dictionary<string, object>
     {{ "loopTime", clip.isLooping }},
     {{ "wrapMode", clip.wrapMode.ToString() }},
     {{ "isLegacy", clip.legacy }},
-    {{ "hasRootMotion", clip.hasRootMotion }},
+    {{ "hasRootMotion", clip.hasRootCurves }},
     {{ "curvesCount", bindingsList.Count }},
     {{ "eventsCount", eventsList.Count }},
     {{ "bindings", bindingsList }},
