@@ -13,6 +13,7 @@ Visora is a high-level Model Context Protocol (MCP) server for Unity Editor. It 
 - 📖 **[Agent Workflow Guide & Practical Recipes](docs/AGENT_WORKFLOWS.md)** — Step-by-step diagnostic recipes, camera projections, rig/animation debugging, and agent safety rules.
 - ⚙️ **[Setup & Integration Guide](docs/SETUP_GUIDE.md)** — Setup instructions for Unity Editor, AnkleBreaker, `.env` config, and client setups (Claude Desktop, Cursor, Antigravity, OpenCode).
 - 🗺️ **[Roadmap & Progress](docs/ROADMAP.md)** — Current status and milestones.
+- 📝 **[Changelog](docs/CHANGELOG.md)** — Release history and version notes.
 
 ---
 
