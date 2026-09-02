@@ -18,13 +18,13 @@ An asterisk marks a required parameter. This region is generated from FastMCP re
 | `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
 | `compare_screenshots` | `before_image_base64`*, `after_image_base64`*, `threshold` | `VisualComparisonResult` |
 | `diagnose_camera_framing` | `subject_path`*, `camera_name` | `CameraFramingDiagnosticsResult` |
-| `download_and_import_asset` | `url`*, `target_folder`, `file_name`, `extract_archive`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
+| `download_and_import_asset` | `url`, `asset_id`, `target_folder`, `file_name`, `extract_archive`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |
 | `get_bridge_status` | `scan_all_ports` | `BridgeStatusResult` |
 | `get_editor_state` | `include_scene_details` | `EditorStateResult` |
 | `get_video_frames` | `camera_names`, `subject_path`, `mode`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `VideoFramesResult` |
 | `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode` | `VideoMp4Result` |
-| `import_local_asset` | `source_path`*, `target_folder`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
+| `import_local_asset` | `source_path`*, `target_folder`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
 | `inspect_animation_clip` | `clip_path`* | `ClipInspectorResult` |
 | `inspect_imported_asset` | `asset_path`* | `InspectAssetResult` |
 | `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `VisualInspectionResult` |
@@ -52,6 +52,14 @@ An asterisk marks a required parameter. This region is generated from FastMCP re
 4. For mesh problems, call `skinned_mesh_diagnostics` before changing materials or bones; its category distinguishes geometry/skinning from texture/material failures.
 5. For mutations, call `safe_transaction` with `record_undo=True`. If it fails, use its `undo_group` with `restore_scene_state` when necessary.
 6. For asset discovery and imports, call `search_assets` to discover CC0 materials and 3D models online, `download_and_import_asset` to download and automatically register assets with the Unity `AssetDatabase`, `inspect_imported_asset` to verify `ModelImporter` rig settings, and `instantiate_scene_asset` to place them into the scene with Undo tracking.
+
+## Asset import safety
+
+Asset files are first staged under `ASSET_CACHE_DIR`, which must be outside Unity's `Assets` folder. Supported imports are FBX, OBJ, glTF/GLB, PNG, JPG/JPEG, TGA, EXR, HDR, and ZIP archives containing only those files. The downloader accepts only public HTTPS hosts and validates every redirect.
+
+Target folders are resolved inside `Assets`; path traversal is rejected. Existing files are never overwritten: Visora creates a suffixed filename and returns the exact resulting `asset_path` with a warning. A failed Unity import removes the newly copied asset and returns `success=false`.
+
+Use a result's provider ID (for example, `sketchfab:<uid>`) as `asset_id` when no direct URL is present. `.unitypackage` files require `allow_unitypackage=true`; they remain quarantined until import and are rejected if their contents include scripts, assemblies, unsafe paths, or existing destination files.
 
 ## Scene safety
 

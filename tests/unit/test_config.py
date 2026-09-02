@@ -22,6 +22,10 @@ def test_default_settings() -> None:
     assert settings.default_asset_import_dir == "Assets/VisoraDownloads"
     assert settings.asset_download_timeout_seconds == 120.0
     assert settings.max_asset_download_size_bytes == 250_000_000
+    assert settings.max_asset_archive_entries == 10_000
+    assert settings.max_asset_archive_uncompressed_size_bytes == 1_000_000_000
+    assert settings.max_asset_archive_entry_size_bytes == 250_000_000
+    assert settings.max_asset_archive_compression_ratio == 100.0
 
 
 def test_normalize_bridge_mode() -> None:

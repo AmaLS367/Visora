@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     asset_download_timeout_seconds: float = Field(default=120.0, validation_alias="ASSET_DOWNLOAD_TIMEOUT_SECONDS")
     max_asset_download_size_bytes: int = Field(default=250_000_000, validation_alias="MAX_ASSET_DOWNLOAD_SIZE_BYTES")
     asset_cache_dir: str = Field(default=".visora_cache", validation_alias="ASSET_CACHE_DIR")
+    max_asset_archive_entries: int = Field(default=10_000, validation_alias="MAX_ASSET_ARCHIVE_ENTRIES")
+    max_asset_archive_uncompressed_size_bytes: int = Field(
+        default=1_000_000_000, validation_alias="MAX_ASSET_ARCHIVE_UNCOMPRESSED_SIZE_BYTES"
+    )
+    max_asset_archive_entry_size_bytes: int = Field(
+        default=250_000_000, validation_alias="MAX_ASSET_ARCHIVE_ENTRY_SIZE_BYTES"
+    )
+    max_asset_archive_compression_ratio: float = Field(
+        default=100.0, validation_alias="MAX_ASSET_ARCHIVE_COMPRESSION_RATIO"
+    )
 
     @field_validator("unity_bridge_ports_to_scan", mode="before")
     @classmethod

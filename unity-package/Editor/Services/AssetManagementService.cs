@@ -95,7 +95,7 @@ namespace Visora.Editor.Services
             }
         }
 
-        public static AssetImportResult ImportAsset(string assetPath)
+        public static AssetImportResult ImportAsset(string assetPath, bool allowUnityPackage = false)
         {
             var result = new AssetImportResult { assetPath = assetPath };
             try
@@ -103,27 +103,50 @@ namespace Visora.Editor.Services
                 string normalizedPath = (assetPath ?? "").Replace("\\", "/");
                 if (string.IsNullOrEmpty(normalizedPath))
                 {
-                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-                    result.success = true;
+                    result.success = false;
+                    result.error = "Asset path is required.";
                     return result;
                 }
 
                 if (normalizedPath.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (!allowUnityPackage)
+                    {
+                        result.success = false;
+                        result.error = "Unity package import requires explicit allowUnityPackage opt-in.";
+                        return result;
+                    }
+                    var beforePaths = new HashSet<string>(AssetDatabase.GetAllAssetPaths());
                     AssetDatabase.ImportPackage(normalizedPath, false);
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                    foreach (var importedPath in AssetDatabase.GetAllAssetPaths())
+                    {
+                        if (!beforePaths.Contains(importedPath) && importedPath.StartsWith("Assets/", StringComparison.Ordinal))
+                        {
+                            result.importedObjects.Add(importedPath);
+                        }
+                    }
                 }
                 else
                 {
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                     AssetDatabase.ImportAsset(normalizedPath, ImportAssetOptions.ForceUpdate);
-                }
-
-                var mainObj = AssetDatabase.LoadMainAssetAtPath(normalizedPath);
-                if (mainObj != null)
-                {
+                    var mainObj = AssetDatabase.LoadMainAssetAtPath(normalizedPath);
+                    if (mainObj == null)
+                    {
+                        result.success = false;
+                        result.error = $"Asset was not registered by Unity: {normalizedPath}";
+                        return result;
+                    }
                     result.importedObjects.Add(normalizedPath);
                 }
 
+                if (result.importedObjects.Count == 0)
+                {
+                    result.success = false;
+                    result.error = "Unity import completed without creating any assets.";
+                    return result;
+                }
                 result.success = true;
                 return result;
             }

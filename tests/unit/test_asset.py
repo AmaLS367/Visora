@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import io
+import socket
+import tarfile
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+from pydantic import TypeAdapter, ValidationError
 
 from backend.schemas.asset import (
     AssetSearchResultItem,
@@ -14,6 +18,7 @@ from backend.schemas.asset import (
     InspectAssetResult,
     InstantiateSceneAssetResult,
     SearchAssetsResult,
+    Vector3,
 )
 from backend.tools.asset import operations
 from backend.tools.asset.downloader import (
@@ -21,8 +26,12 @@ from backend.tools.asset.downloader import (
     extract_filename_from_url,
     safe_extract_zip,
     sanitize_filename,
+    validate_remote_url,
+    validate_unitypackage_contents,
 )
 from backend.tools.asset.exceptions import (
+    ArchiveLimitError,
+    AssetSecurityError,
     DownloadError,
     ZipSlipSecurityError,
 )
@@ -88,6 +97,64 @@ def test_safe_extract_zip_slip_rejection(tmp_path: Path) -> None:
     dest_dir = tmp_path / "extracted"
     with pytest.raises(ZipSlipSecurityError, match="attempts path traversal outside target directory"):
         safe_extract_zip(zip_path, dest_dir)
+    assert not dest_dir.exists()
+
+
+def test_safe_extract_zip_rejects_script_and_high_ratio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    script_zip = tmp_path / "script.zip"
+    with zipfile.ZipFile(script_zip, "w") as zf:
+        zf.writestr("Editor/Evil.cs", "class Evil {}")
+    with pytest.raises(AssetSecurityError, match="Unsupported or unsafe"):
+        safe_extract_zip(script_zip, tmp_path / "script-out")
+
+    bomb_zip = tmp_path / "bomb.zip"
+    with zipfile.ZipFile(bomb_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("model.obj", "0" * 100_000)
+
+    class ArchiveSettings:
+        max_asset_archive_entries = 10_000
+        max_asset_archive_entry_size_bytes = 250_000_000
+        max_asset_archive_uncompressed_size_bytes = 1_000_000_000
+        max_asset_archive_compression_ratio = 2.0
+
+    monkeypatch.setattr("backend.tools.asset.downloader.get_settings", ArchiveSettings)
+    with pytest.raises(ArchiveLimitError, match="compression ratio"):
+        safe_extract_zip(bomb_zip, tmp_path / "bomb-out")
+
+
+def test_unitypackage_preflight_rejects_scripts_and_collisions(tmp_path: Path) -> None:
+    assets = tmp_path / "Project" / "Assets"
+    assets.mkdir(parents=True)
+    package = tmp_path / "unsafe.unitypackage"
+    with tarfile.open(package, "w:gz") as archive:
+        payload = b"Assets/Editor/Evil.cs"
+        info = tarfile.TarInfo("abcdef/pathname")
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+    with pytest.raises(AssetSecurityError, match="Unsupported or unsafe"):
+        validate_unitypackage_contents(package, assets)
+
+
+def test_vector3_requires_three_finite_values() -> None:
+    adapter = TypeAdapter(Vector3)
+    assert adapter.validate_python([1, 2, 3]) == [1.0, 2.0, 3.0]
+    with pytest.raises(ValidationError):
+        adapter.validate_python([1, 2])
+    with pytest.raises(ValidationError):
+        adapter.validate_python([1, float("inf"), 3])
+
+
+@pytest.mark.anyio
+async def test_ssrf_rejects_non_https_and_private_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(AssetSecurityError, match="HTTPS"):
+        await validate_remote_url("http://example.com/model.glb")
+
+    def private_lookup(*_args: Any, **_kwargs: Any) -> list[tuple[Any, ...]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", private_lookup)
+    with pytest.raises(AssetSecurityError, match="non-public"):
+        await validate_remote_url("https://example.com/model.glb")
 
 
 @pytest.mark.anyio
@@ -309,6 +376,34 @@ async def test_download_and_import_asset_op(tmp_path: Path, monkeypatch: pytest.
 
 
 @pytest.mark.anyio
+async def test_download_import_failure_is_not_reported_as_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_project = tmp_path / "UnityProject"
+    fake_assets = fake_project / "Assets"
+    fake_assets.mkdir(parents=True)
+
+    async def mock_resolve_paths() -> tuple[Path, Path]:
+        return fake_project, fake_assets
+
+    async def mock_download(_url: str, target: Path, **_kwargs: Any) -> int:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"model")
+        return 5
+
+    async def failed_import(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {"success": False, "error": "Unity import failed"}
+
+    monkeypatch.setattr(operations, "resolve_unity_paths", mock_resolve_paths)
+    monkeypatch.setattr(operations, "download_file_stream", mock_download)
+    monkeypatch.setattr(operations.bridge, "execute_capability", failed_import)
+    result = await download_and_import_asset_op(url="https://example.com/model.glb")
+    assert result.success is False
+    assert result.imported_objects == []
+    assert not (fake_assets / "VisoraDownloads" / "model.glb").exists()
+
+
+@pytest.mark.anyio
 async def test_import_local_asset_op(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     local_file = tmp_path / "local_prop.fbx"
     local_file.write_bytes(b"sample_fbx_content")
@@ -336,6 +431,68 @@ async def test_import_local_asset_op(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert res.asset_path == "Assets/Models/local_prop.fbx"
     assert res.file_size_bytes == len(b"sample_fbx_content")
     assert (fake_assets / "Models" / "local_prop.fbx").exists()
+
+
+@pytest.mark.anyio
+async def test_import_local_asset_rejects_path_escape_and_unsafe_extension(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_project = tmp_path / "UnityProject"
+    fake_assets = fake_project / "Assets"
+    fake_assets.mkdir(parents=True)
+    script = tmp_path / "payload.cs"
+    script.write_text("class Payload {}")
+
+    async def mock_resolve_paths() -> tuple[Path, Path]:
+        return fake_project, fake_assets
+
+    monkeypatch.setattr(operations, "resolve_unity_paths", mock_resolve_paths)
+    unsafe = await import_local_asset_op(str(script))
+    assert unsafe.success is False
+    assert "unsafe" in (unsafe.error or "")
+
+    safe_file = tmp_path / "model.obj"
+    safe_file.write_text("v 0 0 0")
+    escaped = await import_local_asset_op(str(safe_file), target_folder="Assets/../../outside")
+    assert escaped.success is False
+    assert "inside the Unity Assets" in (escaped.error or "")
+    assert not (tmp_path / "outside").exists()
+
+
+@pytest.mark.anyio
+async def test_import_local_asset_uses_unique_name_and_rolls_back_on_unity_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "model.fbx"
+    source.write_bytes(b"model")
+    fake_project = tmp_path / "UnityProject"
+    fake_assets = fake_project / "Assets"
+    existing = fake_assets / "Imports" / "model.fbx"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"original")
+
+    async def mock_resolve_paths() -> tuple[Path, Path]:
+        return fake_project, fake_assets
+
+    async def successful_import(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {"success": True, "importedObjects": ["Assets/Imports/model-1.fbx"]}
+
+    monkeypatch.setattr(operations, "resolve_unity_paths", mock_resolve_paths)
+    monkeypatch.setattr(operations.bridge, "execute_capability", successful_import)
+    renamed = await import_local_asset_op(str(source), target_folder="Assets/Imports")
+    assert renamed.success is True
+    assert renamed.asset_path == "Assets/Imports/model-1.fbx"
+    assert existing.read_bytes() == b"original"
+    assert any("Destination existed" in warning for warning in renamed.warnings)
+
+    async def failing_import(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {"success": False, "error": "AssetDatabase import failed"}
+
+    monkeypatch.setattr(operations.bridge, "execute_capability", failing_import)
+    failed = await import_local_asset_op(str(source), target_folder="Assets/Imports")
+    assert failed.success is False
+    assert failed.imported_objects == []
+    assert not (fake_assets / "Imports" / "model-2.fbx").exists()
 
 
 @pytest.mark.anyio

@@ -1,8 +1,10 @@
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, FiniteFloat
 
 from backend.schemas.base import BaseToolResult
+
+Vector3 = Annotated[list[FiniteFloat], Field(min_length=3, max_length=3)]
 
 
 class AssetSearchResultItem(BaseModel):

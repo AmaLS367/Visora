@@ -410,9 +410,13 @@ class UnityBridge:
         response = await self._request("GET", "/api/visora/asset/paths")
         return cast(dict[str, Any], response.json())
 
-    async def import_asset_native(self, asset_path: str) -> dict[str, Any]:
+    async def import_asset_native(self, asset_path: str, allow_unitypackage: bool = False) -> dict[str, Any]:
         """Direct native asset import via /api/visora/asset/import."""
-        response = await self._request("POST", "/api/visora/asset/import", json={"assetPath": asset_path})
+        response = await self._request(
+            "POST",
+            "/api/visora/asset/import",
+            json={"assetPath": asset_path, "allowUnityPackage": allow_unitypackage},
+        )
         return cast(dict[str, Any], response.json())
 
     async def inspect_asset_native(self, asset_path: str) -> dict[str, Any]:

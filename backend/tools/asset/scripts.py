@@ -20,13 +20,39 @@ return new Dictionary<string, object> {
 """
 
 
-def _import_asset_code(asset_path: str) -> str:
+def _import_asset_code(asset_path: str, *, allow_unitypackage: bool = False) -> str:
     """Returns C# code to refresh AssetDatabase and import an asset."""
     escaped = asset_path.replace('"', '\\"').replace("\\", "/")
+    package_allowed = str(allow_unitypackage).lower()
     return f"""
 string targetPath = "{escaped}";
 if (targetPath.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase)) {{
+    if (!{package_allowed}) {{
+        return new Dictionary<string, object> {{
+            {{"success", false}},
+            {{"error", "Unity package import requires explicit allowUnityPackage opt-in."}}
+        }};
+    }}
+    var beforePaths = new HashSet<string>(UnityEditor.AssetDatabase.GetAllAssetPaths());
     UnityEditor.AssetDatabase.ImportPackage(targetPath, false);
+    UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport);
+    var packageImportedPaths = new List<string>();
+    foreach (var path in UnityEditor.AssetDatabase.GetAllAssetPaths()) {{
+        if (!beforePaths.Contains(path) && path.StartsWith("Assets/")) {{
+            packageImportedPaths.Add(path);
+        }}
+    }}
+    if (packageImportedPaths.Count == 0) {{
+        return new Dictionary<string, object> {{
+            {{"success", false}},
+            {{"error", "Unity package import created no assets."}}
+        }};
+    }}
+    return new Dictionary<string, object> {{
+        {{"success", true}},
+        {{"assetPath", targetPath}},
+        {{"importedObjects", packageImportedPaths}}
+    }};
 }} else {{
     UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport);
     if (!string.IsNullOrEmpty(targetPath)) {{
@@ -37,6 +63,12 @@ UnityEngine.Object mainObj = UnityEditor.AssetDatabase.LoadMainAssetAtPath(targe
 var importedPaths = new List<string>();
 if (mainObj != null) {{
     importedPaths.Add(targetPath);
+}}
+if (importedPaths.Count == 0) {{
+    return new Dictionary<string, object> {{
+        {{"success", false}},
+        {{"error", "Asset was not registered by Unity: " + targetPath}}
+    }};
 }}
 return new Dictionary<string, object> {{
     {{"success", true}},

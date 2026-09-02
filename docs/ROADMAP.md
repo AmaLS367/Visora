@@ -10,6 +10,7 @@
 ### 1. 🌐 Asset Web Search & Auto-Download for Unity
 * **Status:** ✅ Completed
 * **Scope:** Provide agents with tools to perform web searches and automatically download 3D models, environments, rigs, textures, and props directly into the active Unity project. This empowers AI agents to autonomously discover and import required 3D assets to animate rich, context-complete scenes.
+* **Security hardening:** Downloads now use HTTPS-only public-host validation, external quarantine staging, strict format/archive limits, collision-safe names, and verified Unity import results. Sketchfab IDs can be resolved directly by the import tool.
 
 ### 2. ⚙️ Production CI/CD (GitHub Actions)
 * **Status:** ⏳ Planned

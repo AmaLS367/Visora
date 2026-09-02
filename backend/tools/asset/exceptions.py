@@ -15,3 +15,11 @@ class DownloadError(AssetError):
 
 class ZipSlipSecurityError(AssetError):
     """Exception raised when archive extraction detects path traversal attempt."""
+
+
+class AssetSecurityError(AssetError):
+    """Exception raised when an untrusted asset violates a security policy."""
+
+
+class ArchiveLimitError(AssetSecurityError):
+    """Exception raised when an archive exceeds a configured safety limit."""

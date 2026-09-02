@@ -107,6 +107,7 @@ namespace Visora.Editor.Core
     public class AssetImportRequest
     {
         public string assetPath;
+        public bool allowUnityPackage;
     }
 
     [Serializable]
@@ -396,7 +397,7 @@ namespace Visora.Editor.Core
                     var body = ReadBody(req);
                     var p = JsonUtility.FromJson<AssetImportRequest>(body) ?? new AssetImportRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
-                        AssetManagementService.ImportAsset(p.assetPath));
+                        AssetManagementService.ImportAsset(p.assetPath, p.allowUnityPackage));
                     responseJson = JsonUtility.ToJson(result);
                 }
                 else if (method == "POST" && path == "/api/visora/asset/inspect")
