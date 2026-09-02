@@ -102,6 +102,18 @@ def test_env_variable_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.log_level == "DEBUG"
 
 
+def test_env_variable_ports_to_scan_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test: unlike passing the value directly to Settings(...), a value sourced from
+    an actual environment variable used to go through pydantic-settings' own JSON decoding before
+    reaching parse_ports_to_scan at all. The documented .env format (plain comma-separated, e.g.
+    "7890,7891,7892,7893") isn't valid JSON, so setting it exactly as documented crashed Settings()
+    with a JSONDecodeError instead of being parsed - this only showed up via a real env var/.env
+    file, never via the direct-kwarg tests above.
+    """
+    monkeypatch.setenv("UNITY_BRIDGE_PORTS_TO_SCAN", "7890,7891,8000,9000")
+    assert Settings().unity_bridge_ports_to_scan == [7890, 7891, 8000, 9000]
+
+
 def test_get_settings_lru_cache() -> None:
     s1 = get_settings()
     s2 = get_settings()

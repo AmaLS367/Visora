@@ -1,8 +1,9 @@
+import re
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -18,7 +19,12 @@ class Settings(BaseSettings):
     unity_bridge_fallback_port: int = Field(default=7891, validation_alias="UNITY_BRIDGE_FALLBACK_PORT")
     unity_bridge_timeout_seconds: float = Field(default=10.0, validation_alias="UNITY_BRIDGE_TIMEOUT_SECONDS")
     unity_bridge_ping_timeout_seconds: float = Field(default=2.0, validation_alias="UNITY_BRIDGE_PING_TIMEOUT_SECONDS")
-    unity_bridge_ports_to_scan: list[int] = Field(
+    # NoDecode: pydantic-settings otherwise JSON-decodes list-typed env values before our
+    # validator ever runs, so a plain comma-separated string (the documented .env format, e.g.
+    # "7890,7891,7892,7893") crashes Settings() outright with a JSONDecodeError instead of being
+    # parsed by parse_ports_to_scan below. Verified live: setting this var in .env as documented
+    # broke server startup entirely.
+    unity_bridge_ports_to_scan: Annotated[list[int], NoDecode] = Field(
         default_factory=lambda: [7890, 7891, 7892, 7893], validation_alias="UNITY_BRIDGE_PORTS_TO_SCAN"
     )
     unity_bridge_max_retries: int = Field(default=2, validation_alias="UNITY_BRIDGE_MAX_RETRIES")
@@ -49,7 +55,11 @@ class Settings(BaseSettings):
     @classmethod
     def parse_ports_to_scan(cls, value: Any) -> list[int]:
         if isinstance(value, str):
-            return [int(p.strip()) for p in value.split(",") if p.strip().isdigit()]
+            # Extract digit runs rather than splitting on "," alone: with NoDecode active this
+            # also receives the raw env/dotenv string for the legacy JSON-array format some
+            # existing deployments use (e.g. "[9999, 9998, 9997]"), not just the documented
+            # plain comma-separated one - findall handles both without caring about brackets.
+            return [int(p) for p in re.findall(r"\d+", value)]
         if isinstance(value, (list, tuple, set)):
             return [int(p) for p in value]
         return [7890, 7891, 7892, 7893]
