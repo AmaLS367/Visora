@@ -20,7 +20,7 @@ from backend.schemas.asset import (
     SearchAssetsResult,
     Vector3,
 )
-from backend.tools.asset import operations
+from backend.tools.asset import helpers, operations
 from backend.tools.asset.downloader import (
     download_file_stream,
     extract_filename_from_url,
@@ -36,11 +36,11 @@ from backend.tools.asset.exceptions import (
     ZipSlipSecurityError,
 )
 from backend.tools.asset.operations import (
-    download_and_import_asset_op,
-    import_local_asset_op,
-    inspect_asset_op,
-    instantiate_scene_asset_op,
-    search_assets_op,
+    download_and_import_asset,
+    import_local_asset,
+    inspect_imported_asset,
+    instantiate_scene_asset,
+    search_assets,
 )
 from backend.tools.asset.providers import (
     AmbientCGProvider,
@@ -327,7 +327,7 @@ async def test_download_size_limit_check(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 @pytest.mark.anyio
-async def test_download_and_import_asset_op(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_download_and_import_asset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Mock paths
     fake_project = tmp_path / "UnityProject"
     fake_assets = fake_project / "Assets"
@@ -362,7 +362,7 @@ async def test_download_and_import_asset_op(tmp_path: Path, monkeypatch: pytest.
 
     monkeypatch.setattr(operations.bridge, "execute_capability", mock_execute_cap)
 
-    res = await download_and_import_asset_op(
+    res = await download_and_import_asset(
         url="https://example.com/prop.glb",
         target_folder="Assets/VisoraDownloads",
         instantiate_in_scene=True,
@@ -397,14 +397,14 @@ async def test_download_import_failure_is_not_reported_as_success(
     monkeypatch.setattr(operations, "resolve_unity_paths", mock_resolve_paths)
     monkeypatch.setattr(operations, "download_file_stream", mock_download)
     monkeypatch.setattr(operations.bridge, "execute_capability", failed_import)
-    result = await download_and_import_asset_op(url="https://example.com/model.glb")
+    result = await download_and_import_asset(url="https://example.com/model.glb")
     assert result.success is False
     assert result.imported_objects == []
     assert not (fake_assets / "VisoraDownloads" / "model.glb").exists()
 
 
 @pytest.mark.anyio
-async def test_import_local_asset_op(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_import_local_asset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     local_file = tmp_path / "local_prop.fbx"
     local_file.write_bytes(b"sample_fbx_content")
 
@@ -422,7 +422,7 @@ async def test_import_local_asset_op(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(operations.bridge, "execute_capability", mock_execute_cap)
 
-    res = await import_local_asset_op(
+    res = await import_local_asset(
         source_path=str(local_file),
         target_folder="Assets/Models",
     )
@@ -447,13 +447,13 @@ async def test_import_local_asset_rejects_path_escape_and_unsafe_extension(
         return fake_project, fake_assets
 
     monkeypatch.setattr(operations, "resolve_unity_paths", mock_resolve_paths)
-    unsafe = await import_local_asset_op(str(script))
+    unsafe = await import_local_asset(str(script))
     assert unsafe.success is False
     assert "unsafe" in (unsafe.error or "")
 
     safe_file = tmp_path / "model.obj"
     safe_file.write_text("v 0 0 0")
-    escaped = await import_local_asset_op(str(safe_file), target_folder="Assets/../../outside")
+    escaped = await import_local_asset(str(safe_file), target_folder="Assets/../../outside")
     assert escaped.success is False
     assert "inside the Unity Assets" in (escaped.error or "")
     assert not (tmp_path / "outside").exists()
@@ -479,7 +479,7 @@ async def test_import_local_asset_uses_unique_name_and_rolls_back_on_unity_failu
 
     monkeypatch.setattr(operations, "resolve_unity_paths", mock_resolve_paths)
     monkeypatch.setattr(operations.bridge, "execute_capability", successful_import)
-    renamed = await import_local_asset_op(str(source), target_folder="Assets/Imports")
+    renamed = await import_local_asset(str(source), target_folder="Assets/Imports")
     assert renamed.success is True
     assert renamed.asset_path == "Assets/Imports/model-1.fbx"
     assert existing.read_bytes() == b"original"
@@ -489,14 +489,14 @@ async def test_import_local_asset_uses_unique_name_and_rolls_back_on_unity_failu
         return {"success": False, "error": "AssetDatabase import failed"}
 
     monkeypatch.setattr(operations.bridge, "execute_capability", failing_import)
-    failed = await import_local_asset_op(str(source), target_folder="Assets/Imports")
+    failed = await import_local_asset(str(source), target_folder="Assets/Imports")
     assert failed.success is False
     assert failed.imported_objects == []
     assert not (fake_assets / "Imports" / "model-2.fbx").exists()
 
 
 @pytest.mark.anyio
-async def test_inspect_asset_op(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_inspect_imported_asset(monkeypatch: pytest.MonkeyPatch) -> None:
     async def mock_execute_cap(code: str, **kwargs: Any) -> dict[str, Any]:
         return {
             "success": True,
@@ -519,7 +519,7 @@ async def test_inspect_asset_op(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(operations.bridge, "execute_capability", mock_execute_cap)
 
-    res = await inspect_asset_op("Assets/Models/robot.glb")
+    res = await inspect_imported_asset("Assets/Models/robot.glb")
     assert res.success is True
     assert res.asset_path == "Assets/Models/robot.glb"
     assert res.model_importer_info is not None
@@ -530,7 +530,7 @@ async def test_inspect_asset_op(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_instantiate_scene_asset_op(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_instantiate_scene_asset(monkeypatch: pytest.MonkeyPatch) -> None:
     async def mock_execute_cap(code: str, **kwargs: Any) -> dict[str, Any]:
         return {
             "success": True,
@@ -542,7 +542,7 @@ async def test_instantiate_scene_asset_op(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(operations.bridge, "execute_capability", mock_execute_cap)
 
-    res = await instantiate_scene_asset_op(
+    res = await instantiate_scene_asset(
         asset_path="Assets/Characters/Knight.prefab",
         position=[1.0, 0.0, 2.5],
     )
@@ -551,3 +551,81 @@ async def test_instantiate_scene_asset_op(monkeypatch: pytest.MonkeyPatch) -> No
     assert res.game_object_path == "Characters/Knight"
     assert res.instance_id == 4242
     assert res.world_position == [1.0, 0.0, 2.5]
+
+
+def test_helpers_unique_destination(tmp_path: Path) -> None:
+    dest = tmp_path / "model.glb"
+    first, col = helpers.unique_destination(dest)
+    assert first == dest
+    assert col is None
+
+    dest.touch()
+    second, col2 = helpers.unique_destination(dest)
+    assert second == tmp_path / "model-1.glb"
+    assert col2 == str(dest)
+
+    second.touch()
+    third, col3 = helpers.unique_destination(dest)
+    assert third == tmp_path / "model-2.glb"
+    assert col3 == str(dest)
+
+
+def test_helpers_cleanup_imported_path(tmp_path: Path) -> None:
+    f = tmp_path / "test.fbx"
+    m = tmp_path / "test.fbx.meta"
+    f.touch()
+    m.touch()
+    assert f.exists()
+    assert m.exists()
+    helpers.cleanup_imported_path(f)
+    assert not f.exists()
+    assert not m.exists()
+
+    d = tmp_path / "test_dir"
+    d.mkdir()
+    (d / "sub.txt").touch()
+    helpers.cleanup_imported_path(d)
+    assert not d.exists()
+
+
+def test_helpers_unity_file_path(tmp_path: Path) -> None:
+    folder = tmp_path / "Assets" / "Sub"
+    file_path = folder / "Model.glb"
+    assert helpers.unity_file_path("Assets/Sub", file_path, folder) == "Assets/Sub/Model.glb"
+
+
+def test_helpers_resolve_target_folder(tmp_path: Path) -> None:
+    assets = tmp_path / "UnityProject" / "Assets"
+    assets.mkdir(parents=True)
+
+    dest, upath = helpers.resolve_target_folder(assets, "Models/Props")
+    assert dest == assets / "Models" / "Props"
+    assert upath == "Assets/Models/Props"
+
+    dest2, upath2 = helpers.resolve_target_folder(assets, "Assets/Textures")
+    assert dest2 == assets / "Textures"
+    assert upath2 == "Assets/Textures"
+
+    with pytest.raises(AssetSecurityError, match="must resolve inside"):
+        helpers.resolve_target_folder(assets, "../Escape")
+
+
+def test_helpers_resolve_cache_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = tmp_path / "UnityProject"
+    assets = project / "Assets"
+    assets.mkdir(parents=True)
+
+    class GoodSettings:
+        asset_cache_dir = "Library/VisoraCache"
+
+    monkeypatch.setattr("backend.tools.asset.helpers.get_settings", GoodSettings)
+    cache = helpers.resolve_cache_root(project, assets)
+    assert cache == (project / "Library" / "VisoraCache").resolve()
+    assert cache.exists()
+
+    class BadSettings:
+        asset_cache_dir = "Assets/UnsafeCache"
+
+    monkeypatch.setattr("backend.tools.asset.helpers.get_settings", BadSettings)
+    with pytest.raises(AssetSecurityError, match="outside the Unity Assets directory"):
+        helpers.resolve_cache_root(project, assets)

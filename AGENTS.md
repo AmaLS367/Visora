@@ -49,6 +49,8 @@ Do not start by building a custom Unity package unless the current bridge become
 - Keep tools agent-friendly: compact result, concrete fields, clear warnings, no giant raw dumps by default.
 - Preserve scene safety: do not save during Play Mode, do not leave temporary sampling/render state behind, and restore Unity state after diagnostic operations.
 - Prefer small focused commits and conventional commit messages.
+- **Strictly NO internal backward compatibility in Python:** There is zero tolerance for backward compatibility layers, legacy aliases, compatibility wrappers, or preserving deprecated identifiers/imports inside the Python codebase. The ONLY backward compatibility allowed anywhere in this project is the external HTTP/JSON transport protocol with the Unity Editor's AnkleBreaker bridge. When code, modules, functions, or signatures are refactored, moved, or renamed, all callers, imports, and tests MUST be updated directly to the new canonical interface. Never introduce compatibility shims.
+- **Strict passive mode on questions/discussion:** When the user asks questions, points out something, or discusses code/architecture, ONLY answer the question. NEVER modify files, rename files, or trigger code changes unless the user explicitly gives a direct command to do so.
 
 ### Code Validation Guidelines (Pre-commit Gates)
 

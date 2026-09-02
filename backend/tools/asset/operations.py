@@ -23,7 +23,7 @@ from backend.schemas.asset import (
     SearchAssetsResult,
     Vector3,
 )
-from backend.tools.asset import common
+from backend.tools.asset import common, helpers
 from backend.tools.asset.downloader import (
     download_file_stream,
     extract_filename_from_url,
@@ -41,8 +41,6 @@ from backend.tools.asset.providers import (
     SketchfabProvider,
 )
 from backend.tools.asset.scripts import (
-    _get_project_paths_code,
-    _import_asset_code,
     _inspect_asset_code,
     _instantiate_asset_code,
 )
@@ -51,82 +49,11 @@ bridge = common.bridge
 logger = common.logger
 
 ModelVector3 = Vector3
-MODEL_EXTENSIONS = {".glb", ".gltf", ".fbx", ".obj"}
-
-
-def _resolve_target_folder(assets_path: Path, requested_folder: str | None) -> tuple[Path, str]:
-    """Resolve a target folder and prove it stays inside the Unity Assets directory."""
-    assets_root = assets_path.resolve()
-    raw_folder = (requested_folder or get_settings().default_asset_import_dir).replace("\\", "/").strip()
-    if not raw_folder:
-        raw_folder = "Assets"
-    folder_path = Path(raw_folder)
-    if folder_path.is_absolute():
-        raise AssetSecurityError("target_folder must be relative to the Unity project or Assets directory.")
-    destination = (
-        (assets_root.parent / folder_path).resolve()
-        if folder_path.parts and folder_path.parts[0] == "Assets"
-        else (assets_root / folder_path).resolve()
-    )
-    try:
-        relative = destination.relative_to(assets_root)
-    except ValueError as exc:
-        raise AssetSecurityError("target_folder must resolve inside the Unity Assets directory.") from exc
-    unity_path = "Assets" + (f"/{relative.as_posix()}" if relative.parts else "")
-    return destination, unity_path
-
-
-def _resolve_cache_root(project_path: Path, assets_path: Path) -> Path:
-    """Resolve the configured quarantine root and reject an Assets-contained cache."""
-    configured = Path(get_settings().asset_cache_dir)
-    cache_root = (configured if configured.is_absolute() else project_path / configured).resolve()
-    try:
-        cache_root.relative_to(assets_path.resolve())
-    except ValueError:
-        cache_root.mkdir(parents=True, exist_ok=True)
-        return cache_root
-    raise AssetSecurityError("ASSET_CACHE_DIR must resolve outside the Unity Assets directory.")
-
-
-def _unique_destination(destination: Path) -> tuple[Path, str | None]:
-    """Allocate a deterministic non-overwriting destination path."""
-    if not destination.exists():
-        return destination, None
-    original = destination
-    counter = 1
-    while True:
-        candidate = destination.with_name(f"{destination.stem}-{counter}{destination.suffix}")
-        if not candidate.exists():
-            return candidate, str(original)
-        counter += 1
-
-
-def _unity_file_path(unity_folder: str, path: Path, folder: Path) -> str:
-    return f"{unity_folder}/{path.relative_to(folder).as_posix()}"
-
-
-def _cleanup_imported_path(path: Path) -> None:
-    if path.is_dir():
-        shutil.rmtree(path, ignore_errors=True)
-    else:
-        path.unlink(missing_ok=True)
-        path.with_name(f"{path.name}.meta").unlink(missing_ok=True)
 
 
 async def _import_in_unity(asset_path: str, *, allow_unitypackage: bool = False) -> list[str]:
     """Call Unity import and require concrete imported objects from either bridge implementation."""
-    result = await bridge.execute_capability(
-        _import_asset_code(asset_path, allow_unitypackage=allow_unitypackage),
-        native_path="/api/visora/asset/import",
-        native_payload={"assetPath": asset_path, "allowUnityPackage": allow_unitypackage},
-    )
-    if not result.get("success"):
-        raise AssetError(result.get("error", "Unity asset import failed"))
-    data = result.get("result") or result
-    imported = list(data.get("importedObjects", []))
-    if not imported:
-        raise AssetError("Unity asset import completed without any imported objects.")
-    return imported
+    return await helpers.import_in_unity(asset_path, allow_unitypackage=allow_unitypackage, bridge=bridge)
 
 
 async def _instantiate_imported_asset(
@@ -135,18 +62,10 @@ async def _instantiate_imported_asset(
     rotation: ModelVector3 | None,
     scale: ModelVector3 | None,
 ) -> tuple[str | None, int | None]:
-    pos = position or [0.0, 0.0, 0.0]
-    rot = rotation or [0.0, 0.0, 0.0]
-    scl = scale or [1.0, 1.0, 1.0]
-    result = await bridge.execute_capability(
-        _instantiate_asset_code(asset_path, position=pos, rotation=rot, scale=scl),
-        native_path="/api/visora/asset/instantiate",
-        native_payload={"assetPath": asset_path, "position": pos, "rotation": rot, "scale": scl},
+    """Instantiate an imported asset into the scene via Unity bridge capability."""
+    return await helpers.instantiate_imported_asset(
+        asset_path, position=position, rotation=rotation, scale=scale, bridge=bridge
     )
-    if not result.get("success"):
-        raise AssetError(result.get("error", "Scene instantiation failed"))
-    data = result.get("result") or result
-    return data.get("game_object_path") or data.get("game_object_name"), data.get("instance_id")
 
 
 async def resolve_unity_paths() -> tuple[Path, Path]:
@@ -154,29 +73,7 @@ async def resolve_unity_paths() -> tuple[Path, Path]:
     Resolves the Unity project root path and Assets folder path.
     Queries the Unity Editor bridge; if unreachable, falls back to local workspace conventions.
     """
-    try:
-        if await bridge.is_native_bridge():
-            res = await bridge.get_project_paths_native()
-            if res.get("success") and res.get("dataPath"):
-                data_path = Path(res["dataPath"])
-                project_path = Path(res.get("projectPath", data_path.parent))
-                return project_path, data_path
-
-        # Legacy fallback execution
-        legacy_res = await bridge.execute_code(_get_project_paths_code())
-        if legacy_res.get("success") and isinstance(legacy_res.get("result"), dict):
-            rdata = cast(dict[str, Any], legacy_res["result"])
-            data_path = Path(rdata["dataPath"])
-            project_path = Path(rdata.get("projectPath", data_path.parent))
-            return project_path, data_path
-    except Exception as exc:
-        logger.debug(f"Could not query Unity paths via bridge: {exc}")
-
-    # Local fallback
-    cwd = Path.cwd()
-    if (cwd / "Assets").exists():
-        return cwd, cwd / "Assets"
-    return cwd, cwd / "Assets"
+    return await helpers.resolve_unity_paths(bridge=bridge)
 
 
 @mcp.tool()
@@ -324,8 +221,8 @@ async def download_and_import_asset(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     try:
         validate_asset_extension(Path(chosen_filename), allow_zip=True, allow_unitypackage=allow_unitypackage)
         project_path, assets_path = await resolve_unity_paths()
-        target_dir, unity_folder = _resolve_target_folder(assets_path, target_folder)
-        cache_root = _resolve_cache_root(project_path, assets_path)
+        target_dir, unity_folder = helpers.resolve_target_folder(assets_path, target_folder)
+        cache_root = helpers.resolve_cache_root(project_path, assets_path)
     except Exception as exc:
         return DownloadAndImportAssetResult(success=False, error=str(exc), warnings=warnings)
 
@@ -350,14 +247,14 @@ async def download_and_import_asset(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
 
             if is_zip and extract_archive:
                 extracted_files = safe_extract_zip(staged_file, temp_dir / "extract")
-                destination_dir, collision_source = _unique_destination(target_dir / Path(chosen_filename).stem)
+                destination_dir, collision_source = helpers.unique_destination(target_dir / Path(chosen_filename).stem)
                 destination_dir.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(temp_dir / "extract", destination_dir)
                 primary = next(
-                    (item for item in extracted_files if Path(item).suffix.lower() in MODEL_EXTENSIONS),
+                    (item for item in extracted_files if Path(item).suffix.lower() in helpers.MODEL_EXTENSIONS),
                     extracted_files[0],
                 )
-                main_asset_path = _unity_file_path(unity_folder, destination_dir / primary, target_dir)
+                main_asset_path = helpers.unity_file_path(unity_folder, destination_dir / primary, target_dir)
                 try:
                     imported_objects = await _import_in_unity(main_asset_path)
                     instantiated, instance_id = (
@@ -366,7 +263,7 @@ async def download_and_import_asset(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                         else (None, None)
                     )
                 except Exception:
-                    _cleanup_imported_path(destination_dir)
+                    helpers.cleanup_imported_path(destination_dir)
                     raise
                 if collision_source:
                     warnings.append(f"Destination existed; imported archive as {destination_dir.name}.")
@@ -383,10 +280,10 @@ async def download_and_import_asset(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     warnings=warnings,
                 )
 
-            destination, collision_source = _unique_destination(target_dir / chosen_filename)
+            destination, collision_source = helpers.unique_destination(target_dir / chosen_filename)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(staged_file, destination)
-            main_asset_path = _unity_file_path(unity_folder, destination, target_dir)
+            main_asset_path = helpers.unity_file_path(unity_folder, destination, target_dir)
             try:
                 imported_objects = await _import_in_unity(main_asset_path)
                 instantiated, instance_id = (
@@ -395,7 +292,7 @@ async def download_and_import_asset(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     else (None, None)
                 )
             except Exception:
-                _cleanup_imported_path(destination)
+                helpers.cleanup_imported_path(destination)
                 raise
             if collision_source:
                 warnings.append(f"Destination existed; imported asset as {destination.name}.")
@@ -449,8 +346,8 @@ async def import_local_asset(  # noqa: PLR0913
     try:
         validate_asset_extension(src, allow_unitypackage=allow_unitypackage)
         project_path, assets_path = await resolve_unity_paths()
-        target_dir, unity_folder = _resolve_target_folder(assets_path, target_folder)
-        cache_root = _resolve_cache_root(project_path, assets_path)
+        target_dir, unity_folder = helpers.resolve_target_folder(assets_path, target_folder)
+        cache_root = helpers.resolve_cache_root(project_path, assets_path)
     except Exception as exc:
         return ImportLocalAssetResult(success=False, error=str(exc))
 
@@ -467,10 +364,10 @@ async def import_local_asset(  # noqa: PLR0913
                     imported_objects=imported_objects,
                     warnings=warnings,
                 )
-            destination, collision_source = _unique_destination(target_dir / staged_file.name)
+            destination, collision_source = helpers.unique_destination(target_dir / staged_file.name)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(staged_file, destination)
-            main_asset_path = _unity_file_path(unity_folder, destination, target_dir)
+            main_asset_path = helpers.unity_file_path(unity_folder, destination, target_dir)
             try:
                 imported_objects = await _import_in_unity(main_asset_path)
                 instantiated, instance_id = (
@@ -479,7 +376,7 @@ async def import_local_asset(  # noqa: PLR0913
                     else (None, None)
                 )
             except Exception:
-                _cleanup_imported_path(destination)
+                helpers.cleanup_imported_path(destination)
                 raise
             if collision_source:
                 warnings.append(f"Destination existed; imported asset as {destination.name}.")
@@ -628,11 +525,3 @@ async def instantiate_scene_asset(  # noqa: PLR0913
             success=False,
             error=str(exc),
         )
-
-
-# Backward-compatible aliases
-search_assets_op = search_assets
-download_and_import_asset_op = download_and_import_asset
-import_local_asset_op = import_local_asset
-inspect_asset_op = inspect_imported_asset
-instantiate_scene_asset_op = instantiate_scene_asset
