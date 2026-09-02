@@ -28,6 +28,7 @@ class FakeBridge:
     def __init__(self, response: dict[str, object] | list[dict[str, object]]) -> None:
         self.responses = response if isinstance(response, list) else [response]
         self.codes: list[str] = []
+        self.native_payloads: list[dict[str, object] | None] = []
         self.play_mode_changes: list[bool] = []
         self.editor_state: dict[str, object] = {"isPlaying": False}
         self.fail_stop_play_mode = False
@@ -44,7 +45,8 @@ class FakeBridge:
     async def execute_capability(
         self, code: str, *, native_path: str | None = None, native_payload: dict[str, object] | None = None
     ) -> dict[str, object]:
-        del native_path, native_payload
+        del native_path
+        self.native_payloads.append(native_payload)
         return await self.execute_code(code)
 
     async def get_editor_state(self) -> dict[str, object]:
@@ -252,6 +254,25 @@ async def test_project_world_points_returns_viewport_points(monkeypatch: pytest.
     assert result.screen_points[1].x == 1.2
     assert fake_bridge.code is not None
     assert "WorldToViewportPoint" in fake_bridge.code
+
+
+@pytest.mark.anyio
+async def test_project_world_points_flattens_points_for_native_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test: native mode's CameraProjectRequest.points is a flat float[], not
+    float[][], because JsonUtility (Unity's own JSON deserializer) can't deserialize jagged
+    arrays - verified live that a nested-list payload silently deserializes as points == null.
+    Legacy mode is unaffected (points are compiled straight into C# array literals), so only the
+    native_payload shape is asserted here.
+    """
+    fake_bridge = FakeBridge({"success": True, "result": {"screenPoints": []}})
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    await vision.project_world_points([[0, 0, 3], [10, 0, 3], [0, 0, -1]])
+
+    assert fake_bridge.native_payloads[-1] == {
+        "cameraName": "Main Camera",
+        "points": [0, 0, 3, 10, 0, 3, 0, 0, -1],
+    }
 
 
 @pytest.mark.anyio
