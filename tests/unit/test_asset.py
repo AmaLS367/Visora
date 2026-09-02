@@ -257,6 +257,23 @@ async def test_ambientcg_provider_search(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.mark.anyio
+async def test_ambientcg_resolve_download_url_uses_model_naming_for_3d_prefixed_ids() -> None:
+    """Regression test: ambientCG's download filenames differ by asset type - materials use
+    "<id>_1K-PNG.zip" but 3D models add a quality tier ("<id>_LQ-1K-PNG.zip"). Guessing the
+    material pattern for a model 404s every time - verified live against real ambientCG assets.
+    """
+    provider = AmbientCGProvider()
+
+    model_url, model_warns = await provider.resolve_download_url("ambientcg:3DApple002")
+    assert model_url == "https://ambientcg.com/get?file=3DApple002_LQ-1K-PNG.zip"
+    assert not model_warns
+
+    material_url, material_warns = await provider.resolve_download_url("ambientcg:Bricks097")
+    assert material_url == "https://ambientcg.com/get?file=Bricks097_1K-PNG.zip"
+    assert not material_warns
+
+
+@pytest.mark.anyio
 async def test_sketchfab_provider_search(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_payload = {
         "results": [

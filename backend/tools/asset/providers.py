@@ -164,7 +164,16 @@ class AmbientCGProvider(BaseAssetProvider):
         if asset_id_or_url.startswith("http"):
             return asset_id_or_url, []
         raw_id = asset_id_or_url.replace("ambientcg:", "").strip()
-        # Direct default 1K PNG zip
+        # ambientCG's download filename format differs by asset type: materials/HDRIs use
+        # "<id>_<resolution>-<format>.zip" (e.g. Bricks097_1K-PNG.zip), but 3D model assets add
+        # an extra quality tier: "<id>_<quality>-<resolution>-<format>.zip" (e.g.
+        # 3DApple002_LQ-1K-PNG.zip). Guessing the material pattern for a model 404s every time -
+        # verified live by downloading real 3D-model assets. There's no reliable API round-trip
+        # to look up a single asset by id (assetId/forceSpecificAssetId both silently no-op), but
+        # every 3D model assetId in ambientCG's current catalog is "3D"-prefixed, so use that as
+        # a cheap signal instead.
+        if raw_id.startswith("3D"):
+            return f"https://ambientcg.com/get?file={raw_id}_LQ-1K-PNG.zip", []
         return f"https://ambientcg.com/get?file={raw_id}_1K-PNG.zip", []
 
 
