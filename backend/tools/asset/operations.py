@@ -9,7 +9,6 @@ import asyncio
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, cast
 
 from backend.app import mcp
 from backend.config import get_settings
@@ -32,7 +31,6 @@ from backend.tools.asset.downloader import (
     validate_asset_extension,
     validate_unitypackage_contents,
 )
-from backend.tools.asset.exceptions import AssetError, AssetSecurityError
 from backend.tools.asset.providers import (
     AmbientCGProvider,
     BaseAssetProvider,
@@ -74,6 +72,40 @@ async def resolve_unity_paths() -> tuple[Path, Path]:
     Queries the Unity Editor bridge; if unreachable, falls back to local workspace conventions.
     """
     return await helpers.resolve_unity_paths(bridge=bridge)
+
+
+async def _filter_downloadable_items(
+    items: list[AssetSearchResultItem], warnings: list[str]
+) -> list[AssetSearchResultItem]:
+    """Keep only items with a resolvable download link.
+
+    Sketchfab items never carry a download_url from search alone; resolving one requires calling
+    /models/{uid}/download, which needs SKETCHFAB_API_TOKEN. Without a token those items are
+    correctly dropped here, but doing that silently made a fully working Sketchfab search look
+    identical to "no matches on Sketchfab" - verified live that real Sketchfab hits (e.g. for
+    "robot") were returned by the API and then vanished at this exact filter with no explanation.
+    So we count and report them instead of just discarding them.
+    """
+    settings = get_settings()
+    downloadable_items: list[AssetSearchResultItem] = []
+    hidden_sketchfab_no_token = 0
+    for item in items:
+        if item.download_url:
+            downloadable_items.append(item)
+        elif item.source == "sketchfab" and settings.sketchfab_api_token:
+            resolved_url, resolve_warnings = await SketchfabProvider().resolve_download_url(item.id)
+            warnings.extend(resolve_warnings)
+            if resolved_url:
+                downloadable_items.append(item)
+        elif item.source == "sketchfab":
+            hidden_sketchfab_no_token += 1
+    if hidden_sketchfab_no_token:
+        warnings.append(
+            f"{hidden_sketchfab_no_token} Sketchfab result(s) hidden: SKETCHFAB_API_TOKEN is not "
+            "configured, so their download links cannot be resolved. Set SKETCHFAB_API_TOKEN or "
+            "pass downloadable_only=False to see them."
+        )
+    return downloadable_items
 
 
 @mcp.tool()
@@ -139,17 +171,7 @@ async def search_assets(
         warnings.extend(p_warns)
 
     if downloadable_only:
-        settings = get_settings()
-        downloadable_items: list[AssetSearchResultItem] = []
-        for item in items:
-            if item.download_url:
-                downloadable_items.append(item)
-            elif item.source == "sketchfab" and settings.sketchfab_api_token:
-                resolved_url, resolve_warnings = await SketchfabProvider().resolve_download_url(item.id)
-                warnings.extend(resolve_warnings)
-                if resolved_url:
-                    downloadable_items.append(item)
-        items = downloadable_items
+        items = await _filter_downloadable_items(items, warnings)
 
     return SearchAssetsResult(
         success=True,

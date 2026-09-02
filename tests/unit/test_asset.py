@@ -100,11 +100,15 @@ def test_safe_extract_zip_slip_rejection(tmp_path: Path) -> None:
     assert not dest_dir.exists()
 
 
-def test_safe_extract_zip_rejects_script_and_high_ratio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_safe_extract_zip_rejects_archive_with_no_supported_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     script_zip = tmp_path / "script.zip"
     with zipfile.ZipFile(script_zip, "w") as zf:
         zf.writestr("Editor/Evil.cs", "class Evil {}")
-    with pytest.raises(AssetSecurityError, match="Unsupported or unsafe"):
+    # An unsupported extension is skipped rather than aborting the whole archive (see below), so
+    # an archive containing *only* unsupported files fails on the "nothing left to extract" check.
+    with pytest.raises(AssetSecurityError, match="does not contain any supported asset files"):
         safe_extract_zip(script_zip, tmp_path / "script-out")
 
     bomb_zip = tmp_path / "bomb.zip"
@@ -120,6 +124,26 @@ def test_safe_extract_zip_rejects_script_and_high_ratio(tmp_path: Path, monkeypa
     monkeypatch.setattr("backend.tools.asset.downloader.get_settings", ArchiveSettings)
     with pytest.raises(ArchiveLimitError, match="compression ratio"):
         safe_extract_zip(bomb_zip, tmp_path / "bomb-out")
+
+
+def test_safe_extract_zip_skips_unsupported_companion_files(tmp_path: Path) -> None:
+    """Regression test: every real ambientCG package ships .usdc/.blend/.mtlx/.tres files
+    alongside its .png textures. Rejecting the whole archive because of one such sidecar file
+    made every ambientCG download fail outright. Supported files must still be extracted, with
+    unsupported companions silently skipped rather than aborting the entire import.
+    """
+    mixed_zip = tmp_path / "Bricks097_1K-PNG.zip"
+    with zipfile.ZipFile(mixed_zip, "w") as zf:
+        zf.writestr("Bricks097_1K-PNG_Color.png", "not-really-a-png")
+        zf.writestr("Bricks097_1K-PNG.usdc", "usd-binary-content")
+        zf.writestr("Bricks097_1K-PNG.blend", "blender-binary-content")
+        zf.writestr("Bricks097_1K-PNG.mtlx", "<materialx/>")
+
+    extracted = safe_extract_zip(mixed_zip, tmp_path / "mixed-out")
+
+    assert extracted == ["Bricks097_1K-PNG_Color.png"]
+    assert not (tmp_path / "mixed-out" / "Bricks097_1K-PNG.usdc").exists()
+    assert not (tmp_path / "mixed-out" / "Bricks097_1K-PNG.blend").exists()
 
 
 def test_unitypackage_preflight_rejects_scripts_and_collisions(tmp_path: Path) -> None:

@@ -167,7 +167,16 @@ def _validate_zip_members(zf: zipfile.ZipFile, target_dir: Path) -> list[zipfile
                 f"Security Alert: Archive member '{member.filename}' attempts path traversal outside target directory."
             ) from exc
 
-        validate_asset_extension(destination)
+        try:
+            validate_asset_extension(destination)
+        except AssetSecurityError:
+            # Real-world provider archives bundle companion files we don't import alongside
+            # the actual asset (e.g. every ambientCG texture zip ships a .usdc, .blend, .mtlx,
+            # and .tres next to the .png files). Aborting the whole archive over one irrelevant
+            # sidecar file made every ambientCG download fail outright. Skip unsupported members
+            # instead of rejecting the archive; the "no supported files at all" check below still
+            # catches archives that are genuinely useless to us.
+            continue
         if member.file_size > settings.max_asset_archive_entry_size_bytes:
             raise ArchiveLimitError(f"Archive entry exceeds per-file limit: {member.filename}")
         total_size += member.file_size

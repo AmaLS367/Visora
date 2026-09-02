@@ -13,6 +13,7 @@ import httpx
 
 from backend.config import get_settings
 from backend.schemas.asset import AssetSearchResultItem
+from backend.tools.asset.downloader import extract_filename_from_url
 
 logger = logging.getLogger("backend.tools.asset.providers")
 
@@ -63,14 +64,20 @@ class AmbientCGProvider(BaseAssetProvider):
             "include": "downloadData",
         }
 
-        # Filter by category if requested
+        # Filter by category if requested.
+        # ambientCG's `type` param silently no-ops on an unrecognized value (it falls back to
+        # the unfiltered result set instead of erroring or returning empty), so a wrong string
+        # here looks exactly like "nothing matched" instead of "the filter never applied".
+        # Verified against the live API: it wants lowercase, hyphenated "3d-model" for models -
+        # "3DModel"/"Model" both silently no-op. "material"/"hdri" happen to work in either case
+        # but are normalized here too for consistency with the confirmed-working value.
         cat_lower = category.lower()
         if cat_lower in {"model", "3d", "mesh"}:
-            params["type"] = "3DModel"
+            params["type"] = "3d-model"
         elif cat_lower in {"texture", "material", "pbr"}:
-            params["type"] = "Material"
+            params["type"] = "material"
         elif cat_lower in {"hdri", "environment", "sky"}:
-            params["type"] = "HDRI"
+            params["type"] = "hdri"
 
         try:
             async with httpx.AsyncClient(timeout=settings.unity_bridge_timeout_seconds) as client:
@@ -350,7 +357,12 @@ class DirectUrlProvider(BaseAssetProvider):
             return [], []
 
         url = query.strip()
-        filename = url.split("?")[0].split("/")[-1]
+        # Reuse the downloader's filename resolution instead of a naive path split: URLs like
+        # ambientCG's own "https://ambientcg.com/get?file=Rock030_1K-PNG.zip" carry the real
+        # filename in a query param. A plain split-on-"?" mislabeled every one of them (id/name
+        # came back as just "get", category as "model" for what is really a texture zip) even
+        # though the download itself worked fine because download_url kept the full URL.
+        filename = extract_filename_from_url(url)
         ext = filename.split(".")[-1].lower() if "." in filename else ""
 
         cat = "model"
