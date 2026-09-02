@@ -17,6 +17,11 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_mode == "legacy"
     assert settings.unity_bridge_execution_timeout_seconds == 60.0
     assert settings.log_level == "INFO"
+    assert settings.sketchfab_api_token == ""
+    assert settings.poly_pizza_api_key == ""
+    assert settings.default_asset_import_dir == "Assets/VisoraDownloads"
+    assert settings.asset_download_timeout_seconds == 120.0
+    assert settings.max_asset_download_size_bytes == 250_000_000
 
 
 def test_normalize_bridge_mode() -> None:

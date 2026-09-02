@@ -13,6 +13,15 @@ from backend.schemas.animation import (
     SkeletonMapperResult,
     TransformPose,
 )
+from backend.schemas.asset import (
+    AssetSearchResultItem,
+    DownloadAndImportAssetResult,
+    ImportLocalAssetResult,
+    InspectAssetResult,
+    InstantiateSceneAssetResult,
+    ModelImporterInfo,
+    SearchAssetsResult,
+)
 from backend.schemas.base import BaseToolResult
 from backend.schemas.bridge import (
     BridgeStatusResult,
@@ -493,3 +502,76 @@ def test_mesh_schemas_serialization() -> None:
     assert mesh_res.is_sub_mesh_valid is True
     assert len(mesh_res.issues) == 1
     assert mesh_res.bone_count == 1
+
+
+def test_asset_schemas() -> None:
+    item = AssetSearchResultItem(
+        id="ambientcg:Wood095",
+        name="Wood 095",
+        source="ambientcg",
+        category="material",
+        file_formats=["zip", "png"],
+        download_url="https://ambientcg.com/get?file=Wood095_1K-PNG.zip",
+    )
+    search_res = SearchAssetsResult(
+        success=True,
+        query="wood",
+        total_count=1,
+        items=[item],
+    )
+    assert search_res.items[0].id == "ambientcg:Wood095"
+    assert search_res.total_count == 1
+
+    download_res = DownloadAndImportAssetResult(
+        success=True,
+        asset_path="Assets/VisoraDownloads/Wood095.zip",
+        absolute_path="/abs/path/Assets/VisoraDownloads/Wood095.zip",
+        file_size_bytes=12345,
+        is_archive=True,
+        extracted_files=["Wood095_Color.png", "Wood095_Normal.png"],
+        imported_objects=["Assets/VisoraDownloads/Wood095"],
+    )
+    assert download_res.file_size_bytes == 12345
+    assert len(download_res.extracted_files) == 2
+
+    import_local_res = ImportLocalAssetResult(
+        success=True,
+        asset_path="Assets/Models/chair.glb",
+        absolute_path="/abs/path/Assets/Models/chair.glb",
+        file_size_bytes=5000,
+        imported_objects=["Assets/Models/chair.glb"],
+        instantiated_game_object="Chair",
+        instance_id=123,
+    )
+    assert import_local_res.instance_id == 123
+
+    importer = ModelImporterInfo(
+        animation_type="Humanoid",
+        clip_count=2,
+        material_import_mode="ImportViaMaterialDescription",
+        import_normals=True,
+        global_scale=1.0,
+        mesh_compression="Off",
+    )
+    inspect_res = InspectAssetResult(
+        success=True,
+        asset_path="Assets/Models/knight.fbx",
+        asset_type="GameObject",
+        model_importer_info=importer,
+        submesh_count=3,
+        materials=["Armor", "Skin"],
+        animation_clips=["Idle", "Attack"],
+    )
+    assert inspect_res.model_importer_info is not None
+    assert inspect_res.model_importer_info.animation_type == "Humanoid"
+    assert len(inspect_res.animation_clips) == 2
+
+    instantiate_res = InstantiateSceneAssetResult(
+        success=True,
+        game_object_name="Knight",
+        game_object_path="Characters/Knight",
+        instance_id=555,
+        world_position=[0.0, 1.0, 0.0],
+    )
+    assert instantiate_res.game_object_name == "Knight"
+    assert instantiate_res.world_position == [0.0, 1.0, 0.0]

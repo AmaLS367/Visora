@@ -8,7 +8,7 @@
 ## 🔮 Planned for v0.1.1
 
 ### 1. 🌐 Asset Web Search & Auto-Download for Unity
-* **Status:** ⏳ Planned
+* **Status:** ✅ Completed
 * **Scope:** Provide agents with tools to perform web searches and automatically download 3D models, environments, rigs, textures, and props directly into the active Unity project. This empowers AI agents to autonomously discover and import required 3D assets to animate rich, context-complete scenes.
 
 ### 2. ⚙️ Production CI/CD (GitHub Actions)

@@ -405,6 +405,42 @@ class UnityBridge:
         )
         return cast(dict[str, Any], response.json())
 
+    async def get_project_paths_native(self) -> dict[str, Any]:
+        """Direct native project path query via /api/visora/asset/paths."""
+        response = await self._request("GET", "/api/visora/asset/paths")
+        return cast(dict[str, Any], response.json())
+
+    async def import_asset_native(self, asset_path: str) -> dict[str, Any]:
+        """Direct native asset import via /api/visora/asset/import."""
+        response = await self._request("POST", "/api/visora/asset/import", json={"assetPath": asset_path})
+        return cast(dict[str, Any], response.json())
+
+    async def inspect_asset_native(self, asset_path: str) -> dict[str, Any]:
+        """Direct native asset inspection via /api/visora/asset/inspect."""
+        response = await self._request("POST", "/api/visora/asset/inspect", json={"assetPath": asset_path})
+        return cast(dict[str, Any], response.json())
+
+    async def instantiate_asset_native(  # noqa: PLR0913
+        self,
+        asset_path: str,
+        parent_path: str | None = None,
+        position: list[float] | None = None,
+        rotation: list[float] | None = None,
+        scale: list[float] | None = None,
+        name: str | None = None,
+    ) -> dict[str, Any]:
+        """Direct native asset instantiation via /api/visora/asset/instantiate."""
+        payload: dict[str, Any] = {
+            "assetPath": asset_path,
+            "parentPath": parent_path or "",
+            "position": position or [0.0, 0.0, 0.0],
+            "rotation": rotation or [0.0, 0.0, 0.0],
+            "scale": scale or [1.0, 1.0, 1.0],
+            "name": name or "",
+        }
+        response = await self._request("POST", "/api/visora/asset/instantiate", json=payload)
+        return cast(dict[str, Any], response.json())
+
     async def cancel_queue_ticket(self, ticket_id: str) -> dict[str, Any]:
         """
         Attempts to cancel a long-running ticket in the AnkleBreaker task queue.

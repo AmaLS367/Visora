@@ -28,6 +28,12 @@ class Settings(BaseSettings):
         default=60.0, validation_alias="UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS"
     )
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    sketchfab_api_token: str = Field(default="", validation_alias="SKETCHFAB_API_TOKEN")
+    poly_pizza_api_key: str = Field(default="", validation_alias="POLY_PIZZA_API_KEY")
+    default_asset_import_dir: str = Field(default="Assets/VisoraDownloads", validation_alias="DEFAULT_ASSET_IMPORT_DIR")
+    asset_download_timeout_seconds: float = Field(default=120.0, validation_alias="ASSET_DOWNLOAD_TIMEOUT_SECONDS")
+    max_asset_download_size_bytes: int = Field(default=250_000_000, validation_alias="MAX_ASSET_DOWNLOAD_SIZE_BYTES")
+    asset_cache_dir: str = Field(default=".visora_cache", validation_alias="ASSET_CACHE_DIR")
 
     @field_validator("unity_bridge_ports_to_scan", mode="before")
     @classmethod

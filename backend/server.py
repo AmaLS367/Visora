@@ -13,7 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger("backend.server")
 
 # Import all tools to trigger registration decorators on startup
-from backend.tools import animation, bridge, mesh, queue, scene, vision
+from backend.tools import animation, asset, bridge, mesh, queue, scene, vision
 
 
 def main() -> None:

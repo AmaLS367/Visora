@@ -103,6 +103,29 @@ namespace Visora.Editor.Core
         public bool saveScene;
     }
 
+    [Serializable]
+    public class AssetImportRequest
+    {
+        public string assetPath;
+    }
+
+    [Serializable]
+    public class AssetInspectRequest
+    {
+        public string assetPath;
+    }
+
+    [Serializable]
+    public class AssetInstantiateRequest
+    {
+        public string assetPath;
+        public string parentPath;
+        public float[] position;
+        public float[] rotation;
+        public float[] scale;
+        public string name;
+    }
+
     public static class VisoraHttpRouter
     {
         public static async Task HandleRequestAsync(HttpListenerContext context)
@@ -170,7 +193,11 @@ namespace Visora.Editor.Core
                             "task_queue",
                             "compilation_diagnostics",
                             "statement_code_execution",
-                            "legacy_contract_parity"
+                            "legacy_contract_parity",
+                            "asset_management",
+                            "asset_import",
+                            "asset_inspection",
+                            "asset_instantiation"
                         }
                     });
                 }
@@ -356,6 +383,36 @@ namespace Visora.Editor.Core
                     var p = JsonUtility.FromJson<TransactionActionRequest>(body) ?? new TransactionActionRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         SceneTransactionService.RollbackTransaction(p.transactionId));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "GET" && path == "/api/visora/asset/paths")
+                {
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AssetManagementService.GetProjectPaths());
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/asset/import")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<AssetImportRequest>(body) ?? new AssetImportRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AssetManagementService.ImportAsset(p.assetPath));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/asset/inspect")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<AssetInspectRequest>(body) ?? new AssetInspectRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AssetManagementService.InspectAsset(p.assetPath));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/asset/instantiate")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<AssetInstantiateRequest>(body) ?? new AssetInstantiateRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AssetManagementService.InstantiateAsset(p.assetPath, p.parentPath, p.position, p.rotation, p.scale, p.name));
                     responseJson = JsonUtility.ToJson(result);
                 }
                 else

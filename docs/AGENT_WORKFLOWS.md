@@ -18,13 +18,17 @@ An asterisk marks a required parameter. This region is generated from FastMCP re
 | `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
 | `compare_screenshots` | `before_image_base64`*, `after_image_base64`*, `threshold` | `VisualComparisonResult` |
 | `diagnose_camera_framing` | `subject_path`*, `camera_name` | `CameraFramingDiagnosticsResult` |
+| `download_and_import_asset` | `url`*, `target_folder`, `file_name`, `extract_archive`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |
 | `get_bridge_status` | `scan_all_ports` | `BridgeStatusResult` |
 | `get_editor_state` | `include_scene_details` | `EditorStateResult` |
 | `get_video_frames` | `camera_names`, `subject_path`, `mode`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `VideoFramesResult` |
 | `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode` | `VideoMp4Result` |
+| `import_local_asset` | `source_path`*, `target_folder`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
 | `inspect_animation_clip` | `clip_path`* | `ClipInspectorResult` |
+| `inspect_imported_asset` | `asset_path`* | `InspectAssetResult` |
 | `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `VisualInspectionResult` |
+| `instantiate_scene_asset` | `asset_path`*, `parent_path`, `position`, `rotation`, `scale`, `name` | `InstantiateSceneAssetResult` |
 | `list_scene_cameras` | — | `ListSceneCamerasResult` |
 | `playmode_management` | `play`*, `wait_for_idle`, `timeout_seconds` | `PlayModeManagementResult` |
 | `project_world_points` | `points`*, `camera_name` | `ProjectWorldPointsResult` |
@@ -33,6 +37,7 @@ An asterisk marks a required parameter. This region is generated from FastMCP re
 | `sample_animation_clip` | `target_game_object_path`*, `clip_path`*, `time`, `normalized_time`, `restore_pose_after`, `track_transforms` | `SampleAnimationResult` |
 | `save_scene` | `save_as_path`, `force_during_play_mode` | `SaveSceneResult` |
 | `screenshot` | `camera_name`, `width`, `height` | `ScreenshotResult` |
+| `search_assets` | `query`*, `category`, `source`, `limit`, `downloadable_only` | `SearchAssetsResult` |
 | `skeleton_mapper` | `root_transform_path`* | `SkeletonMapperResult` |
 | `skinned_mesh_diagnostics` | `mesh_renderer_path`* | `SkinnedMeshDiagnosticsResult` |
 | `wait_for_editor_idle` | `timeout_seconds`, `poll_interval_seconds` | `WaitForEditorIdleResult` |
@@ -46,6 +51,7 @@ An asterisk marks a required parameter. This region is generated from FastMCP re
 3. For rigs, call `skeleton_mapper`, `find_bones`, `inspect_animation_clip`, then `sample_animation_clip` with pose restoration enabled.
 4. For mesh problems, call `skinned_mesh_diagnostics` before changing materials or bones; its category distinguishes geometry/skinning from texture/material failures.
 5. For mutations, call `safe_transaction` with `record_undo=True`. If it fails, use its `undo_group` with `restore_scene_state` when necessary.
+6. For asset discovery and imports, call `search_assets` to discover CC0 materials and 3D models online, `download_and_import_asset` to download and automatically register assets with the Unity `AssetDatabase`, `inspect_imported_asset` to verify `ModelImporter` rig settings, and `instantiate_scene_asset` to place them into the scene with Undo tracking.
 
 ## Scene safety
 

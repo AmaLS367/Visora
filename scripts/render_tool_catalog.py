@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from backend.app import mcp
-from backend.tools import animation, bridge, mesh, scene, vision
+from backend.tools import animation, asset, bridge, mesh, scene, vision
 
 CATALOG_START = "<!-- GENERATED_TOOL_CATALOG_START -->"
 CATALOG_END = "<!-- GENERATED_TOOL_CATALOG_END -->"

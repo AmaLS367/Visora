@@ -7,7 +7,7 @@ from backend.bridge import BridgeError
 from backend.schemas.base import BaseToolResult
 
 # Import tools to ensure registration
-from backend.tools import animation, bridge, mesh, scene, vision
+from backend.tools import animation, asset, bridge, mesh, scene, vision
 
 TOOL_FUNCTIONS = [
     # Bridge & Queue
@@ -39,6 +39,12 @@ TOOL_FUNCTIONS = [
     animation.skeleton.find_bones,
     # Mesh
     mesh.diagnostics.skinned_mesh_diagnostics,
+    # Asset Web Search & Auto-Download
+    asset.search_assets,
+    asset.download_and_import_asset,
+    asset.import_local_asset,
+    asset.inspect_imported_asset,
+    asset.instantiate_scene_asset,
 ]
 
 

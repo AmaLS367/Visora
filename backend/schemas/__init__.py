@@ -13,6 +13,15 @@ from backend.schemas.animation import (
     SkeletonMapperResult,
     TransformPose,
 )
+from backend.schemas.asset import (
+    AssetSearchResultItem,
+    DownloadAndImportAssetResult,
+    ImportLocalAssetResult,
+    InspectAssetResult,
+    InstantiateSceneAssetResult,
+    ModelImporterInfo,
+    SearchAssetsResult,
+)
 from backend.schemas.base import BaseToolResult
 from backend.schemas.bridge import (
     BridgeStatusResult,
@@ -57,6 +66,7 @@ from backend.schemas.vision import (
 __all__ = [
     "AnimationBindingCurve",
     "AnimationEventInfo",
+    "AssetSearchResultItem",
     "BaseToolResult",
     "BoneBindingInfo",
     "BoneMatch",
@@ -69,14 +79,19 @@ __all__ = [
     "DangerousCurveWarning",
     "DeformationInfo",
     "DiagnosticIssue",
+    "DownloadAndImportAssetResult",
     "DuplicateBoneGroup",
     "EditorStateInfo",
     "EditorStateResult",
     "FrameMotionMetrics",
     "HelperBoneWarning",
+    "ImportLocalAssetResult",
+    "InspectAssetResult",
+    "InstantiateSceneAssetResult",
     "ListSceneCamerasResult",
     "MaterialSlotInfo",
     "MmdBoneChain",
+    "ModelImporterInfo",
     "PlayModeManagementResult",
     "PortScanResult",
     "ProjectWorldPointsResult",
@@ -88,6 +103,7 @@ __all__ = [
     "SceneCameraInfo",
     "ScreenPoint",
     "ScreenshotResult",
+    "SearchAssetsResult",
     "SkeletonMapperResult",
     "SkinnedMeshDiagnosticsResult",
     "SubMeshInfo",
