@@ -42,6 +42,7 @@ from backend.tools.asset.scripts import (
     _inspect_asset_code,
     _instantiate_asset_code,
 )
+from backend.tools.asset.websearch import find_sketchfab_models_via_web_search
 
 bridge = common.bridge
 logger = common.logger
@@ -179,6 +180,36 @@ async def search_assets(
         source=source,
         total_count=len(items),
         items=items[:limit],
+        warnings=warnings,
+    )
+
+
+@mcp.tool()
+async def web_search_assets(query: str, limit: int = 5) -> SearchAssetsResult:
+    """
+    Finds real Sketchfab 3D models via general web search (SearXNG, DuckDuckGo fallback) when
+    search_assets's built-in Sketchfab search fails to find them.
+
+    Sketchfab's own public search API ignores the query text entirely (verified live: nonsense and
+    real search terms return identical results, even with a valid API token) - it behaves as a
+    browse/listing endpoint, not real search. For a specific model (a particular character, prop,
+    or vehicle), use this tool instead: it finds the actual Sketchfab model page via web search and
+    extracts its ID, ready to pass straight to download_and_import_asset(asset_id=...).
+
+    Args:
+        query: Descriptive search text (e.g., 'Wuthering Waves Rover female character').
+        limit: Maximum number of asset candidates to return.
+
+    Returns:
+        A SearchAssetsResult with sketchfab: asset IDs usable directly with download_and_import_asset.
+    """
+    items, warnings = await find_sketchfab_models_via_web_search(query, limit=limit)
+    return SearchAssetsResult(
+        success=True,
+        query=query,
+        source="sketchfab",
+        total_count=len(items),
+        items=items,
         warnings=warnings,
     )
 

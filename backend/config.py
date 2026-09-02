@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     max_asset_archive_compression_ratio: float = Field(
         default=100.0, validation_alias="MAX_ASSET_ARCHIVE_COMPRESSION_RATIO"
     )
+    # Sketchfab's own public search API ignores its query text (verified live), so
+    # find_sketchfab_models_via_web_search() uses these keyless SearXNG instances as a real-search
+    # fallback, trying each in order before falling back further to scraping DuckDuckGo. Verified
+    # live that public instances commonly refuse or rate-limit the JSON API for anonymous callers
+    # (SearXNG's own recommended anti-abuse posture) - the DuckDuckGo fallback is what actually
+    # carries most real-world queries unless this is pointed at a self-hosted instance.
+    searxng_instance_urls: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["https://searx.be", "https://searx.tiekoetter.com", "https://priv.au"],
+        validation_alias="SEARXNG_INSTANCE_URLS",
+    )
+    web_search_timeout_seconds: float = Field(default=10.0, validation_alias="WEB_SEARCH_TIMEOUT_SECONDS")
 
     @field_validator("unity_bridge_ports_to_scan", mode="before")
     @classmethod
@@ -63,6 +74,18 @@ class Settings(BaseSettings):
         if isinstance(value, (list, tuple, set)):
             return [int(p) for p in value]
         return [7890, 7891, 7892, 7893]
+
+    @field_validator("searxng_instance_urls", mode="before")
+    @classmethod
+    def parse_searxng_instance_urls(cls, value: Any) -> list[str]:
+        # Same NoDecode rationale as unity_bridge_ports_to_scan above: pydantic-settings otherwise
+        # tries to JSON-decode this list-typed env value before we can split it, and the documented
+        # plain comma-separated .env format ("https://a,https://b") isn't valid JSON.
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(v).strip() for v in value if str(v).strip()]
+        return ["https://searx.be", "https://searx.tiekoetter.com", "https://priv.au"]
 
     @field_validator("unity_bridge_url")
     @classmethod

@@ -11,6 +11,7 @@ import httpx
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from backend.config import get_settings
 from backend.schemas.asset import (
     AssetSearchResultItem,
     DownloadAndImportAssetResult,
@@ -41,6 +42,7 @@ from backend.tools.asset.operations import (
     inspect_imported_asset,
     instantiate_scene_asset,
     search_assets,
+    web_search_assets,
 )
 from backend.tools.asset.providers import (
     AmbientCGProvider,
@@ -48,6 +50,7 @@ from backend.tools.asset.providers import (
     PolyPizzaProvider,
     SketchfabProvider,
 )
+from backend.tools.asset.websearch import find_sketchfab_models_via_web_search
 
 
 @pytest.fixture
@@ -342,6 +345,147 @@ async def test_sketchfab_provider_search(monkeypatch: pytest.MonkeyPatch) -> Non
     assert items[0].author == "WeaponSmith"
     assert items[0].category == "model"
     assert not warns
+
+
+@pytest.mark.anyio
+async def test_find_sketchfab_models_via_web_search_uses_searxng(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real bug this works around: Sketchfab's own /v3/models search ignores `q` entirely
+    (verified live, even authenticated), so a specific model like a particular game character is
+    unfindable through search_assets. This asserts the SearXNG path extracts the model's real UID
+    straight out of its Sketchfab page URL in the search results.
+    """
+    mock_payload = {
+        "results": [
+            {
+                "title": "Female Rover1_01 - Wuthering Waves",
+                "url": (
+                    "https://sketchfab.com/3d-models/female-rover1-01-wuthering-waves-094c99a017a442f1bb20b6e948264fe5"
+                ),
+            },
+            {"title": "Unrelated Sketchfab store page", "url": "https://sketchfab.com/store/some-plan"},
+        ]
+    }
+
+    class MockResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, Any]:
+            return mock_payload
+
+    class MockClient:
+        async def __aenter__(self) -> MockClient:
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+        async def get(self, *args: Any, **kwargs: Any) -> MockResponse:
+            _ = (args, kwargs)
+            return MockResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: MockClient())
+
+    items, warnings = await find_sketchfab_models_via_web_search("wuthering waves rover")
+    assert len(items) == 1
+    assert items[0].id == "sketchfab:094c99a017a442f1bb20b6e948264fe5"
+    assert items[0].source == "sketchfab"
+    assert not warnings
+
+
+@pytest.mark.anyio
+async def test_find_sketchfab_models_via_web_search_falls_back_to_duckduckgo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When every configured SearXNG instance is unreachable (public instances go down often),
+    the DuckDuckGo HTML scrape must still find the model rather than the tool going silent.
+    """
+    ddg_html = (
+        '<a class="result__a" href="//duckduckgo.com/l/?uddg='
+        "https%3A%2F%2Fsketchfab.com%2F3d-models%2F"
+        "female-rover1-01-wuthering-waves-094c99a017a442f1bb20b6e948264fe5"
+        '&rut=abc">Female Rover1_01</a>'
+    )
+
+    class MockDDGResponse:
+        status_code = 200
+        text = ddg_html
+
+        def raise_for_status(self) -> None:
+            pass
+
+    class MockClient:
+        async def __aenter__(self) -> MockClient:
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+        async def get(self, url: str, **kwargs: Any) -> MockDDGResponse:
+            _ = kwargs
+            if "duckduckgo.com" not in url:
+                raise httpx.ConnectError("simulated SearXNG instance down")
+            return MockDDGResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: MockClient())
+
+    items, warnings = await find_sketchfab_models_via_web_search("wuthering waves rover")
+    assert len(items) == 1
+    assert items[0].id == "sketchfab:094c99a017a442f1bb20b6e948264fe5"
+    # One warning per failed SearXNG instance, but the DuckDuckGo fallback still found the model.
+    assert len(warnings) == len(get_settings().searxng_instance_urls)
+
+
+@pytest.mark.anyio
+async def test_find_sketchfab_models_via_web_search_no_results_warns(monkeypatch: pytest.MonkeyPatch) -> None:
+    class MockResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, Any]:
+            return {"results": []}
+
+        text = ""
+
+    class MockClient:
+        async def __aenter__(self) -> MockClient:
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+        async def get(self, *args: Any, **kwargs: Any) -> MockResponse:
+            _ = (args, kwargs)
+            return MockResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: MockClient())
+
+    items, warnings = await find_sketchfab_models_via_web_search("something nobody has ever modeled")
+    assert items == []
+    assert any("no Sketchfab model pages" in w for w in warnings)
+
+
+@pytest.mark.anyio
+async def test_web_search_assets_tool_wraps_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def mock_find(query: str, limit: int = 5) -> tuple[list[AssetSearchResultItem], list[str]]:
+        _ = limit
+        return [
+            AssetSearchResultItem(
+                id="sketchfab:094c99a017a442f1bb20b6e948264fe5",
+                name="Female Rover1_01",
+                source="sketchfab",
+                category="model",
+            )
+        ], []
+
+    monkeypatch.setattr(operations, "find_sketchfab_models_via_web_search", mock_find)
+
+    result = await web_search_assets("wuthering waves rover")
+    assert result.success is True
+    assert result.total_count == 1
+    assert result.items[0].id == "sketchfab:094c99a017a442f1bb20b6e948264fe5"
 
 
 @pytest.mark.anyio

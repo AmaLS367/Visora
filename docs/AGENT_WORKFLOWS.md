@@ -42,6 +42,7 @@ An asterisk marks a required parameter. This region is generated from FastMCP re
 | `skinned_mesh_diagnostics` | `mesh_renderer_path`* | `SkinnedMeshDiagnosticsResult` |
 | `wait_for_editor_idle` | `timeout_seconds`, `poll_interval_seconds` | `WaitForEditorIdleResult` |
 | `wait_for_ticket` | `ticket_id`*, `timeout`, `poll_interval` | `QueueStatusResult` |
+| `web_search_assets` | `query`*, `limit` | `SearchAssetsResult` |
 <!-- GENERATED_TOOL_CATALOG_END -->
 
 ## Reliable workflows
@@ -51,7 +52,7 @@ An asterisk marks a required parameter. This region is generated from FastMCP re
 3. For rigs, call `skeleton_mapper`, `find_bones`, `inspect_animation_clip`, then `sample_animation_clip` with pose restoration enabled.
 4. For mesh problems, call `skinned_mesh_diagnostics` before changing materials or bones; its category distinguishes geometry/skinning from texture/material failures.
 5. For mutations, call `safe_transaction` with `record_undo=True`. If it fails, use its `undo_group` with `restore_scene_state` when necessary.
-6. For asset discovery and imports, call `search_assets` to discover CC0 materials and 3D models online, `download_and_import_asset` to download and automatically register assets with the Unity `AssetDatabase`, `inspect_imported_asset` to verify `ModelImporter` rig settings, and `instantiate_scene_asset` to place them into the scene with Undo tracking.
+6. For asset discovery and imports, call `search_assets` to discover CC0 materials and 3D models online, `download_and_import_asset` to download and automatically register assets with the Unity `AssetDatabase`, `inspect_imported_asset` to verify `ModelImporter` rig settings, and `instantiate_scene_asset` to place them into the scene with Undo tracking. Sketchfab's own search endpoint ignores the query text (it behaves as a browse listing, not a real search, even with `SKETCHFAB_API_TOKEN` set) — for a specific model that `search_assets` can't find, call `web_search_assets` instead; it finds the real Sketchfab page via web search and returns a `sketchfab:<uid>` ready for `download_and_import_asset`.
 
 ## Asset import safety
 
@@ -64,3 +65,4 @@ Use a result's provider ID (for example, `sketchfab:<uid>`) as `asset_id` when n
 ## Scene safety
 
 `save_scene` rejects Play Mode and compilation by default. `force_during_play_mode=True` is an intentional dangerous override; use it only when persistence of Play Mode state is explicitly required. `safe_transaction(auto_save=True)` skips automatic saves in Play Mode and reports this as a warning.
+

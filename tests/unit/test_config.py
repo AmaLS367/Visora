@@ -127,6 +127,25 @@ def test_env_variable_ports_to_scan_comma_separated(monkeypatch: pytest.MonkeyPa
     assert Settings().unity_bridge_ports_to_scan == [7890, 7891, 8000, 9000]
 
 
+def test_default_searxng_instance_urls() -> None:
+    settings = Settings()
+    assert settings.searxng_instance_urls == [
+        "https://searx.be",
+        "https://searx.tiekoetter.com",
+        "https://priv.au",
+    ]
+    assert settings.web_search_timeout_seconds == 10.0
+
+
+def test_env_variable_searxng_instance_urls_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test for the same NoDecode/JSON-decode pitfall as UNITY_BRIDGE_PORTS_TO_SCAN:
+    a real env var goes through pydantic-settings' JSON decoding before parse_searxng_instance_urls
+    runs, so the documented plain comma-separated .env format must not crash Settings().
+    """
+    monkeypatch.setenv("SEARXNG_INSTANCE_URLS", "https://my-searx.example,https://other.example")
+    assert Settings().searxng_instance_urls == ["https://my-searx.example", "https://other.example"]
+
+
 def test_get_settings_lru_cache() -> None:
     s1 = get_settings()
     s2 = get_settings()

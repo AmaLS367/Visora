@@ -18,6 +18,7 @@ from backend.tools.asset.operations import (
     instantiate_scene_asset,
     resolve_unity_paths,
     search_assets,
+    web_search_assets,
 )
 from backend.tools.asset.providers import (
     AmbientCGProvider,
@@ -59,4 +60,5 @@ __all__ = [
     "safe_extract_zip",
     "sanitize_filename",
     "search_assets",
+    "web_search_assets",
 ]
