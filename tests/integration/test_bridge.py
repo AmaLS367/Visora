@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -14,6 +15,18 @@ from backend.bridge import (
 from backend.config import Settings
 from backend.tools.bridge.health import get_bridge_status
 from backend.tools.bridge.queue import check_ticket_status, wait_for_ticket
+
+
+@pytest.fixture(autouse=True)
+def _no_local_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Settings() loads ".env" relative to the current working directory (see the identical
+    fixture in test_config.py). mock_settings and test_candidate_ports_with_custom_list_and_
+    duplicates below construct Settings() without overriding unity_bridge_mode, so they silently
+    depended on the repo's own .env being absent or having UNITY_BRIDGE_MODE=legacy - real live
+    testing that switched .env to native mode broke five tests here that were never actually
+    pinning the mode they test against.
+    """
+    monkeypatch.chdir(tmp_path)
 
 
 @pytest.fixture

@@ -114,7 +114,10 @@ internal static class {typeName}
 
         private static object Invoke(string assemblyPath, string typeName)
         {
-            var assembly = Assembly.Load(File.ReadAllBytes(assemblyPath));
+            // Qualified because both `using System.Reflection;` and `using UnityEditor.Compilation;`
+            // (needed above for CompilationPipeline/AssemblyBuilder) declare an `Assembly` type -
+            // the bare name is a compile error (CS0104), not just a style choice.
+            var assembly = System.Reflection.Assembly.Load(File.ReadAllBytes(assemblyPath));
             var method = assembly.GetType(typeName)?.GetMethod("Execute", BindingFlags.Public | BindingFlags.Static);
             if (method == null) throw new InvalidOperationException("Compiled Visora snippet has no Execute method.");
             return method.Invoke(null, null);

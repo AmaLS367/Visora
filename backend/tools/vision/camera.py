@@ -111,7 +111,15 @@ async def project_world_points(
         response = await vision_pkg.bridge.execute_capability(
             _project_world_points_code(points, camera_name),
             native_path="/api/visora/camera/project",
-            native_payload={"cameraName": camera_name, "points": points},
+            native_payload={
+                "cameraName": camera_name,
+                # Flattened to x,y,z triples for native mode only: its CameraProjectRequest.points
+                # is a plain float[] because JsonUtility (Unity's built-in JSON deserializer) can't
+                # deserialize jagged arrays - a nested list here would silently deserialize as null.
+                # Legacy mode is unaffected: _project_world_points_code above compiles `points`
+                # straight into C# array literals, no JSON round-trip involved.
+                "points": [coordinate for point in points for coordinate in point],
+            },
         )
         payload = _extract_result_payload(response)
         if not payload.get("success", True) or payload.get("error"):

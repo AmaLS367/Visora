@@ -2,9 +2,7 @@
   "name": "Visora.Editor.Tests",
   "rootNamespace": "Visora.Editor.Tests",
   "references": [
-    "Visora.Editor",
-    "UnityEditor.TestRunner",
-    "UnityEngine.TestRunner"
+    "Visora.Editor"
   ],
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"]

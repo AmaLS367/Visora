@@ -52,11 +52,11 @@ namespace Visora.Editor.Services
             }
             else
             {
-                var animator = UnityEngine.Object.FindObjectOfType<Animator>();
+                var animator = UnityEngine.Object.FindAnyObjectByType<Animator>();
                 if (animator != null) root = animator.gameObject;
                 else
                 {
-                    var smr = UnityEngine.Object.FindObjectOfType<SkinnedMeshRenderer>();
+                    var smr = UnityEngine.Object.FindAnyObjectByType<SkinnedMeshRenderer>();
                     if (smr != null && smr.rootBone != null) root = smr.rootBone.gameObject;
                 }
             }

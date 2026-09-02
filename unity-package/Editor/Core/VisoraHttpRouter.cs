@@ -53,7 +53,13 @@ namespace Visora.Editor.Core
     public class CameraProjectRequest
     {
         public string cameraName = "Main Camera";
-        public float[][] points;
+        // Flat x,y,z triples, not float[][]: JsonUtility (Unity's built-in JSON deserializer used
+        // just below) cannot deserialize jagged arrays - confirmed by Unity's own serialization
+        // analyzer (warning UAC1009) flagging this exact field. Left as float[][], the deserialized
+        // request always has points == null regardless of what the client POSTs, so
+        // project_world_points silently fails on every call in native mode. See
+        // CameraDiagnosticsService.ProjectWorldPoints for the flat-array reconstruction.
+        public float[] points;
     }
 
     [Serializable]

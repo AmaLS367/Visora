@@ -24,15 +24,16 @@ namespace Visora.Editor.Services
             return new Dictionary<string, object> { { "success", true }, { "cameras", items } };
         }
 
-        public static Dictionary<string, object> ProjectWorldPoints(string cameraName, float[][] points)
+        public static Dictionary<string, object> ProjectWorldPoints(string cameraName, float[] points)
         {
             var camera = CameraRenderingService.FindCamera(cameraName);
             if (camera == null) return Failure($"Camera not found: {cameraName}");
+            var flat = points ?? Array.Empty<float>();
+            if (flat.Length % 3 != 0) return Failure("points must be a flat list of x,y,z triples (length a multiple of three).");
             var projected = new List<object>();
-            foreach (var point in points ?? Array.Empty<float[]>())
+            for (var i = 0; i < flat.Length; i += 3)
             {
-                if (point == null || point.Length != 3) return Failure("Each world point must contain exactly three coordinates.");
-                var viewport = camera.WorldToViewportPoint(new Vector3(point[0], point[1], point[2]));
+                var viewport = camera.WorldToViewportPoint(new Vector3(flat[i], flat[i + 1], flat[i + 2]));
                 projected.Add(new Dictionary<string, object>
                 {
                     { "x", viewport.x }, { "y", viewport.y }, { "z", viewport.z }, { "isBehindCamera", viewport.z < 0f }
