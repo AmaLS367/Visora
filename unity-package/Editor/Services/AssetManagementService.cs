@@ -326,7 +326,9 @@ namespace Visora.Editor.Services
                 result.success = true;
                 result.game_object_name = instance.name;
                 result.game_object_path = fullPath;
-                result.instance_id = instance.GetInstanceID();
+                // GetInstanceID() is a hard compile error (CS0619) on Unity 6.6+; GetEntityId()
+                // implicitly converts to int, so instance_id's wire type is unaffected.
+                result.instance_id = instance.GetEntityId();
                 result.world_position = new List<float>
                 {
                     instance.transform.position.x,
