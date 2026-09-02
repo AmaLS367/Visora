@@ -22,7 +22,28 @@ from backend.tools.asset.exceptions import ArchiveLimitError, AssetSecurityError
 
 logger = logging.getLogger("backend.tools.asset.downloader")
 
-ALLOWED_ASSET_EXTENSIONS = frozenset({".fbx", ".obj", ".gltf", ".glb", ".png", ".jpg", ".jpeg", ".tga", ".exr", ".hdr"})
+ALLOWED_ASSET_EXTENSIONS = frozenset(
+    {
+        ".fbx",
+        ".obj",
+        ".gltf",
+        ".glb",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".tga",
+        ".exr",
+        ".hdr",
+        # Not standalone "assets" themselves, but load-bearing companions our supported model
+        # formats require to actually work: a non-binary .gltf's mesh/skin/bone data lives in an
+        # externally referenced .bin buffer, and a .obj's material assignments live in its .mtl.
+        # Verified live: a real Sketchfab download (non-binary glTF export) has its entire
+        # geometry in scene.bin - dropping it during zip extraction (as an "unsupported"
+        # extension) silently produced a mesh-less, broken asset instead of an import failure.
+        ".bin",
+        ".mtl",
+    }
+)
 ALLOWED_DOWNLOAD_EXTENSIONS = ALLOWED_ASSET_EXTENSIONS | {".zip"}
 UNITYPACKAGE_EXTENSION = ".unitypackage"
 _REDIRECT_CODES = {301, 302, 303, 307, 308}

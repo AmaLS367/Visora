@@ -1,6 +1,19 @@
+from pathlib import Path
+
 import pytest
 
 from backend.config import Settings, get_settings
+
+
+@pytest.fixture(autouse=True)
+def _no_local_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Settings() loads ".env" relative to the current working directory (verified live: this is
+    also why a temp "fake Unity project" cwd used elsewhere doesn't see the real .env). Without
+    this, every test here silently depended on the repo's own .env being absent or empty - e.g.
+    test_default_settings passed only because SKETCHFAB_API_TOKEN was blank, and broke the moment
+    a developer actually configured their local .env for real use, which is exactly what it's for.
+    """
+    monkeypatch.chdir(tmp_path)
 
 
 def test_default_settings() -> None:

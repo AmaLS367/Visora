@@ -146,6 +146,28 @@ def test_safe_extract_zip_skips_unsupported_companion_files(tmp_path: Path) -> N
     assert not (tmp_path / "mixed-out" / "Bricks097_1K-PNG.blend").exists()
 
 
+def test_safe_extract_zip_keeps_gltf_external_buffer_and_obj_material(tmp_path: Path) -> None:
+    """Regression test: .bin and .mtl aren't "assets" on their own, but a non-binary .gltf's
+    mesh/skin/bone data lives entirely in its externally referenced .bin buffer, and a .obj's
+    material assignment lives in its .mtl. Verified live against a real Sketchfab download: before
+    .bin was allow-listed, extraction silently dropped scene.bin and produced a mesh-less, broken
+    asset instead of failing loudly - worse than the archive-wide rejection this whole skip-instead
+    -of-abort behavior was meant to fix.
+    """
+    gltf_zip = tmp_path / "character.zip"
+    with zipfile.ZipFile(gltf_zip, "w") as zf:
+        zf.writestr("scene.gltf", '{"buffers": [{"uri": "scene.bin"}]}')
+        zf.writestr("scene.bin", "binary-mesh-data")
+        zf.writestr("model.obj", "mtllib model.mtl")
+        zf.writestr("model.mtl", "newmtl Default")
+        zf.writestr("license.txt", "CC-BY 4.0")
+
+    extracted = safe_extract_zip(gltf_zip, tmp_path / "gltf-out")
+
+    assert set(extracted) == {"scene.gltf", "scene.bin", "model.obj", "model.mtl"}
+    assert not (tmp_path / "gltf-out" / "license.txt").exists()
+
+
 def test_unitypackage_preflight_rejects_scripts_and_collisions(tmp_path: Path) -> None:
     assets = tmp_path / "Project" / "Assets"
     assets.mkdir(parents=True)
