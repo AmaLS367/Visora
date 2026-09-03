@@ -213,7 +213,7 @@ namespace Visora.Editor.Core
                     });
                     responseJson = JsonUtility.ToJson(info);
                 }
-                else if (method == "POST" && path == "/api/editor/state")
+                else if ((method == "GET" || method == "POST") && path == "/api/editor/state")
                 {
                     // Same main-thread requirement as /api/visora/info above - verified live, this
                     // was the very first call get_bridge_status's health check made, and it 500'd.

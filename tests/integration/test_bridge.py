@@ -331,6 +331,54 @@ async def test_unity_bridge_methods(mock_settings: Settings) -> None:
 
 
 @pytest.mark.anyio
+async def test_wait_for_play_mode_success_and_timeout(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+
+    # 1. Immediate match
+    with patch.object(bridge, "get_editor_state", new_callable=AsyncMock) as mock_state:
+        mock_state.return_value = {"isPlaying": True, "isCompiling": False, "isUpdating": False}
+        state = await bridge.wait_for_play_mode(target_playing=True, timeout_seconds=1.0)
+        assert state["isPlaying"] is True
+
+    # 2. Retries through temporary connection drops, then succeeds
+    call_count = 0
+
+    async def transient_error_state() -> dict[str, Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise BridgeConnectionError("Port closed", ports=[7890])
+        return {"isPlaying": False, "isCompiling": False, "isUpdating": False}
+
+    with patch.object(bridge, "get_editor_state", side_effect=transient_error_state):
+        state = await bridge.wait_for_play_mode(target_playing=False, timeout_seconds=2.0, poll_interval_seconds=0.01)
+        assert state["isPlaying"] is False
+        assert call_count >= 2
+
+    # 3. Timeout raises BridgeTimeoutError
+    with patch.object(bridge, "get_editor_state", new_callable=AsyncMock) as mock_state:
+        mock_state.return_value = {"isPlaying": False, "isCompiling": True, "isUpdating": False}
+        with pytest.raises(BridgeTimeoutError) as excinfo:
+            await bridge.wait_for_play_mode(target_playing=True, timeout_seconds=0.05, poll_interval_seconds=0.01)
+        assert "Timed out" in excinfo.value.message
+
+
+@pytest.mark.anyio
+async def test_wait_for_editor_ready_success_and_timeout(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+
+    with patch.object(bridge, "get_editor_state", new_callable=AsyncMock) as mock_state:
+        mock_state.return_value = {"isPlaying": False, "isCompiling": False, "isUpdating": False}
+        state = await bridge.wait_for_editor_ready(timeout_seconds=1.0)
+        assert state["isCompiling"] is False
+
+    with patch.object(bridge, "get_editor_state", new_callable=AsyncMock) as mock_state:
+        mock_state.return_value = {"isPlaying": False, "isCompiling": True, "isUpdating": False}
+        with pytest.raises(BridgeTimeoutError):
+            await bridge.wait_for_editor_ready(timeout_seconds=0.05, poll_interval_seconds=0.01)
+
+
+@pytest.mark.anyio
 async def test_async_context_manager(mock_settings: Settings) -> None:
     async with UnityBridge(settings=mock_settings) as bridge:
         assert isinstance(bridge, UnityBridge)

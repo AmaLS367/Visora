@@ -86,7 +86,9 @@ async def get_video_frames(  # noqa: PLR0912, PLR0913, PLR0915
         fps: Sampling frame rate (1 to 12). Defaults to 6.
         width: Frame width in pixels. Defaults to 1280.
         height: Frame height in pixels. Defaults to 720.
-        enter_play_mode: If True, temporarily enters Play Mode during capture.
+        enter_play_mode: If True, temporarily enters Play Mode during capture. Visora polls the bridge
+            to ensure domain reload completes before frames are captured. For authored clips, consider
+            sample_animation_clip in Edit Mode as a lightweight alternative.
         include_motion_metrics: If True, computes delta motion metrics between adjacent frames.
 
     Returns:
@@ -118,9 +120,12 @@ async def get_video_frames(  # noqa: PLR0912, PLR0913, PLR0915
         state = await vision_pkg.bridge.get_editor_state()
         was_playing = bool(state.get("isPlaying", False))
         if enter_play_mode and not was_playing:
-            await vision_pkg.bridge.set_play_mode(True)
+            try:
+                await vision_pkg.bridge.set_play_mode(True)
+            except Exception as exc:
+                vision_pkg.logger.info("Play mode transition initiated, awaiting domain reload: %s", exc)
             started_play_mode = True
-            await vision_pkg._sleep(5.0)
+            await vision_pkg.bridge.wait_for_play_mode(True, timeout_seconds=30.0)
 
         for camera_name in camera_names:
             frames: list[VideoFrame] = []
@@ -198,7 +203,17 @@ async def get_video_frames(  # noqa: PLR0912, PLR0913, PLR0915
     finally:
         if started_play_mode:
             try:
-                await vision_pkg.bridge.set_play_mode(False)
+                try:
+                    await vision_pkg.bridge.wait_for_editor_ready(timeout_seconds=15.0)
+                except Exception as exc:
+                    vision_pkg.logger.debug("Editor state check before exit play mode: %s", exc)
+
+                try:
+                    await vision_pkg.bridge.set_play_mode(False)
+                except Exception as exc:
+                    vision_pkg.logger.info("Exit play mode requested, awaiting domain reload: %s", exc)
+
+                await vision_pkg.bridge.wait_for_play_mode(False, timeout_seconds=30.0)
             except Exception as exc:
                 vision_pkg.logger.exception("Failed to restore Play Mode after video capture")
                 restore_warning = f"failed to restore play mode: {exc}"
@@ -229,7 +244,9 @@ async def get_video_mp4(  # noqa: PLR0913
         fps: Recording frame rate (1 to 30). Defaults to 24.
         width: Video width in pixels. Defaults to 1280.
         height: Video height in pixels. Defaults to 720.
-        enter_play_mode: If True, temporarily enters Play Mode during capture.
+        enter_play_mode: If True, temporarily enters Play Mode during capture. Visora polls the bridge
+            to ensure domain reload completes before frames are captured. For authored clips, consider
+            sample_animation_clip in Edit Mode as a lightweight alternative.
 
     Returns:
         A VideoMp4Result containing base64-encoded MP4 bytes, saved artifact path, and video metadata.

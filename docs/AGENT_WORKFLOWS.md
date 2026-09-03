@@ -53,6 +53,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 4. For mesh problems, call `skinned_mesh_diagnostics` before changing materials or bones; its category distinguishes geometry/skinning from texture/material failures.
 5. For mutations, call `safe_transaction` with `record_undo=True`. If it fails, use its `undo_group` with `restore_scene_state` when necessary.
 6. For asset discovery and imports, call `search_assets` to discover CC0 materials and 3D models online, `download_and_import_asset` to download and automatically register assets with the Unity `AssetDatabase`, `inspect_imported_asset` to verify `ModelImporter` rig settings, and `instantiate_scene_asset` to place them into the scene with Undo tracking. Sketchfab's own search endpoint ignores the query text (it behaves as a browse listing, not a real search, even with `SKETCHFAB_API_TOKEN` set) — for a specific model that `search_assets` can't find, call `web_search_assets` instead; it finds the real Sketchfab page via web search and returns a `sketchfab:<uid>` ready for `download_and_import_asset`.
+7. When capturing video with `get_video_mp4` or `get_video_frames` with `enter_play_mode=True`, Visora actively polls and waits for domain reload and bridge re-binding before capturing frames, and safely restores Edit Mode on exit. When Domain Reload is enabled in Unity project settings, authored `AnimationClip` review can also be performed in Edit Mode using `sample_animation_clip` without domain reload overhead.
 
 ## Asset import safety
 

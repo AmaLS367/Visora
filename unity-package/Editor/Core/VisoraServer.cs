@@ -25,13 +25,30 @@ namespace Visora.Editor.Core
         static VisoraServer()
         {
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
+            AssemblyReloadEvents.afterAssemblyReload += () =>
+            {
+                if (VisoraSettings.AutoStart && !IsRunning)
+                {
+                    Start(VisoraSettings.ServerPort);
+                }
+            };
+            EditorApplication.playModeStateChanged += (change) =>
+            {
+                if (VisoraSettings.AutoStart && !IsRunning)
+                {
+                    Start(VisoraSettings.ServerPort);
+                }
+            };
             EditorApplication.quitting += Stop;
 
             if (VisoraSettings.AutoStart)
             {
                 EditorApplication.delayCall += () =>
                 {
-                    Start(VisoraSettings.ServerPort);
+                    if (!IsRunning)
+                    {
+                        Start(VisoraSettings.ServerPort);
+                    }
                 };
             }
         }

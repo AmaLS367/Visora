@@ -3,6 +3,7 @@ import struct
 import zlib
 from pathlib import Path
 
+import httpx
 import pytest
 
 from backend.schemas import (
@@ -58,6 +59,28 @@ class FakeBridge:
         self.play_mode_changes.append(active)
         self.editor_state = {"isPlaying": active}
         return {"success": True, "isPlaying": active}
+
+    async def wait_for_play_mode(
+        self,
+        target_playing: bool,
+        timeout_seconds: float = 30.0,
+        poll_interval_seconds: float = 0.5,
+    ) -> dict[str, object]:
+        del timeout_seconds, poll_interval_seconds
+        if self.fail_stop_play_mode and not target_playing:
+            raise RuntimeError("bridge unavailable during play mode restore")
+        self.editor_state = {"isPlaying": target_playing, "isCompiling": False, "isUpdating": False}
+        return self.editor_state
+
+    async def wait_for_editor_ready(
+        self,
+        timeout_seconds: float = 15.0,
+        poll_interval_seconds: float = 0.5,
+    ) -> dict[str, object]:
+        del timeout_seconds, poll_interval_seconds
+        if self.fail_stop_play_mode:
+            raise RuntimeError("bridge unavailable during play mode restore")
+        return self.editor_state
 
     @property
     def code(self) -> str | None:
@@ -655,3 +678,44 @@ async def test_get_video_mp4_reports_encoder_failure(monkeypatch: pytest.MonkeyP
 
     assert result.success is False
     assert result.error == "ffmpeg unavailable"
+
+
+@pytest.mark.anyio
+async def test_get_video_frames_handles_domain_reload_drop_and_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame = _png_base64((10, 20, 30), (4, 3))
+
+    class DomainReloadBridge(FakeBridge):
+        def __init__(self) -> None:
+            super().__init__([{"success": True, "result": {"imageBase64": frame, "width": 4, "height": 3}}])
+            self.set_play_mode_called = False
+            self.wait_for_play_mode_calls: list[bool] = []
+
+        async def set_play_mode(self, _active: bool) -> dict[str, object]:
+            self.set_play_mode_called = True
+            # Simulate socket drop / RemoteProtocolError when Unity unloads domain
+            raise httpx.RequestError("Connection reset by peer during assembly reload")
+
+        async def wait_for_play_mode(
+            self, target_playing: bool, timeout_seconds: float = 30.0, poll_interval_seconds: float = 0.5
+        ) -> dict[str, object]:
+            del timeout_seconds, poll_interval_seconds
+            self.wait_for_play_mode_calls.append(target_playing)
+            self.editor_state = {"isPlaying": target_playing, "isCompiling": False, "isUpdating": False}
+            return self.editor_state
+
+    reload_bridge = DomainReloadBridge()
+    monkeypatch.setattr(vision, "bridge", reload_bridge)
+    monkeypatch.setattr(vision, "_sleep", lambda _s: None)
+
+    result = await vision.get_video_frames(
+        duration_seconds=0.5,
+        fps=1,
+        width=4,
+        height=3,
+        enter_play_mode=True,
+    )
+
+    assert result.success is True
+    assert reload_bridge.set_play_mode_called is True
+    assert reload_bridge.wait_for_play_mode_calls == [True, False]
+    assert len(result.sequences[0].frames) == 1

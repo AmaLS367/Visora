@@ -164,13 +164,6 @@ class UnityBridge:
                 response = await self.client.request(method, url, **kwargs)
                 response.raise_for_status()
                 return response
-            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-                logger.warning(f"Bridge connection error on attempt {attempt + 1}/{max_attempts}: {e}")
-                self._active_port = None
-                last_exception = e
-            except httpx.ReadTimeout as e:
-                logger.warning(f"Bridge read timeout on attempt {attempt + 1}/{max_attempts}: {e}")
-                last_exception = e
             except httpx.HTTPStatusError as e:
                 logger.error(f"Bridge HTTP status error {e.response.status_code} for {path}: {e}")
                 raise BridgeHTTPError(
@@ -178,9 +171,13 @@ class UnityBridge:
                     status_code=e.response.status_code,
                     response_body=e.response.text,
                 ) from e
-            except BridgeConnectionError as e:
+            except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+                logger.warning(f"Bridge timeout on attempt {attempt + 1}/{max_attempts}: {e}")
                 last_exception = e
-                break
+            except (httpx.RequestError, BridgeConnectionError) as e:
+                logger.warning(f"Bridge connection error on attempt {attempt + 1}/{max_attempts}: {e}")
+                self._active_port = None
+                last_exception = e
 
             if attempt < max_attempts - 1:
                 await asyncio.sleep(self.settings.unity_bridge_retry_backoff * (attempt + 1))
@@ -247,6 +244,84 @@ class UnityBridge:
         """
         response = await self._request("POST", "/api/editor/play-mode", json={"action": "play" if active else "stop"})
         return cast(dict[str, Any], response.json())
+
+    async def wait_for_play_mode(
+        self,
+        target_playing: bool,
+        timeout_seconds: float = 30.0,
+        poll_interval_seconds: float = 0.5,
+    ) -> dict[str, Any]:
+        """
+        Polls get_editor_state until isPlaying matches target_playing and the editor is not compiling or updating.
+        Retries through temporary bridge connection drops (e.g. during Unity domain reloads).
+        """
+        start = time.perf_counter()
+        deadline = start + timeout_seconds
+        last_state: dict[str, Any] | None = None
+        last_error: Exception | None = None
+
+        while time.perf_counter() < deadline:
+            try:
+                state = await self.get_editor_state()
+                last_state = state
+                is_playing = bool(state.get("isPlaying", False))
+                is_compiling = bool(state.get("isCompiling", False))
+                is_updating = bool(state.get("isUpdating", False))
+
+                if is_playing == target_playing and not is_compiling and not is_updating:
+                    return state
+            except (BridgeConnectionError, BridgeTimeoutError, httpx.RequestError) as exc:
+                last_error = exc
+                logger.debug(
+                    "Bridge temporarily unavailable while waiting for play mode %s: %s",
+                    target_playing,
+                    exc,
+                )
+
+            await asyncio.sleep(poll_interval_seconds)
+
+        elapsed = time.perf_counter() - start
+        mode_str = "Play Mode" if target_playing else "Edit Mode"
+        state_str = f"last state: {last_state}" if last_state is not None else f"last error: {last_error}"
+        raise BridgeTimeoutError(
+            message=f"Timed out after {elapsed:.1f}s waiting for Unity to enter {mode_str} ({state_str}).",
+            timeout_seconds=timeout_seconds,
+        )
+
+    async def wait_for_editor_ready(
+        self,
+        timeout_seconds: float = 15.0,
+        poll_interval_seconds: float = 0.5,
+    ) -> dict[str, Any]:
+        """
+        Waits until the Unity bridge is reachable and the editor is idle (not compiling and not updating).
+        """
+        start = time.perf_counter()
+        deadline = start + timeout_seconds
+        last_state: dict[str, Any] | None = None
+        last_error: Exception | None = None
+
+        while time.perf_counter() < deadline:
+            try:
+                state = await self.get_editor_state()
+                last_state = state
+                is_compiling = bool(state.get("isCompiling", False))
+                is_updating = bool(state.get("isUpdating", False))
+
+                if not is_compiling and not is_updating:
+                    return state
+            except (BridgeConnectionError, BridgeTimeoutError, httpx.RequestError) as exc:
+                last_error = exc
+                logger.debug("Bridge not yet ready (attempting retry): %s", exc)
+
+            await asyncio.sleep(poll_interval_seconds)
+
+        elapsed = time.perf_counter() - start
+        state_str = f"last state: {last_state}" if last_state is not None else f"last error: {last_error}"
+        raise BridgeTimeoutError(
+            message=f"Timed out after {elapsed:.1f}s waiting for Unity editor to become ready ({state_str}).",
+            timeout_seconds=timeout_seconds,
+        )
 
     async def save_scene(self) -> dict[str, Any]:
         """
