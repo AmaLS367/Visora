@@ -1,7 +1,45 @@
 # Visora — Roadmap
 
 > **Current Release:** 🚀 **v0.1.2 (Completed)**<br>
-> **Next Target:** 🔮 **TBD**
+> **Next Target:** 🔮 **v0.1.3 — Animation Authoring & Temporal Verification**
+
+---
+
+## 🔮 Planned for v0.1.3 — Animation Authoring & Temporal Verification
+
+### 1. 🎥 Reliable High-FPS Animation Preview
+* **Status:** 🔜 Planned
+* **Scope:** Make short `game_camera` previews reliable for animation iteration. Harden Play Mode capture against every transient bridge response observed during domain reloads, including empty/non-JSON successful HTTP responses; wait for bridge re-binding and the first valid Game View render; discard or retry a pre-initialization camera frame; and always restore the original editor mode.
+* **Issue #4 follow-up:** The initial domain-reload/reconnect path is released, and explicit `playmode_management` can recover after the reload. Live Unity verification nevertheless exposed an unhandled empty-response edge case in video capture and a stale first Game View frame. Cover both with regressions before considering Play Mode preview dependable.
+* **Issue #6:** Make the documented 1–30 fps range of `get_video_mp4` real end-to-end. Its internal capture path must not reapply `get_video_frames`' 12 fps public-payload limit; retain an explicit maximum-frame safety bound and clear validation errors. Keep frame-sequence payload limits intentional and documented separately.
+
+### 2. ▶️ One-Step Animation Review
+* **Status:** 🔜 Planned
+* **Scope:** Add a high-level `preview_animation` workflow that prepares the target and clip, captures a low-resolution MP4 from the chosen camera, returns timestamped key frames and motion metrics, and restores temporary animation and editor state. This turns animation review into a fast preview → assess → adjust loop instead of manual per-frame screenshots.
+
+### 3. 🎬 Typed Clip, Event, and Camera Authoring
+* **Status:** 🔜 Planned
+* **Scope:** Provide typed, safe operations to create and edit AnimationClip curves: set or move keys, configure tangents/easing and holds, and create or remove animation events. Support a shared action timeline for character motion, camera recoil, flashes, and hit-stop so every impact has one authoritative timestamp rather than independent procedural effects.
+
+### 4. 🦿 Humanoid Retargeting and Contact Constraints
+* **Status:** 🔜 Planned
+* **Scope:** Add a workflow to validate/configure imported models as Humanoid, report Avatar creation blockers precisely, and preview compatible mocap retargeting. Add contact-oriented IK/baking primitives for feet and hands, with explicit diagnostics when a rig cannot support the requested constraint.
+
+### 5. 🧭 Agent Skills for Animation Workflows
+* **Status:** 🔜 Planned
+* **Scope:** Ship reusable Visora skills that prescribe tool selection and verification order rather than leaving agents to improvise editor scripts:
+  * `visora-animation-workflow` — rig/Avatar preflight, low-resolution preview iterations, timing and distance checks, and final-quality capture criteria.
+  * `visora-camera-action-workflow` — a single impact timestamp; synchronized pose, camera recoil, flash, and hit-stop; no unsynchronized procedural shake as the default.
+  * `visora-rig-retarget-workflow` — imported-rig inspection, Humanoid eligibility, mocap retarget fallback paths, and explicit no-Avatar guidance.
+* **Acceptance:** Skills must direct agents to report concrete bridge/Unity failures, never infer successful visual verification from a static screenshot, and use the smallest safe preview before final rendering.
+
+### 6. 🧾 Reproducible Preview Artifacts
+* **Status:** 🔜 Planned
+* **Scope:** Give each animation preview a stable artifact record containing its ID, scene and clip identities, camera, requested and actual capture settings, editor/bridge state, timestamps or named action markers, MP4 path, and generated key frames. Support comparison between two preview records so agents and humans can trace an observed improvement or regression back to the exact inputs.
+
+### 7. 🧪 Real Unity End-to-End Animation Fixtures
+* **Status:** 🔜 Planned
+* **Scope:** Add deterministic Unity integration fixtures and end-to-end tests for the production workflows that mocks cannot establish: Play Mode domain reload and bridge re-binding, empty transient responses, stale first Game View frames, high-FPS MP4 capture, a fast impact/hit-stop sequence, a Generic rig with no Avatar, and a valid Humanoid rig. Assert scene restoration and inspect the produced artifacts, not just API success responses.
 
 ---
 
