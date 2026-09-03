@@ -173,7 +173,11 @@ namespace Visora.Editor.Core
                 }
                 else if (method == "GET" && path == "/api/visora/info")
                 {
-                    responseJson = JsonUtility.ToJson(new BridgeInfoResponse
+                    // GetActiveScene() (and, per Unity's own guard, most other Editor/Scene APIs)
+                    // must run on the main thread - this handler runs on HttpListener's threadpool
+                    // thread, so calling it bare 500'd every request with "GetActiveScene can only
+                    // be called from the main thread." Confirmed live against a real Editor.
+                    var info = await MainThreadDispatcher.EnqueueAsync(() => new BridgeInfoResponse
                     {
                         success = true,
                         flavor = "visora-native",
@@ -207,20 +211,27 @@ namespace Visora.Editor.Core
                             "asset_instantiation"
                         }
                     });
+                    responseJson = JsonUtility.ToJson(info);
                 }
                 else if (method == "POST" && path == "/api/editor/state")
                 {
-                    var scene = SceneManager.GetActiveScene();
-                    responseJson = JsonUtility.ToJson(new EditorStateResponse
+                    // Same main-thread requirement as /api/visora/info above - verified live, this
+                    // was the very first call get_bridge_status's health check made, and it 500'd.
+                    var state = await MainThreadDispatcher.EnqueueAsync(() =>
                     {
-                        success = true,
-                        isPlaying = EditorApplication.isPlaying,
-                        isPaused = EditorApplication.isPaused,
-                        isCompiling = EditorApplication.isCompiling,
-                        activeSceneName = scene.name,
-                        activeScenePath = scene.path,
-                        isDirty = scene.isDirty
+                        var scene = SceneManager.GetActiveScene();
+                        return new EditorStateResponse
+                        {
+                            success = true,
+                            isPlaying = EditorApplication.isPlaying,
+                            isPaused = EditorApplication.isPaused,
+                            isCompiling = EditorApplication.isCompiling,
+                            activeSceneName = scene.name,
+                            activeScenePath = scene.path,
+                            isDirty = scene.isDirty
+                        };
                     });
+                    responseJson = JsonUtility.ToJson(state);
                 }
                 else if (method == "POST" && path == "/api/editor/play-mode")
                 {
