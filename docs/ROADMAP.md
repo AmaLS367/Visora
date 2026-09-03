@@ -13,7 +13,7 @@
 * **Security hardening:** Downloads now use HTTPS-only public-host validation, external quarantine staging, strict format/archive limits, collision-safe names, and verified Unity import results. Sketchfab IDs can be resolved directly by the import tool.
 
 ### 2. ⚙️ Production CI/CD (GitHub Actions)
-* **Status:** ⏳ Planned
+* **Status:** ✅ Completed
 * **Scope:** Create a polished, multi-stage GitHub Actions workflow suite covering code formatting (`ruff format`), strict linting (`ruff check`), static typing (`mypy`), automated unit and integration tests (`pytest`), and tag-triggered PyPI/GitHub release publishing.
 
 ### 3. 🐳 Polished Docker Support
