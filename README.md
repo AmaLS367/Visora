@@ -20,7 +20,7 @@ Visora is a high-level Model Context Protocol (MCP) server for Unity Editor. It 
 ## 🚀 Stack
 
 - **Python 3.10+**
-- **FastMCP (mcp)** — MCP server framework
+- **MCPServer (mcp)** — MCP server framework
 - **HTTPX** — Async HTTP client with automatic port discovery and retry backoff
 - **Pydantic v2 + pydantic-settings** — Typed config, validation, and structured tool output schemas
 - **Asyncio** — Asynchronous task loop & non-blocking ticket polling
@@ -33,7 +33,7 @@ Visora is a high-level Model Context Protocol (MCP) server for Unity Editor. It 
 visora/
 ├── backend/
 │   ├── __init__.py
-│   ├── app.py             # FastMCP application instance
+│   ├── app.py             # MCPServer application instance
 │   ├── server.py          # MCP server entrypoint
 │   ├── config.py          # Centralized Pydantic settings
 │   ├── bridge.py          # HTTP bridge client with multi-port failover

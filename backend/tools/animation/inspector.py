@@ -122,8 +122,7 @@ async def clip_inspector(clip_path: str) -> ClipInspectorResult:
     Returns:
         A ClipInspectorResult containing animation duration, frame rate, loop configuration, and curve metrics.
     """
-    res = await inspect_animation_clip(clip_path)
-    return cast(ClipInspectorResult, res)
+    return await inspect_animation_clip(clip_path)
 
 
 @mcp.tool()
@@ -137,8 +136,7 @@ async def analyze_animation_curves(clip_path: str) -> ClipInspectorResult:
     Returns:
         A ClipInspectorResult with dangerous curve warnings and curve distribution metrics.
     """
-    res = await inspect_animation_clip(clip_path)
-    return cast(ClipInspectorResult, res)
+    return await inspect_animation_clip(clip_path)
 
 
 __all__ = [
