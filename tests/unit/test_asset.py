@@ -5,6 +5,7 @@ import socket
 import tarfile
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -37,6 +38,7 @@ from backend.tools.asset.exceptions import (
     ZipSlipSecurityError,
 )
 from backend.tools.asset.operations import (
+    _filter_downloadable_items,
     download_and_import_asset,
     import_local_asset,
     inspect_imported_asset,
@@ -497,6 +499,74 @@ async def test_polypizza_search_without_key() -> None:
 
 
 @pytest.mark.anyio
+async def test_polypizza_search_with_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.tools.asset.providers.get_settings",
+        lambda: SimpleNamespace(poly_pizza_api_key="test-key", unity_bridge_timeout_seconds=10.0),
+    )
+
+    class MockResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict[str, Any]:
+            return {
+                "results": [
+                    {
+                        "id": "chair-1",
+                        "Title": "Low-poly chair",
+                        "Creator": "Visora Tester",
+                        "Download": "https://example.com/chair.glb",
+                        "Thumbnail": "https://example.com/chair.png",
+                        "TriCount": 42,
+                    }
+                ]
+            }
+
+    class MockClient:
+        async def __aenter__(self) -> MockClient:
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+        async def get(self, *args: Any, **kwargs: Any) -> MockResponse:
+            _ = args
+            assert kwargs["headers"] == {"x-auth-token": "test-key"}
+            return MockResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: MockClient())
+
+    items, warnings = await PolyPizzaProvider().search("chair")
+
+    assert warnings == []
+    assert items[0].id == "polypizza:chair-1"
+    assert items[0].download_url == "https://example.com/chair.glb"
+    assert items[0].details["triangles"] == 42
+
+
+@pytest.mark.anyio
+async def test_filter_downloadable_items_explains_hidden_sketchfab_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(operations, "get_settings", lambda: SimpleNamespace(sketchfab_api_token=""))
+    direct = AssetSearchResultItem(
+        id="ambientcg:Bricks001",
+        name="Bricks",
+        source="ambientcg",
+        download_url="https://example.com/bricks.zip",
+    )
+    sketchfab = AssetSearchResultItem(id="sketchfab:robot", name="Robot", source="sketchfab")
+    warnings: list[str] = []
+
+    filtered = await _filter_downloadable_items([direct, sketchfab], warnings)
+
+    assert filtered == [direct]
+    assert len(warnings) == 1
+    assert "SKETCHFAB_API_TOKEN" in warnings[0]
+
+
+@pytest.mark.anyio
 async def test_download_size_limit_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "large.glb"
 
@@ -531,6 +601,62 @@ async def test_download_size_limit_check(tmp_path: Path, monkeypatch: pytest.Mon
 
     with pytest.raises(DownloadError, match="exceeds maximum permitted limit"):
         await download_file_stream("https://example.com/large.glb", target, max_bytes=1000)
+
+
+@pytest.mark.anyio
+async def test_download_follows_https_redirects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "model.glb"
+    checked_urls: list[str] = []
+
+    async def validate_url(url: str) -> None:
+        checked_urls.append(url)
+
+    class MockResponse:
+        def __init__(self, status_code: int, headers: dict[str, str], chunks: list[bytes] | None = None) -> None:
+            self.status_code = status_code
+            self.headers = headers
+            self._chunks = chunks or []
+
+        async def aiter_bytes(self, chunk_size: int) -> Any:
+            _ = chunk_size
+            for chunk in self._chunks:
+                yield chunk
+
+    class StreamContext:
+        def __init__(self, response: MockResponse) -> None:
+            self.response = response
+
+        async def __aenter__(self) -> MockResponse:
+            return self.response
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+    class MockClient:
+        def __init__(self) -> None:
+            self.responses = [
+                MockResponse(302, {"location": "/assets/model.glb"}),
+                MockResponse(200, {"content-length": "5"}, [b"hello"]),
+            ]
+
+        async def __aenter__(self) -> MockClient:
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+        def stream(self, *args: Any, **kwargs: Any) -> StreamContext:
+            _ = (args, kwargs)
+            return StreamContext(self.responses.pop(0))
+
+    monkeypatch.setattr("backend.tools.asset.downloader.validate_remote_url", validate_url)
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: MockClient())
+
+    downloaded_bytes = await download_file_stream("https://example.com/start", target)
+
+    assert downloaded_bytes == 5
+    assert target.read_bytes() == b"hello"
+    assert checked_urls == ["https://example.com/start", "https://example.com/assets/model.glb"]
 
 
 @pytest.mark.anyio

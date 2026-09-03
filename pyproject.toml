@@ -22,6 +22,7 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.9.0",
     "pytest>=8.0.0",
+    "pytest-cov>=7.0.0",
 ]
 
 [build-system]
@@ -41,6 +42,14 @@ python_version = "3.10"
 strict = true
 ignore_missing_imports = true
 exclude = ["build", "dist"]
+
+[tool.coverage.run]
+branch = true
+source = ["backend"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend"]

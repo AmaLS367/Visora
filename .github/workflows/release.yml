@@ -68,7 +68,7 @@ jobs:
           uv run ruff format --check .
           uv run ruff check .
           uv run mypy .
-          uv run pytest
+          uv run pytest --cov=backend --cov-fail-under=80
 
       - name: Validate Unity package
         run: |
