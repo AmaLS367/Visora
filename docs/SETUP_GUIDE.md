@@ -41,3 +41,15 @@ Run the server through `uv run visora` or `uv run -- python -m backend.server`. 
 ## Verification and recovery
 
 Call `get_bridge_status` to identify the selected port and flavor. For a busy editor, use `wait_for_editor_idle`. For an unreachable bridge, confirm that Unity is open and the configured mode matches the bridge flavor. The exact tool names and parameters are maintained in [AGENT_WORKFLOWS.md](AGENT_WORKFLOWS.md).
+
+## Agent skills
+
+`skills/` ships Claude Code skill packages with workflow guidance an agent needs that isn't obvious from tool docstrings alone (provider quirks, format gotchas, how to verify a result instead of trusting a bare `success: true`). They only take effect in a project that has them - copy the ones you want into the Unity project's own `.claude/skills/` directory (the one Claude Code runs in, not this repo):
+
+```bash
+cp -r skills/visora-asset-workflow <your-unity-project>/.claude/skills/
+```
+
+- `visora-asset-workflow`: asset search/download/import - Sketchfab's broken search, `web_search_assets` as the workaround, supported file formats, glTF's missing-importer trap, and verifying an import actually produced a real asset.
+
+Every MCP client also receives a short, always-on version of the sharpest of these gotchas automatically through the server's own `instructions` (`backend/app.py`) - no copying required for that part. The skill is for the fuller detail on demand.
