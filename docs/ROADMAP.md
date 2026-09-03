@@ -1,11 +1,11 @@
 # Visora — Roadmap
 
-> **Current Release:** 🚀 **v0.1.0 (Completed)**  
-> **Next Target:** 🔮 **v0.1.1 (Planned)**
+> **Current Release:** 🚀 **v0.1.1 (Completed)**<br>
+> **Next Target:** 🔮 **TBD**
 
 ---
 
-## 🔮 Planned for v0.1.1
+## 🚀 Released in v0.1.1
 
 ### 1. 🌐 Asset Web Search & Auto-Download for Unity
 * **Status:** ✅ Completed
@@ -17,8 +17,8 @@
 * **Scope:** Create a polished, multi-stage GitHub Actions workflow suite covering code formatting (`ruff format`), strict linting (`ruff check`), static typing (`mypy`), automated unit and integration tests (`pytest`), and tag-triggered PyPI/GitHub release publishing.
 
 ### 3. 🐳 Polished Docker Support
-* **Status:** ⏳ Planned
-* **Scope:** Deliver a hardened, multi-stage `Dockerfile` and `docker-compose` configuration optimized for running Visora as a containerized headless MCP server with minimal image size, secure non-root execution, and configurable bridge network pass-through.
+* **Status:** ✅ Completed
+* **Scope:** Delivered a hardened, multi-stage `Dockerfile` and Compose configuration for running Visora as a containerized headless MCP server. The image has a minimal runtime stage, an immutable non-editable Python environment, a dedicated non-root user, bytecode compilation, cache-efficient locked dependency installation, and a restrictive default Compose sandbox with configurable Unity bridge access.
 
 ---
 

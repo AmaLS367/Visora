@@ -264,6 +264,24 @@ jobs:
           test -f unity-package/README.md
           test -f unity-package/CHANGELOG.md
 
+  docker:
+    name: Build and smoke-test container image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build production image
+        run: docker build --pull --tag visora:ci .
+
+      - name: Verify hardened runtime starts
+        run: >-
+          docker run --rm --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m
+          --cap-drop=ALL --security-opt=no-new-privileges
+          --entrypoint /app/.venv/bin/python visora:ci
+          -c 'from backend.config import get_settings; assert get_settings().asset_cache_dir == "/data/cache"'
+
   build:
     name: Build distribution
     runs-on: ubuntu-24.04

@@ -49,6 +49,8 @@ visora/
 │   ├── SETUP_GUIDE.md     # Installation and MCP client configuration
 │   └── ROADMAP.md         # Roadmap & feature matrix
 ├── tests/                 # Unit and integration test suites
+├── Dockerfile              # Hardened production container image
+├── compose.yaml            # Secure local MCP container configuration
 ├── pyproject.toml
 └── .env.example
 ```
@@ -84,6 +86,17 @@ uv run python -m backend.server
 # Or package CLI
 uv run visora
 ```
+
+### Docker
+
+Visora's container uses stdio, just like a local MCP server. Build and run it with Docker Compose:
+
+```bash
+docker compose build --pull
+docker compose run --rm -i visora
+```
+
+The Compose service reaches a Unity bridge on the host through `host.docker.internal`; configure bridge and optional provider variables in `.env`. See the [Docker setup guide](docs/SETUP_GUIDE.md#docker) for Linux networking and security details.
 
 ---
 

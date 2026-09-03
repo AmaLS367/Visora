@@ -38,6 +38,34 @@ LOG_LEVEL=INFO
 
 Run the server through `uv run visora` or `uv run -- python -m backend.server`. Configure the client command as `uv` with arguments `run`, `--directory`, `<absolute Visora path>`, `visora`.
 
+## Docker
+
+The production image is a multi-stage build: dependencies are installed from `uv.lock` in the builder and the final image contains only the resulting non-editable virtual environment. It runs as the unprivileged `visora` user (UID/GID `10001`) and does not expose an HTTP port because MCP communication uses standard input/output.
+
+Build and start an interactive MCP process:
+
+```bash
+docker compose build --pull
+docker compose run --rm -i visora
+```
+
+`compose.yaml` is deliberately restrictive: it drops Linux capabilities, prevents privilege escalation, uses a read-only root filesystem, gives `/tmp` a small `tmpfs`, and persists only the asset-download cache in the `visora-cache` volume. The project `.env` is never copied into the image; Compose supplies the documented settings as environment variables at runtime.
+
+By default, the container connects to `http://host.docker.internal:7890`, and `extra_hosts: host-gateway` makes that name work on Linux as well as Docker Desktop. Set `UNITY_BRIDGE_URL`, ports, mode, and optional provider credentials in `.env` (or pass them with `--env-file`) before running Compose.
+
+The native Unity bridge intentionally binds only to the host loopback interface. If it cannot be reached through `host.docker.internal` on Linux, use the host network explicitly:
+
+```bash
+docker run --rm -i --network host \
+  --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  -e UNITY_BRIDGE_URL=http://127.0.0.1 \
+  -v visora-cache:/data/cache \
+  visora:0.1.1
+```
+
+Do not mount the Docker socket or the Unity project into the Visora container: the server needs only outbound HTTP access to the bridge. Rebuild with `docker compose build --pull` regularly; the base image tags are patch-pinned and updating them keeps OS security fixes under review.
+
 ## Verification and recovery
 
 Call `get_bridge_status` to identify the selected port and flavor. For a busy editor, use `wait_for_editor_idle`. For an unreachable bridge, confirm that Unity is open and the configured mode matches the bridge flavor. The exact tool names and parameters are maintained in [AGENT_WORKFLOWS.md](AGENT_WORKFLOWS.md).

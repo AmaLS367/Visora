@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] - 2026-09-03
+
+### Added
+
+- **Asset web search and Unity import workflow:** agents can discover 3D assets on the web, download models, environments, rigs, textures, and props, then import them into the active Unity project. Direct `sketchfab:<uid>` resolution is supported when a model is already known.
+- **Asset-download security hardening:** HTTPS-only public-host validation, quarantine staging outside the Unity project, download and archive limits, collision-safe naming, and post-import inspection prevent a reported import from masking an empty or invalid result.
+- **Production CI/CD:** GitHub Actions now validates formatting, linting, strict typing, unit/integration coverage, and the Unity package; matching version tags build distributions and publish the PyPI package and GitHub release.
+- **Polished Docker support:** hardened multi-stage image with a locked, bytecode-compiled, non-editable Python environment and a dedicated non-root runtime user.
+- **Secure Compose runtime:** stdio-ready MCP configuration with a read-only root filesystem, dropped Linux capabilities, no-new-privileges policy, isolated writable asset cache, and configurable host Unity bridge connectivity.
+- **Container regression gate:** CI builds the production image and runs it under the same hardened runtime restrictions.
+- **Reproducible base images:** Docker base-image tags are pinned to immutable digests and kept current through Dependabot pull requests.
+
+See the [v0.1.1 roadmap](ROADMAP.md#-released-in-v011) for the delivery status and scope of these milestones.
+
+---
+
 ## [0.1.0] - 2026-09-02
 
 ### 🚀 Initial Release

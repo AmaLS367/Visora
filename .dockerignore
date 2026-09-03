@@ -1,0 +1,41 @@
+# Keep source control, credentials, local environments, and generated output
+# out of the build context.
+.git/
+.github/
+.code-review-graph/
+.env
+.env.*
+*.pem
+*.key
+
+# Python caches and local virtual environments are platform-specific.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+artifacts/
+build/
+dist/
+*.egg-info/
+
+# None of these files are required to build or run the server image.
+docs/
+tests/
+unity-package/
+skills/
+.idea/
+.vscode/
+.claude/
+.gemini/
+.qodo/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+compose.yaml
