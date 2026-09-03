@@ -83,6 +83,11 @@ jobs:
       - name: Build wheel and source distribution
         run: uv build
 
+      - name: Validate distribution integrity
+        run: |
+          uv run twine check dist/*
+          uv run python scripts/validate_distribution.py
+
       - name: Upload release distribution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

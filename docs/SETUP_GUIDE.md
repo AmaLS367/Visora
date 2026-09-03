@@ -61,7 +61,7 @@ docker run --rm -i --network host \
   --cap-drop ALL --security-opt no-new-privileges:true \
   -e UNITY_BRIDGE_URL=http://127.0.0.1 \
   -v visora-cache:/data/cache \
-  visora:0.1.1
+  visora:0.1.2
 ```
 
 Do not mount the Docker socket or the Unity project into the Visora container: the server needs only outbound HTTP access to the bridge. Rebuild with `docker compose build --pull` regularly; the base image tags are patch-pinned and updating them keeps OS security fixes under review.

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       target: runtime
-    image: visora:0.1.1
+    image: visora:0.1.2
     init: true
     stdin_open: true
     read_only: true

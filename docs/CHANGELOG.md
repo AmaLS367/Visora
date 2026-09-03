@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-09-03
+
+### Added
+
+- Apache License 2.0, declared through SPDX metadata and included in both wheel and source distributions.
+- Open-source contribution foundation: bug, feature, and usage-question forms; pull-request template; contributor guide; security policy; code of conduct; and support guide.
+- Complete PyPI metadata with authorship, discovery keywords, classifiers, and canonical project links.
+- PEP 561 `py.typed` marker and PyPI-ready README with an installation and Unity bridge quickstart.
+- Distribution integrity gates that run `twine check` and verify the license and typing artifacts before release upload.
+
+---
+
 ## [0.1.1] - 2026-09-03
 
 ### Added

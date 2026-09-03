@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a focused improvement to Visora's agent-facing Unity workflow.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Explain the agent or Unity workflow friction, not only the proposed implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the desired tool behavior, inputs, outputs, safety constraints, and verification path.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: willingness
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to help implement or test this feature.
+          required: false

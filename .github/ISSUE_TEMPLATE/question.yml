@@ -1,0 +1,26 @@
+name: Usage question
+description: Ask for help using Visora after consulting the setup and workflow guides.
+title: "[Question]: "
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do?
+      description: Describe the intended Unity and MCP workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Link the relevant documentation section and include any safe-to-share output.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Visora version, OS, Unity version, and bridge mode.
+      render: text
+    validations:
+      required: true

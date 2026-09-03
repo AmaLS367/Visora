@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup and workflow documentation
+    url: https://github.com/AmaLS367/Visora/blob/master/docs/SETUP_GUIDE.md
+    about: Check installation, Unity bridge, and MCP client setup before opening an issue.
+  - name: Report a security vulnerability privately
+    url: https://github.com/AmaLS367/Visora/security/advisories/new
+    about: Do not disclose security vulnerabilities in public issues.

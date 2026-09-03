@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable --no-install-project
 
 COPY backend ./backend
-COPY README.md ./README.md
+COPY README.md LICENSE ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
@@ -34,7 +34,7 @@ FROM python AS runtime
 
 ARG APP_UID=10001
 ARG APP_GID=10001
-ARG VERSION=0.1.1
+ARG VERSION=0.1.2
 
 LABEL org.opencontainers.image.title="Visora" \
       org.opencontainers.image.description="High-level Model Context Protocol server for Unity Editor" \

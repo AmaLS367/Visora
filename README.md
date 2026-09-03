@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.png" alt="Visora Banner" width="100%">
+  <img src="https://raw.githubusercontent.com/AmaLS367/Visora/master/docs/assets/banner.png" alt="Visora Banner" width="100%">
 </p>
 
 # Visora 👁️
@@ -10,10 +10,10 @@ Visora is a high-level Model Context Protocol (MCP) server for Unity Editor. It 
 
 ## 📚 Documentation
 
-- 📖 **[Agent Workflow Guide & Practical Recipes](docs/AGENT_WORKFLOWS.md)** — Step-by-step diagnostic recipes, camera projections, rig/animation debugging, and agent safety rules.
-- ⚙️ **[Setup & Integration Guide](docs/SETUP_GUIDE.md)** — Setup instructions for Unity Editor, AnkleBreaker, `.env` config, and client setups (Claude Desktop, Cursor, Antigravity, OpenCode).
-- 🗺️ **[Roadmap & Progress](docs/ROADMAP.md)** — Current status and milestones.
-- 📝 **[Changelog](docs/CHANGELOG.md)** — Release history and version notes.
+- 📖 **[Agent Workflow Guide & Practical Recipes](https://github.com/AmaLS367/Visora/blob/master/docs/AGENT_WORKFLOWS.md)** — Step-by-step diagnostic recipes, camera projections, rig/animation debugging, and agent safety rules.
+- ⚙️ **[Setup & Integration Guide](https://github.com/AmaLS367/Visora/blob/master/docs/SETUP_GUIDE.md)** — Setup instructions for Unity Editor, AnkleBreaker, `.env` config, and client setups (Claude Desktop, Cursor, Antigravity, OpenCode).
+- 🗺️ **[Roadmap & Progress](https://github.com/AmaLS367/Visora/blob/master/docs/ROADMAP.md)** — Current status and milestones.
+- 📝 **[Changelog](https://github.com/AmaLS367/Visora/blob/master/docs/CHANGELOG.md)** — Release history and version notes.
 
 ---
 
@@ -59,7 +59,16 @@ visora/
 
 ## 🛠️ Getting Started
 
-### Installation
+### Install from PyPI
+
+```bash
+pip install visora
+visora
+```
+
+Visora starts an MCP server over standard input/output. Keep a Unity Editor open with either AnkleBreaker or the bundled `com.visora.editor` package configured as its HTTP bridge; see the [setup guide](https://github.com/AmaLS367/Visora/blob/master/docs/SETUP_GUIDE.md).
+
+### Development Installation
 
 ```bash
 # Using uv (recommended)
@@ -102,4 +111,12 @@ The Compose service reaches a Unity bridge on the host through `host.docker.inte
 
 ## 🧰 Available MCP Tools
 
-The generated, source-of-truth list of all 24 registered tools and their current parameters is in [docs/AGENT_WORKFLOWS.md](docs/AGENT_WORKFLOWS.md#tool-catalog).
+The generated, source-of-truth list of all 24 registered tools and their current parameters is in the [Agent Workflow Guide](https://github.com/AmaLS367/Visora/blob/master/docs/AGENT_WORKFLOWS.md#tool-catalog).
+
+---
+
+## License
+
+Copyright 2026 Ama.
+
+Licensed under the [Apache License, Version 2.0](LICENSE).

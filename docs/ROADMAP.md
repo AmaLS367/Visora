@@ -1,7 +1,31 @@
 # Visora — Roadmap
 
-> **Current Release:** 🚀 **v0.1.1 (Completed)**<br>
+> **Current Release:** 🚀 **v0.1.2 (Completed)**<br>
 > **Next Target:** 🔮 **TBD**
+
+---
+
+## 🚀 Released in v0.1.2 — Open-Source & Packaging Foundation
+
+### 1. ⚖️ Apache-2.0 Licensing
+* **Status:** ✅ Completed
+* **Scope:** Added the complete Apache License 2.0 text, SPDX package metadata, and a distributed license file so the reuse and redistribution terms are explicit for all consumers.
+
+### 2. 🤝 Contribution & Community Health
+* **Status:** ✅ Completed
+* **Scope:** Added structured GitHub issue forms for bugs, feature requests, and questions; a security-aware issue chooser; a PR template; contributor guidance; a security policy; a code of conduct; and support guidance.
+
+### 3. 📦 First-Class PyPI Metadata
+* **Status:** ✅ Completed
+* **Scope:** Polished `pyproject.toml` with authorship, discovery keywords, Python/platform classifiers, SPDX licensing, and canonical links to source, documentation, issue tracker, and changelog so PyPI presents Visora as a complete package.
+
+### 4. 🧩 Typed & Installable Distribution
+* **Status:** ✅ Completed
+* **Scope:** Published the PEP 561 `py.typed` marker and improved the PyPI-rendered README with absolute links, an install command, and a concise MCP/Unity bridge quickstart.
+
+### 5. ✅ Distribution Integrity Gates
+* **Status:** ✅ Completed
+* **Scope:** Extended CI to validate built package metadata and assert that released distributions include legal and typing artifacts before publishing.
 
 ---
 

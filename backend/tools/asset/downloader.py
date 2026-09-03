@@ -116,7 +116,7 @@ async def download_file_stream(
     timeout = timeout_seconds or settings.asset_download_timeout_seconds
     target_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = target_path.with_suffix(target_path.suffix + ".tmp")
-    headers = {"User-Agent": "Visora-MCP/0.1.1 (Unity Agent; https://github.com/AmaLS367/Visora)"}
+    headers = {"User-Agent": "Visora-MCP/0.1.2 (Unity Agent; https://github.com/AmaLS367/Visora)"}
     current_url = url
 
     try:
