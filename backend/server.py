@@ -17,7 +17,7 @@ from backend.tools import animation, asset, bridge, mesh, queue, scene, vision
 
 
 def main() -> None:
-    logger.info("Running Visora server via FastMCP...")
+    logger.info("Running Visora server via MCPServer...")
     mcp.run()
 
 

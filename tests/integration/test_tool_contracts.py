@@ -166,6 +166,8 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     monkeypatch.setattr(animation, "bridge", failing_bridge)
     monkeypatch.setattr(mesh, "bridge", failing_bridge)
 
+    res: BaseToolResult
+
     # 1. get_bridge_status
     res = await bridge.health.get_bridge_status(scan_all_ports=False)
     assert isinstance(res, BaseToolResult)
@@ -303,6 +305,8 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     monkeypatch.setattr(vision, "bridge", error_bridge)
     monkeypatch.setattr(animation, "bridge", error_bridge)
     monkeypatch.setattr(mesh, "bridge", error_bridge)
+
+    res: BaseToolResult
 
     # 1. safe_transaction with error C# code
     res = await scene.execution.safe_transaction("invalid c#")

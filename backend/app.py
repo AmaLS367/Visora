@@ -1,4 +1,4 @@
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 # The MCP `instructions` field is sent to every connecting client as part of its own context, with
 # no per-project setup required (unlike a Claude Code skill file, which only applies if a user
@@ -17,4 +17,4 @@ one. download_and_import_asset fails explicitly if it's missing, rather than imp
 the result: asset_type should be a real type with submesh_count > 0, not an empty placeholder.
 See docs/AGENT_WORKFLOWS.md for the full tool catalog and workflow sequence."""
 
-mcp = FastMCP("Visora", instructions=INSTRUCTIONS)
+mcp = MCPServer("Visora", instructions=INSTRUCTIONS)

@@ -15,7 +15,7 @@ WORKFLOW_PATH = Path("docs/AGENT_WORKFLOWS.md")
 
 
 def render_catalog() -> str:
-    """Return a deterministic Markdown table from FastMCP's registered tool metadata."""
+    """Return a deterministic Markdown table from MCPServer's registered tool metadata."""
     rows = ["| Tool | Parameters | Result |", "| --- | --- | --- |"]
     for tool in sorted(mcp._tool_manager._tools.values(), key=lambda item: item.name):
         properties = tool.parameters.get("properties", {})

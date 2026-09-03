@@ -8,7 +8,7 @@ Visora is a typed MCP layer for Unity Editor diagnostics and safe scene work. Ev
 
 ## Tool catalog
 
-An asterisk marks a required parameter. This region is generated from FastMCP registration; run `uv run -- python scripts/render_tool_catalog.py` after changing a tool.
+An asterisk marks a required parameter. This region is generated from MCPServer registration; run `uv run -- python scripts/render_tool_catalog.py` after changing a tool.
 
 <!-- GENERATED_TOOL_CATALOG_START -->
 | Tool | Parameters | Result |
@@ -65,4 +65,3 @@ Use a result's provider ID (for example, `sketchfab:<uid>`) as `asset_id` when n
 ## Scene safety
 
 `save_scene` rejects Play Mode and compilation by default. `force_during_play_mode=True` is an intentional dangerous override; use it only when persistence of Play Mode state is explicitly required. `safe_transaction(auto_save=True)` skips automatic saves in Play Mode and reports this as a warning.
-
