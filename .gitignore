@@ -160,3 +160,7 @@ Thumbs.db
 .claude/
 .gemini/
 .qodo/
+
+# .NET build output for the Unity package compile gate
+tools/unity-compile-gate/bin/
+tools/unity-compile-gate/obj/

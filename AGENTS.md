@@ -71,6 +71,28 @@ uv run mypy .
 uv run pytest
 ```
 
+#### C# Gate for the Unity Package (`unity-package/`)
+
+Unity is normally the only thing that compiles `unity-package/`, so a C# mistake stays invisible
+until someone imports the package into the Editor. Never hand-verify C# by reading it. After ANY
+change under `unity-package/`, run:
+
+```bash
+uv run python scripts/check_unity_package.py            # compile against real Unity assemblies
+uv run python scripts/check_unity_package.py --format   # also verify C# formatting
+```
+
+The gate builds the package sources against the `UnityEngine`/`UnityEditor` assemblies of an
+installed Unity (auto-discovered, or `VISORA_UNITY_MANAGED_DIR`), with .NET analyzers and
+`Microsoft.Unity.Analyzers` enabled and `LangVersion` pinned to the C# version Unity accepts.
+
+- Requires the .NET SDK and a local Unity installation; the gate reports precisely which is missing.
+- The gate project lives in `tools/unity-compile-gate/` and is a checking tool only - it is never
+  shipped, referenced by Unity, or imported by the package.
+- Analyzer severities for package sources live in `unity-package/.editorconfig`.
+- Zero errors is the bar. Existing warnings (obsolete Unity APIs, culture-sensitive string calls)
+  are known debt; do not add new ones.
+
 <!-- code-review-graph MCP tools -->
 
 ## MCP Tools: code-review-graph
