@@ -9,7 +9,7 @@ namespace Visora.Editor.Services
     {
         public static Dictionary<string, object> ListCameras()
         {
-            var cameras = UnityEngine.Object.FindObjectsOfType<Camera>();
+            var cameras = UnityEngine.Object.FindObjectsByType<Camera>();
             var items = new List<object>();
             foreach (var camera in cameras)
             {

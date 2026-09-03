@@ -70,7 +70,7 @@ namespace Visora.Editor.Services
                 if (Camera.main != null) return Camera.main;
             }
 
-            var cameras = UnityEngine.Object.FindObjectsOfType<Camera>();
+            var cameras = UnityEngine.Object.FindObjectsByType<Camera>();
             foreach (var cam in cameras)
             {
                 if (cam.name.Equals(cameraName, StringComparison.OrdinalIgnoreCase))
