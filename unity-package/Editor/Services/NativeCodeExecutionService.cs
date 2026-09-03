@@ -26,7 +26,11 @@ namespace Visora.Editor.Services
             await ExecutionLock.WaitAsync();
             var logs = new List<string>();
             Application.LogCallback callback = (condition, _, type) => logs.Add($"{type}: {condition}");
-            Application.logMessageReceivedThreaded += callback;
+            // Subscribing toggles Unity's native "is a callback defined" flag (SetLogCallbackDefined),
+            // which is main-thread-only - found live, this whole method runs on the HTTP handler's
+            // threadpool thread, so a bare += 500'd every /api/editor/execute-code call with
+            // "SetLogCallbackDefined can only be called from the main thread."
+            await MainThreadDispatcher.EnqueueAsync(() => Application.logMessageReceivedThreaded += callback);
 
             string sourcePath = null;
             string assemblyPath = null;
@@ -62,7 +66,7 @@ namespace Visora.Editor.Services
             }
             finally
             {
-                Application.logMessageReceivedThreaded -= callback;
+                await MainThreadDispatcher.EnqueueAsync(() => Application.logMessageReceivedThreaded -= callback);
                 Cleanup(sourcePath);
                 Cleanup(assemblyPath);
                 Cleanup(assemblyPath == null ? null : Path.ChangeExtension(assemblyPath, ".pdb"));
