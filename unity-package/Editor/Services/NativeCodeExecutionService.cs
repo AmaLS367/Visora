@@ -99,9 +99,20 @@ internal static class {typeName}
                 var builder = new AssemblyBuilder(assemblyPath, new[] { sourcePath })
                 {
                     referencesOptions = ReferencesOptions.UseEngineModules,
+                    // ReferencesOptions.UseEngineModules only guarantees UnityEngine.* references;
+                    // CompilationPipeline.GetAssemblies() returns compiled project/package script
+                    // assemblies, not Unity's own precompiled Editor module DLLs. Found live: a
+                    // snippet using UnityEditor.EditorApplication / UnityEditor.SceneManagement.
+                    // EditorSceneManager (both defined in UnityEditor.CoreModule.dll) failed with
+                    // CS0234 "namespace does not exist" because that module was never referenced.
+                    // Explicitly referencing the already-loaded EditorApplication assembly
+                    // guarantees UnityEditor.CoreModule is always available, regardless of what
+                    // CompilationPipeline happens to report.
                     additionalReferences = CompilationPipeline.GetAssemblies()
                         .Select(assembly => assembly.outputPath)
                         .Where(path => !string.IsNullOrEmpty(path))
+                        .Append(typeof(EditorApplication).Assembly.Location)
+                        .Distinct()
                         .ToArray()
                 };
                 builder.buildFinished += (_, messages) => completion.TrySetResult(messages
