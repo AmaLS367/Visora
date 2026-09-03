@@ -1,18 +1,63 @@
 import asyncio
 import logging
 import time
-from typing import Any, cast
+from typing import Any
 
 import httpx
 
 from backend.bridge.exceptions import (
     BridgeConnectionError,
     BridgeHTTPError,
+    BridgeProtocolError,
     BridgeTimeoutError,
 )
 from backend.config import Settings, get_settings
 
 logger = logging.getLogger("backend.bridge")
+
+
+def _decode_json(response: httpx.Response) -> dict[str, Any]:
+    """
+    Decodes a bridge response body into a JSON object.
+
+    Every bridge call funnels through here so that a successful HTTP status carrying an unusable body
+    becomes a typed BridgeProtocolError instead of a raw JSONDecodeError. Unity returns exactly that
+    during a domain reload: the listener answers 200 before the managed side can serialise a payload.
+    """
+    body = response.text
+    try:
+        path = response.request.url.path
+    except RuntimeError:
+        path = "<unknown>"
+    preview = body[:200]
+
+    if not body.strip():
+        raise BridgeProtocolError(
+            message=f"Bridge returned an empty body for '{path}' with status {response.status_code}.",
+            status_code=response.status_code,
+            content_type=response.headers.get("content-type"),
+            body_preview=preview,
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise BridgeProtocolError(
+            message=f"Bridge returned a non-JSON body for '{path}': {preview!r}",
+            status_code=response.status_code,
+            content_type=response.headers.get("content-type"),
+            body_preview=preview,
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise BridgeProtocolError(
+            message=f"Bridge returned {type(payload).__name__} instead of a JSON object for '{path}'.",
+            status_code=response.status_code,
+            content_type=response.headers.get("content-type"),
+            body_preview=preview,
+        )
+
+    return payload
 
 
 class UnityBridge:
@@ -62,11 +107,12 @@ class UnityBridge:
                 logger.debug(f"Pinging Unity Bridge on {test_url}...")
                 response = await self.client.get(test_url, timeout=self.settings.unity_bridge_ping_timeout_seconds)
                 if response.status_code == 200:
-                    data = (
-                        response.json()
-                        if response.headers.get("content-type", "").startswith("application/json")
-                        else {}
-                    )
+                    try:
+                        data: dict[str, Any] = _decode_json(response)
+                    except BridgeProtocolError:
+                        # A bridge answering 200 with no usable body is mid-domain-reload; treat it
+                        # as an unidentified flavor rather than letting discovery fail outright.
+                        data = {}
                     flavor = data.get("flavor", "anklebreaker") if isinstance(data, dict) else "anklebreaker"
                     if not self._flavor_matches_mode(flavor):
                         logger.debug(
@@ -203,7 +249,7 @@ class UnityBridge:
             json={"code": code, "timeoutSeconds": self.settings.unity_bridge_execution_timeout_seconds},
             timeout=self.settings.unity_bridge_execution_timeout_seconds,
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def execute_capability(
         self,
@@ -215,7 +261,7 @@ class UnityBridge:
         """Runs a capability through native HTTP when available, otherwise through the compatible executor."""
         if native_path is not None and await self.is_native_bridge():
             response = await self._request("POST", native_path, json=native_payload or {})
-            return cast(dict[str, Any], response.json())
+            return _decode_json(response)
         return await self.execute_code(legacy_code)
 
     async def render_camera(
@@ -236,14 +282,14 @@ class UnityBridge:
     async def get_editor_state(self) -> dict[str, Any]:
         """Returns current Unity editor state including play mode, compilation, and active scene."""
         response = await self._request("POST", "/api/editor/state")
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def set_play_mode(self, active: bool) -> dict[str, Any]:
         """
         Sets the Unity Editor Play Mode state (active=True to play, active=False to stop).
         """
         response = await self._request("POST", "/api/editor/play-mode", json={"action": "play" if active else "stop"})
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def wait_for_play_mode(
         self,
@@ -270,7 +316,7 @@ class UnityBridge:
 
                 if is_playing == target_playing and not is_compiling and not is_updating:
                     return state
-            except (BridgeConnectionError, BridgeTimeoutError, httpx.RequestError) as exc:
+            except (BridgeConnectionError, BridgeTimeoutError, BridgeProtocolError, httpx.RequestError) as exc:
                 last_error = exc
                 logger.debug(
                     "Bridge temporarily unavailable while waiting for play mode %s: %s",
@@ -310,7 +356,7 @@ class UnityBridge:
 
                 if not is_compiling and not is_updating:
                     return state
-            except (BridgeConnectionError, BridgeTimeoutError, httpx.RequestError) as exc:
+            except (BridgeConnectionError, BridgeTimeoutError, BridgeProtocolError, httpx.RequestError) as exc:
                 last_error = exc
                 logger.debug("Bridge not yet ready (attempting retry): %s", exc)
 
@@ -328,21 +374,21 @@ class UnityBridge:
         Forces the Unity Editor to save the currently active scene.
         """
         response = await self._request("POST", "/api/scene/save")
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def get_compilation_errors(self) -> dict[str, Any]:
         """
         Retrieves active compiler errors and warnings from the Unity project.
         """
         response = await self._request("GET", "/api/compilation/errors")
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def get_queue_status(self, ticket_id: str) -> dict[str, Any]:
         """
         Checks the status of a long-running ticket in the AnkleBreaker task queue.
         """
         response = await self._request("GET", "/api/queue/status", params={"ticketId": ticket_id})
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def get_bridge_flavor(self, force_refresh: bool = False) -> str:
         """
@@ -368,7 +414,7 @@ class UnityBridge:
         if await self.is_native_bridge():
             try:
                 response = await self._request("GET", "/api/visora/info")
-                return cast(dict[str, Any], response.json())
+                return _decode_json(response)
             except Exception as e:
                 logger.warning(f"Failed to fetch native bridge info, falling back: {e}")
 
@@ -405,7 +451,7 @@ class UnityBridge:
             "/api/visora/camera/render",
             json={"cameraName": camera_name, "width": width, "height": height, "format": image_format},
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def capture_sequence_native(
         self,
@@ -427,12 +473,12 @@ class UnityBridge:
                 "frameIntervalSeconds": interval,
             },
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def diagnose_mesh_native(self, target_name: str = "") -> dict[str, Any]:
         """Direct native mesh diagnostics via /api/visora/mesh/diagnose."""
         response = await self._request("POST", "/api/visora/mesh/diagnose", json={"targetName": target_name})
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def diagnose_skeleton_native(self, root_object_name: str = "", search_query: str = "") -> dict[str, Any]:
         """Direct native skeleton diagnostics via /api/visora/skeleton/diagnose."""
@@ -441,12 +487,12 @@ class UnityBridge:
             "/api/visora/skeleton/diagnose",
             json={"rootObjectName": root_object_name, "searchQuery": search_query},
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def inspect_clip_native(self, clip_name: str) -> dict[str, Any]:
         """Direct native AnimationClip curve inspection via /api/visora/animation/inspect."""
         response = await self._request("POST", "/api/visora/animation/inspect", json={"clipName": clip_name})
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def sample_clip_native(self, clip_name: str, target_object_name: str, sample_time: float) -> dict[str, Any]:
         """Direct native AnimationClip sampling via /api/visora/animation/sample."""
@@ -455,12 +501,12 @@ class UnityBridge:
             "/api/visora/animation/sample",
             json={"clipName": clip_name, "targetObjectName": target_object_name, "sampleTime": sample_time},
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def begin_transaction_native(self, description: str = "Visora Agent Operation") -> dict[str, Any]:
         """Direct native scene transaction begin via /api/visora/transaction/begin."""
         response = await self._request("POST", "/api/visora/transaction/begin", json={"description": description})
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def commit_transaction_native(self, transaction_id: str, save_scene: bool = False) -> dict[str, Any]:
         """Direct native scene transaction commit via /api/visora/transaction/commit."""
@@ -469,7 +515,7 @@ class UnityBridge:
             "/api/visora/transaction/commit",
             json={"transactionId": transaction_id, "saveScene": save_scene},
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def rollback_transaction_native(self, transaction_id: str) -> dict[str, Any]:
         """Direct native scene transaction rollback via /api/visora/transaction/rollback."""
@@ -478,12 +524,12 @@ class UnityBridge:
             "/api/visora/transaction/rollback",
             json={"transactionId": transaction_id},
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def get_project_paths_native(self) -> dict[str, Any]:
         """Direct native project path query via /api/visora/asset/paths."""
         response = await self._request("GET", "/api/visora/asset/paths")
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def import_asset_native(self, asset_path: str, allow_unitypackage: bool = False) -> dict[str, Any]:
         """Direct native asset import via /api/visora/asset/import."""
@@ -492,12 +538,12 @@ class UnityBridge:
             "/api/visora/asset/import",
             json={"assetPath": asset_path, "allowUnityPackage": allow_unitypackage},
         )
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def inspect_asset_native(self, asset_path: str) -> dict[str, Any]:
         """Direct native asset inspection via /api/visora/asset/inspect."""
         response = await self._request("POST", "/api/visora/asset/inspect", json={"assetPath": asset_path})
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def instantiate_asset_native(  # noqa: PLR0913
         self,
@@ -518,14 +564,14 @@ class UnityBridge:
             "name": name or "",
         }
         response = await self._request("POST", "/api/visora/asset/instantiate", json=payload)
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def cancel_queue_ticket(self, ticket_id: str) -> dict[str, Any]:
         """
         Attempts to cancel a long-running ticket in the AnkleBreaker task queue.
         """
         response = await self._request("POST", "/api/queue/cancel", json={"ticketId": ticket_id})
-        return cast(dict[str, Any], response.json())
+        return _decode_json(response)
 
     async def close(self) -> None:
         """Closes the underlying HTTPX client."""

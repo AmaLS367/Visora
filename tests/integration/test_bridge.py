@@ -9,6 +9,7 @@ from backend.bridge import (
     BridgeConnectionError,
     BridgeError,
     BridgeHTTPError,
+    BridgeProtocolError,
     BridgeTimeoutError,
     UnityBridge,
 )
@@ -753,3 +754,96 @@ async def test_native_capability_falls_back_to_native_executor_when_no_typed_end
     with patch.object(bridge.client, "request", return_value=mock_tx_rollback):
         res = await bridge.rollback_transaction_native("tx_123")
         assert res["success"] is True
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_fragment"),
+    [
+        ("", "empty body"),
+        ("   \n ", "empty body"),
+        ("<html>Unity is reloading</html>", "non-JSON body"),
+        ("null", "NoneType instead of a JSON object"),
+        ("[1, 2, 3]", "list instead of a JSON object"),
+    ],
+)
+@pytest.mark.anyio
+async def test_successful_response_with_unusable_body_raises_protocol_error(
+    mock_settings: Settings,
+    body: str,
+    expected_fragment: str,
+) -> None:
+    """
+    Unity answers 200 with an empty or non-JSON body while a domain reload is in flight. Before this
+    was typed, callers got a bare JSONDecodeError that no retry path recognised.
+    """
+    bridge = UnityBridge(settings=mock_settings)
+    request = httpx.Request("POST", "http://127.0.0.1:7890/api/editor/execute-code")
+    response = httpx.Response(200, text=body, request=request)
+
+    with patch.object(bridge, "_request", new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = response
+        with pytest.raises(BridgeProtocolError) as excinfo:
+            await bridge.execute_code("return 1;")
+
+    assert expected_fragment in excinfo.value.message
+    assert excinfo.value.status_code == 200
+    assert "/api/editor/execute-code" in excinfo.value.message
+
+
+@pytest.mark.anyio
+async def test_wait_for_play_mode_retries_through_unusable_body(mock_settings: Settings) -> None:
+    """An unusable body means Unity is still reloading, so polling must keep waiting, not fail."""
+    bridge = UnityBridge(settings=mock_settings)
+    call_count = 0
+
+    async def reloading_then_ready() -> dict[str, Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise BridgeProtocolError(
+                message="Bridge returned an empty body for '/api/editor/state' with status 200.",
+                status_code=200,
+            )
+        return {"isPlaying": True, "isCompiling": False, "isUpdating": False}
+
+    with patch.object(bridge, "get_editor_state", side_effect=reloading_then_ready):
+        state = await bridge.wait_for_play_mode(target_playing=True, timeout_seconds=2.0, poll_interval_seconds=0.01)
+
+    assert state["isPlaying"] is True
+    assert call_count >= 2
+
+
+@pytest.mark.anyio
+async def test_wait_for_editor_ready_retries_through_unusable_body(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    call_count = 0
+
+    async def reloading_then_ready() -> dict[str, Any]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise BridgeProtocolError(message="Bridge returned a non-JSON body for '/api/editor/state': '<html>'")
+        return {"isPlaying": False, "isCompiling": False, "isUpdating": False}
+
+    with patch.object(bridge, "get_editor_state", side_effect=reloading_then_ready):
+        state = await bridge.wait_for_editor_ready(timeout_seconds=2.0, poll_interval_seconds=0.01)
+
+    assert state["isCompiling"] is False
+    assert call_count >= 2
+
+
+@pytest.mark.anyio
+async def test_port_discovery_survives_empty_ping_body(mock_settings: Settings) -> None:
+    """
+    A bridge mid-reload answers /api/ping with 200 and no body. Discovery must still accept the port
+    rather than treating the whole bridge as unreachable.
+    """
+    bridge = UnityBridge(settings=mock_settings)
+    request = httpx.Request("GET", "http://127.0.0.1:7890/api/ping")
+    response = httpx.Response(200, text="", request=request)
+
+    with patch.object(bridge.client, "get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = response
+        port = await bridge.get_active_port()
+
+    assert port == 7890
