@@ -109,7 +109,7 @@ jobs:
           path: dist/
 
       - name: Publish distribution
-        uses: pypa/gh-action-pypi-publish@a892a5a61159132606e93a2fa6f4358831b04d26 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   create-github-release:
     name: Create GitHub release
@@ -126,7 +126,7 @@ jobs:
           path: dist/
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: ${{ needs.verify-and-build.outputs.release_tag }}
           generate_release_notes: true
