@@ -138,6 +138,23 @@ namespace Visora.Editor.Services
                         result.error = $"Asset was not registered by Unity: {normalizedPath}";
                         return result;
                     }
+                    // AssetDatabase always assigns SOME object to a copied file, even one with no
+                    // registered importer - it falls back to an opaque DefaultAsset rather than
+                    // returning null. Found live importing a real Sketchfab .gltf download: this
+                    // project has no glTF importer package installed (vanilla Unity has none built
+                    // in, unlike .fbx/.obj), so mainObj was a non-null DefaultAsset with zero mesh/
+                    // material/texture data - the null check above passed and this reported
+                    // success=true for a completely inert asset. Rejecting DefaultAsset specifically
+                    // catches exactly that case without affecting any format Unity actually supports.
+                    if (mainObj is DefaultAsset)
+                    {
+                        result.success = false;
+                        result.error = $"Unity has no importer for this file type - it was registered as an " +
+                            $"opaque DefaultAsset with no mesh/material/texture data, not a usable model: " +
+                            $"{normalizedPath}. For .gltf/.glb, install a glTF import package (e.g. " +
+                            $"com.unity.cloud.gltfast) - Unity has no built-in glTF importer.";
+                        return result;
+                    }
                     result.importedObjects.Add(normalizedPath);
                 }
 
