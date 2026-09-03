@@ -177,11 +177,13 @@ def test_scene_schemas_serialization() -> None:
         rolled_back=False,
         scene_saved=True,
         execution_result={"created": "Cube"},
+        compilation_errors=["Snippet.cs(1,10): error CS1002: ; expected"],
         logs=["Created Cube"],
         message="Transaction complete",
     )
     assert tx_res.transaction_id == "tx-999"
     assert tx_res.undo_group == 42
+    assert tx_res.compilation_errors == ["Snippet.cs(1,10): error CS1002: ; expected"]
 
     # RestoreSceneResult
     restore_res = RestoreSceneResult(

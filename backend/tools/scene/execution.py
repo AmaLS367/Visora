@@ -83,10 +83,26 @@ async def safe_transaction(  # noqa: PLR0913
         result: dict[str, Any] = await scene_pkg.bridge.execute_capability(editor_code)
         logs: list[str] = cast(list[str], result.get("logs", []))
 
+        # Extract compiler diagnostics if returned by bridge
+        raw_compilation_errors = result.get("compilationErrors") or result.get("compilation_errors")
+        compilation_errors: list[str] | None = None
+        if isinstance(raw_compilation_errors, list):
+            compilation_errors = [str(e) for e in raw_compilation_errors if e]
+
         if not result.get("success", True) or result.get("error"):
             err_msg = str(result.get("error", "Code execution failed"))
             if restore_on_failure:
                 rolled_back = await _execute_undo_rollback(scene_pkg.bridge, undo_group, warnings)
+
+            if compilation_errors:
+                first_diagnostics = compilation_errors[:3]
+                diag_summary = "; ".join(first_diagnostics)
+                if len(compilation_errors) > 3:
+                    diag_summary += f" (+{len(compilation_errors) - 3} more)"
+                err_msg = f"{err_msg}: {diag_summary}"
+                msg = f"Transaction failed: {diag_summary}" + (" (rolled back)." if rolled_back else ".")
+            else:
+                msg = "Transaction failed" + (" and rolled back." if rolled_back else ".")
 
             return SafeTransactionResult(
                 success=False,
@@ -96,9 +112,10 @@ async def safe_transaction(  # noqa: PLR0913
                 undo_group=undo_group,
                 rolled_back=rolled_back,
                 execution_result=result.get("result"),
+                compilation_errors=compilation_errors,
                 logs=logs,
                 warnings=warnings,
-                message="Transaction failed" + (" and rolled back." if rolled_back else "."),
+                message=msg,
             )
 
         # Step 4: Post-transaction save

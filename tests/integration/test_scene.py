@@ -346,6 +346,45 @@ async def test_safe_transaction_failure_auto_rollback(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.anyio
+async def test_safe_transaction_compilation_errors_surfaced(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_bridge = FakeBridge(
+        editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},
+        execute_responses=[
+            # 1. Undo group start
+            {"success": True, "result": {"undoGroup": 106}},
+            # 2. Main code execution fails with compilationErrors
+            {
+                "success": False,
+                "error": "Compilation failed",
+                "compilationErrors": [
+                    "VisoraSnippet_123.cs(6,30): error CS1002: ; expected",
+                    "VisoraSnippet_123.cs(6,35): error CS1513: } expected",
+                ],
+                "logs": [],
+            },
+            # 3. Rollback execution
+            {"success": True, "result": {"reverted": True}},
+        ],
+    )
+    monkeypatch.setattr(scene, "bridge", fake_bridge)
+
+    result = await scene.safe_transaction(
+        editor_code="float[] X = { 1f, 2f }};",
+        restore_on_failure=True,
+        record_undo=True,
+    )
+
+    assert result.success is False
+    assert result.compilation_errors == [
+        "VisoraSnippet_123.cs(6,30): error CS1002: ; expected",
+        "VisoraSnippet_123.cs(6,35): error CS1513: } expected",
+    ]
+    assert "CS1002" in (result.error or "")
+    assert "CS1002" in result.message
+    assert result.rolled_back is True
+
+
+@pytest.mark.anyio
 async def test_safe_transaction_auto_save_in_edit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_bridge = FakeBridge(
         editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},

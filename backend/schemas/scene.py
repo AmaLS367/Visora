@@ -61,6 +61,9 @@ class SafeTransactionResult(BaseToolResult):
     undo_group: int | None = Field(default=None, description="Unity Undo group index for this transaction")
     rolled_back: bool = Field(default=False, description="Whether changes were rolled back due to error")
     execution_result: Any | None = Field(default=None, description="Returned value from executed editor code")
+    compilation_errors: list[str] | None = Field(
+        default=None, description="Compiler diagnostics if code compilation failed"
+    )
     logs: list[str] = Field(default_factory=list, description="Logs captured during editor code execution")
     warnings: list[str] = Field(default_factory=list, description="Non-blocking transaction warnings")
     message: str = Field(..., description="Status message detailing the outcome of the transaction")

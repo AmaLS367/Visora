@@ -62,7 +62,11 @@ namespace Visora.Editor.Services
             }
             catch (Exception exception)
             {
-                return Failure(exception.Message, null, logs);
+                if (exception is TargetInvocationException tie && tie.InnerException != null)
+                {
+                    exception = tie.InnerException;
+                }
+                return Failure($"{exception.GetType().Name}: {exception.Message}", null, logs);
             }
             finally
             {
