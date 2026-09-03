@@ -326,9 +326,14 @@ namespace Visora.Editor.Services
                 result.success = true;
                 result.game_object_name = instance.name;
                 result.game_object_path = fullPath;
-                // GetInstanceID() is a hard compile error (CS0619) on Unity 6.6+; GetEntityId()
-                // implicitly converts to int, so instance_id's wire type is unaffected.
-                result.instance_id = instance.GetEntityId();
+                // GetInstanceID() is a hard compile error (CS0619) on Unity 6.6+; GetEntityId()'s
+                // own implicit int conversion is ALSO obsolete-as-error there ("EntityId will not
+                // be representable by an int in the future") - confirmed live, the first fix just
+                // traded one CS0619 for another. GetRawData() (raw ulong, not obsolete) plus a
+                // plain numeric cast avoids the deprecated operator entirely; truncating to int
+                // keeps instance_id's wire type unchanged for now, same tradeoff the deprecated
+                // conversion already made.
+                result.instance_id = unchecked((int)instance.GetEntityId().GetRawData());
                 result.world_position = new List<float>
                 {
                     instance.transform.position.x,
