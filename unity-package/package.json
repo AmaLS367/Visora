@@ -1,6 +1,6 @@
 {
   "name": "com.visora.editor",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": "Visora Editor Bridge",
   "description": "High-performance native Unity Editor bridge for Visora AI agents. Provides camera rendering, editor coroutines, scene transactions, and persistent diagnostics over HTTP.",
   "unity": "2021.3",
