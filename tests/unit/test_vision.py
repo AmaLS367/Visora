@@ -801,3 +801,149 @@ async def test_diagnostic_lit_skips_stale_frame_warm_up(monkeypatch: pytest.Monk
     assert result.success is True
     # Exactly two captures: no baseline and no warm-up renders were spent.
     assert len(fake_bridge.codes) == 2
+
+
+class NativeSequenceBridge(FakeBridge):
+    """Bridge double advertising Unity-side recording, as the Visora package 1.2.0 does."""
+
+    def __init__(self, payload: dict[str, object], features: set[str] | None = None) -> None:
+        super().__init__([])
+        self.payload = payload
+        self.features = features if features is not None else {"camera_sequence_realtime", "camera_diagnostic_sequence"}
+        self.native_sequence_calls: list[dict[str, object]] = []
+
+    async def supports_feature(self, feature: str, force_refresh: bool = False) -> bool:
+        del force_refresh
+        return feature in self.features
+
+    async def capture_sequence_native(
+        self,
+        camera_name: str = "Main Camera",
+        width: int = 1280,
+        height: int = 720,
+        frame_count: int = 10,
+        interval: float = 0.1,
+    ) -> dict[str, object]:
+        self.native_sequence_calls.append(
+            {"camera": camera_name, "frame_count": frame_count, "interval": interval, "mode": "game_camera"}
+        )
+        return self.payload
+
+    async def capture_diagnostic_sequence_native(
+        self,
+        subject_path: str | None = None,
+        width: int = 1280,
+        height: int = 720,
+        frame_count: int = 10,
+        interval: float = 0.1,
+    ) -> dict[str, object]:
+        self.native_sequence_calls.append(
+            {"subject": subject_path, "frame_count": frame_count, "interval": interval, "mode": "diagnostic_lit"}
+        )
+        return self.payload
+
+
+def _native_payload(frame_images: list[str], actual_fps: float = 9.5) -> dict[str, object]:
+    return {
+        "success": True,
+        "cameraName": "Main Camera",
+        "width": 4,
+        "height": 3,
+        "requestedFps": 24.0,
+        "actualFps": actual_fps,
+        "timingSource": "native_realtime",
+        "totalDuration": 2.3,
+        "frames": [
+            {"frameIndex": index, "timestamp": index * 0.1, "imageBase64": image}
+            for index, image in enumerate(frame_images)
+        ],
+        "warnings": ["Capture kept up at only 9.5 fps of the requested 24.0 fps"],
+    }
+
+
+@pytest.mark.anyio
+async def test_capture_uses_native_recorder_when_advertised(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Unity records the sequence on its own clock in one request. Capturing frame by frame over HTTP
+    spends a round trip each time, which caps the real rate far below any requested one.
+    """
+    first = _png_base64((0, 0, 0), (4, 3))
+    second = _png_base64((0, 0, 0), (4, 3), changed_pixel=(1, 1, (255, 255, 255)))
+    bridge = NativeSequenceBridge(_native_payload([first, second]))
+    monkeypatch.setattr(vision, "bridge", bridge)
+    monkeypatch.setattr(vision, "_sleep", _no_sleep)
+
+    result = await vision.get_video_frames(mode="game_camera", duration_seconds=1.0, fps=12, width=4, height=3)
+
+    assert result.success is True
+    sequence = result.sequences[0]
+    assert sequence.timing_source == "native_realtime"
+    assert sequence.actual_fps == pytest.approx(9.5)
+    assert [frame.timestamp_seconds for frame in sequence.frames] == [0.0, pytest.approx(0.1)]
+    # One request for the whole recording, and no per-frame renders.
+    assert len(bridge.native_sequence_calls) == 1
+    assert bridge.native_sequence_calls[0]["frame_count"] == 12
+    assert bridge.codes == []
+
+
+@pytest.mark.anyio
+async def test_native_recorder_skips_stale_frame_warm_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The native recorder renders the camera directly, so it cannot return a pre-Play-Mode image."""
+    frame = _png_base64((0, 0, 0), (4, 3))
+    bridge = NativeSequenceBridge(_native_payload([frame, frame]))
+    monkeypatch.setattr(vision, "bridge", bridge)
+    monkeypatch.setattr(vision, "_sleep", _no_sleep)
+
+    await vision.get_video_frames(mode="game_camera", duration_seconds=1.0, fps=2, width=4, height=3)
+
+    # No baseline or warm-up renders were spent.
+    assert bridge.codes == []
+
+
+@pytest.mark.anyio
+async def test_capture_falls_back_when_bridge_lacks_native_recording(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An older Visora package answers the same endpoint with different behaviour, so it is not used."""
+    frame = _png_base64((0, 0, 0), (2, 2))
+    bridge = NativeSequenceBridge(_native_payload([frame]), features=set())
+    bridge.responses = [{"success": True, "result": {"imageBase64": frame, "width": 2, "height": 2}}] * 2
+    monkeypatch.setattr(vision, "bridge", bridge)
+    monkeypatch.setattr(vision, "_sleep", _no_sleep)
+
+    result = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+
+    assert result.success is True
+    assert result.sequences[0].timing_source == "python_wallclock"
+    assert bridge.native_sequence_calls == []
+    assert len(bridge.codes) == 2
+
+
+@pytest.mark.anyio
+async def test_capture_falls_back_when_native_recording_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame = _png_base64((0, 0, 0), (2, 2))
+    bridge = NativeSequenceBridge({"success": False, "error": "No camera named 'Main Camera' was found"})
+    bridge.responses = [{"success": True, "result": {"imageBase64": frame, "width": 2, "height": 2}}] * 2
+    monkeypatch.setattr(vision, "bridge", bridge)
+    monkeypatch.setattr(vision, "_sleep", _no_sleep)
+
+    result = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+
+    assert result.success is True
+    assert result.sequences[0].timing_source == "python_wallclock"
+    assert any("Native sequence recording was unavailable" in warning for warning in result.warnings)
+
+
+@pytest.mark.anyio
+async def test_repeated_frame_warnings_are_reported_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A live capture returned the same lighting caveat 24 times, once per frame."""
+    frame = _png_base64((0, 0, 0), (2, 2))
+    payload = {
+        "success": True,
+        "result": {"imageBase64": frame, "width": 2, "height": 2, "warnings": ["diagnostic_lit uses temporary camera"]},
+    }
+    monkeypatch.setattr(vision, "bridge", FakeBridge([payload] * 4))
+    monkeypatch.setattr(vision, "_sleep", _no_sleep)
+
+    result = await vision.get_video_frames(duration_seconds=1.0, fps=4, width=2, height=2)
+
+    lighting = [w for w in result.sequences[0].warnings if "temporary camera" in w]
+    assert lighting == ["diagnostic_lit uses temporary camera (reported on 4 frames)"]

@@ -2,6 +2,7 @@ import base64
 import time
 from dataclasses import dataclass, field
 from itertools import pairwise
+from typing import Any
 
 import backend.tools.vision as vision_pkg
 from backend.app import mcp
@@ -38,6 +39,14 @@ _STATIC_FRAME_RATIO = 0.001
 
 # Frame timing is measured, never assumed. Each source says how the timestamps were produced.
 _TIMING_PYTHON_WALLCLOCK = "python_wallclock"
+_TIMING_NATIVE_REALTIME = "native_realtime"
+
+# Unity records a whole sequence itself when the package advertises these. Recording per frame over
+# HTTP costs a round trip each time, which caps the real rate far below any requested one.
+_NATIVE_SEQUENCE_FEATURE = {
+    "game_camera": "camera_sequence_realtime",
+    "diagnostic_lit": "camera_diagnostic_sequence",
+}
 
 
 @dataclass
@@ -226,6 +235,7 @@ async def _capture_sequence(  # noqa: PLR0913
 ) -> VideoFrameSequence:
     """Records one camera's frames, measuring the timing actually achieved rather than assuming it."""
     frames: list[VideoFrame] = []
+    frame_warnings: dict[str, list[int]] = {}
     started_at = time.perf_counter()
 
     for frame_index in range(count):
@@ -243,10 +253,17 @@ async def _capture_sequence(  # noqa: PLR0913
             break
 
         frames.append(frame)
-        sequence_warnings.extend(f"frame {frame_index}: {warning}" for warning in frame.warnings)
+        for warning in frame.warnings:
+            frame_warnings.setdefault(warning, []).append(frame_index)
 
         if frame_index < count - 1:
             await vision_pkg._sleep(1 / fps)
+
+    for warning, indices in frame_warnings.items():
+        if len(indices) == 1:
+            sequence_warnings.append(f"frame {indices[0]}: {warning}")
+        else:
+            sequence_warnings.append(f"{warning} (reported on {len(indices)} frames)")
 
     actual_fps: float | None = None
     if len(frames) >= 2:
@@ -286,6 +303,151 @@ async def _capture_sequence(  # noqa: PLR0913
     )
 
 
+async def _bridge_supports(feature: str) -> bool:
+    """
+    Reports whether the bridge advertises a capability, treating any failure as "no".
+
+    A missing capability is a routing decision, not an error: the caller simply records frame by
+    frame instead, so an unreachable or older bridge must not turn into a failed capture here.
+    """
+    try:
+        return bool(await vision_pkg.bridge.supports_feature(feature))
+    except Exception as exc:
+        vision_pkg.logger.info("Bridge capability '%s' could not be confirmed: %s", feature, exc)
+        return False
+
+
+def _sequence_from_native_payload(  # noqa: PLR0913
+    payload: dict[str, Any],
+    camera_name: str,
+    mode: str,
+    duration_seconds: float,
+    fps: int,
+    width: int,
+    height: int,
+    include_motion_metrics: bool,
+) -> VideoFrameSequence | None:
+    """Converts a Unity-recorded sequence into the tool schema, or None if Unity reported failure."""
+    if not payload.get("success"):
+        return None
+
+    raw_frames = payload.get("frames")
+    if not isinstance(raw_frames, list) or not raw_frames:
+        return None
+
+    resolved_camera = str(payload.get("cameraName") or camera_name)
+    frames: list[VideoFrame] = []
+    for position, raw_frame in enumerate(raw_frames):
+        if not isinstance(raw_frame, dict):
+            continue
+        image_base64 = raw_frame.get("imageBase64")
+        if not isinstance(image_base64, str) or not image_base64:
+            continue
+        frames.append(
+            VideoFrame(
+                frame_index=int(raw_frame.get("frameIndex", position)),
+                timestamp_seconds=float(raw_frame.get("timestamp", 0.0)),
+                camera_name=resolved_camera,
+                mode=mode,
+                image_base64=image_base64,
+                width=int(payload.get("width", width) or width),
+                height=int(payload.get("height", height) or height),
+            )
+        )
+
+    if not frames:
+        return None
+
+    raw_warnings = payload.get("warnings")
+    warnings = [str(item) for item in raw_warnings] if isinstance(raw_warnings, list) else []
+
+    motion_metrics: list[FrameMotionMetrics] = []
+    if include_motion_metrics:
+        motion_metrics = [
+            _motion_metric_from_frames(
+                from_frame=previous.frame_index,
+                to_frame=current.frame_index,
+                before_base64=previous.image_base64,
+                after_base64=current.image_base64,
+            )
+            for previous, current in pairwise(frames)
+        ]
+        if motion_metrics and max(metric.changed_pixel_ratio for metric in motion_metrics) < _STATIC_FRAME_RATIO:
+            warnings.append("near-zero visual motion detected across sampled frames")
+
+    actual_fps = payload.get("actualFps")
+
+    return VideoFrameSequence(
+        camera_name=resolved_camera,
+        mode=mode,
+        duration_seconds=duration_seconds,
+        fps=fps,
+        actual_fps=float(actual_fps) if isinstance(actual_fps, (int, float)) and actual_fps > 0 else None,
+        timing_source=str(payload.get("timingSource") or _TIMING_NATIVE_REALTIME),
+        frames=frames,
+        motion_metrics=motion_metrics,
+        warnings=warnings,
+    )
+
+
+async def _capture_native_sequence(  # noqa: PLR0913
+    camera_name: str,
+    subject_path: str | None,
+    mode: str,
+    duration_seconds: float,
+    fps: int,
+    width: int,
+    height: int,
+    count: int,
+    include_motion_metrics: bool,
+) -> VideoFrameSequence | None:
+    """
+    Asks Unity to record the whole sequence and return it in one response.
+
+    Unity advances the frames on its own clock, so this is the only path where a requested frame rate
+    can actually be met - recording over HTTP spends a round trip per frame. Returns None when the
+    recording could not be produced, leaving the caller to fall back to per-frame capture.
+    """
+    interval = 1.0 / fps
+    try:
+        if mode == "game_camera":
+            payload = await vision_pkg.bridge.capture_sequence_native(
+                camera_name=camera_name,
+                width=width,
+                height=height,
+                frame_count=count,
+                interval=interval,
+            )
+        else:
+            payload = await vision_pkg.bridge.capture_diagnostic_sequence_native(
+                subject_path=subject_path,
+                width=width,
+                height=height,
+                frame_count=count,
+                interval=interval,
+            )
+    except Exception as exc:
+        vision_pkg.logger.warning("Native sequence capture failed, falling back to per-frame capture: %s", exc)
+        return None
+
+    sequence = _sequence_from_native_payload(
+        payload=payload,
+        camera_name=camera_name,
+        mode=mode,
+        duration_seconds=duration_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        include_motion_metrics=include_motion_metrics,
+    )
+    if sequence is None:
+        vision_pkg.logger.warning(
+            "Native sequence capture returned no usable frames (%s), falling back to per-frame capture",
+            payload.get("error"),
+        )
+    return sequence
+
+
 async def _enter_play_mode_for_capture(  # noqa: PLR0913
     *,
     camera_name: str,
@@ -294,6 +456,7 @@ async def _enter_play_mode_for_capture(  # noqa: PLR0913
     width: int,
     height: int,
     warnings: list[str],
+    needs_warm_up: bool,
 ) -> None:
     """
     Enters Play Mode and waits until the view is showing the running scene.
@@ -310,7 +473,7 @@ async def _enter_play_mode_for_capture(  # noqa: PLR0913
             width=width,
             height=height,
         )
-        if mode == "game_camera"
+        if needs_warm_up and mode == "game_camera"
         else None
     )
 
@@ -389,6 +552,8 @@ async def _capture_frame_sequences(  # noqa: PLR0913
         state = await vision_pkg.bridge.get_editor_state()
         was_playing = bool(state.get("isPlaying", False))
 
+        use_native = await _bridge_supports(_NATIVE_SEQUENCE_FEATURE[mode])
+
         if enter_play_mode and not was_playing:
             await _enter_play_mode_for_capture(
                 camera_name=camera_names[0],
@@ -397,12 +562,34 @@ async def _capture_frame_sequences(  # noqa: PLR0913
                 width=width,
                 height=height,
                 warnings=outcome.warnings,
+                needs_warm_up=not use_native,
             )
             started_play_mode = True
 
         for camera_name in camera_names:
-            outcome.sequences.append(
-                await _capture_sequence(
+            sequence = (
+                await _capture_native_sequence(
+                    camera_name=camera_name,
+                    subject_path=subject_path,
+                    mode=mode,
+                    duration_seconds=duration_seconds,
+                    fps=fps,
+                    width=width,
+                    height=height,
+                    count=count,
+                    include_motion_metrics=include_motion_metrics,
+                )
+                if use_native
+                else None
+            )
+
+            if sequence is None:
+                if use_native:
+                    outcome.warnings.append(
+                        "Native sequence recording was unavailable; frames were captured one bridge "
+                        "round trip at a time, so the real frame rate is far below the requested one."
+                    )
+                sequence = await _capture_sequence(
                     camera_name=camera_name,
                     subject_path=subject_path,
                     mode=mode,
@@ -414,7 +601,8 @@ async def _capture_frame_sequences(  # noqa: PLR0913
                     include_motion_metrics=include_motion_metrics,
                     sequence_warnings=[],
                 )
-            )
+
+            outcome.sequences.append(sequence)
 
         if not outcome.success:
             outcome.error = "no video frames were captured"

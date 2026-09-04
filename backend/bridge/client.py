@@ -73,6 +73,7 @@ class UnityBridge:
         self.fallback_port = self.settings.unity_bridge_fallback_port
         self._active_port: int | None = None
         self._bridge_flavor: str | None = None
+        self._supported_features: frozenset[str] | None = None
         self.client = httpx.AsyncClient(timeout=self.settings.unity_bridge_timeout_seconds)
 
     @property
@@ -407,6 +408,32 @@ class UnityBridge:
         flavor = await self.get_bridge_flavor(force_refresh=force_refresh)
         return flavor == "visora-native"
 
+    async def supports_feature(self, feature: str, force_refresh: bool = False) -> bool:
+        """
+        Reports whether the connected bridge advertises a named capability.
+
+        Checking the flavor alone is not enough: an older Visora package serves the same endpoint
+        paths with different semantics, so a capability has to be advertised before it is used.
+        """
+        if force_refresh:
+            self._supported_features = None
+
+        if self._supported_features is None:
+            if not await self.is_native_bridge():
+                self._supported_features = frozenset()
+            else:
+                try:
+                    info = await self.get_bridge_info()
+                    features = info.get("supportedFeatures", [])
+                    self._supported_features = (
+                        frozenset(str(item) for item in features) if isinstance(features, list) else frozenset()
+                    )
+                except Exception as exc:
+                    logger.warning("Could not read bridge capabilities, assuming none: %s", exc)
+                    return False
+
+        return feature in self._supported_features
+
     async def get_bridge_info(self) -> dict[str, Any]:
         """
         Retrieves detailed information about the active bridge, Unity editor version, and supported features.
@@ -453,6 +480,17 @@ class UnityBridge:
         )
         return _decode_json(response)
 
+    def _sequence_timeout(self, frame_count: int, interval: float) -> float:
+        """
+        Budget for a native sequence request, which stays open for the whole recording.
+
+        Unity records across real editor time, so the response cannot arrive before the capture ends;
+        the default per-request timeout would abort a recording that is working correctly.
+        """
+        recording_seconds = max(0.0, frame_count * max(0.0, interval))
+        render_seconds = frame_count * 0.5
+        return max(self.settings.unity_bridge_timeout_seconds, recording_seconds + render_seconds + 15.0)
+
     async def capture_sequence_native(
         self,
         camera_name: str = "Main Camera",
@@ -472,6 +510,75 @@ class UnityBridge:
                 "frameCount": frame_count,
                 "frameIntervalSeconds": interval,
             },
+            timeout=self._sequence_timeout(frame_count, interval),
+        )
+        return _decode_json(response)
+
+    async def capture_diagnostic_native(
+        self,
+        subject_path: str | None = None,
+        width: int = 1280,
+        height: int = 720,
+    ) -> dict[str, Any]:
+        """Single diagnostic_lit frame via /api/visora/camera/diagnostic."""
+        response = await self._request(
+            "POST",
+            "/api/visora/camera/diagnostic",
+            json={"subjectPath": subject_path or "", "width": width, "height": height},
+        )
+        return _decode_json(response)
+
+    async def capture_diagnostic_sequence_native(
+        self,
+        subject_path: str | None = None,
+        width: int = 1280,
+        height: int = 720,
+        frame_count: int = 10,
+        interval: float = 0.1,
+    ) -> dict[str, Any]:
+        """Diagnostic_lit sequence via /api/visora/camera/diagnostic-sequence, built on one temporary rig."""
+        response = await self._request(
+            "POST",
+            "/api/visora/camera/diagnostic-sequence",
+            json={
+                "subjectPath": subject_path or "",
+                "width": width,
+                "height": height,
+                "frameCount": frame_count,
+                "frameIntervalSeconds": interval,
+            },
+            timeout=self._sequence_timeout(frame_count, interval),
+        )
+        return _decode_json(response)
+
+    async def preview_animation_sequence_native(  # noqa: PLR0913
+        self,
+        camera_name: str,
+        clip_path: str,
+        target_object_path: str,
+        width: int = 640,
+        height: int = 360,
+        frame_count: int = 24,
+        fps: float = 24.0,
+        start_time: float = 0.0,
+        end_time: float = 0.0,
+    ) -> dict[str, Any]:
+        """Deterministic Edit Mode clip preview via /api/visora/animation/preview-sequence."""
+        response = await self._request(
+            "POST",
+            "/api/visora/animation/preview-sequence",
+            json={
+                "cameraName": camera_name,
+                "clipPath": clip_path,
+                "targetObjectPath": target_object_path,
+                "width": width,
+                "height": height,
+                "frameCount": frame_count,
+                "fps": fps,
+                "startTime": start_time,
+                "endTime": end_time,
+            },
+            timeout=self._sequence_timeout(frame_count, 1.0 / fps if fps > 0 else 0.0),
         )
         return _decode_json(response)
 
