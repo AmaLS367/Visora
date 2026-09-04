@@ -241,3 +241,107 @@ class BoneSearchResult(BaseToolResult):
     root_transform_path: str | None = Field(default=None, description="Hierarchy path to the searched root")
     query: str | None = Field(default=None, description="The bone name query that was searched for")
     matches: list[BoneMatch] = Field(default_factory=list, description="Matching bones, best matches first")
+
+
+class AnimationPreviewKeyFrame(BaseModel):
+    """One frame the preview singles out for inspection, carrying why it was chosen."""
+
+    frame_index: int = Field(..., description="Zero-based index in the captured sequence")
+    timestamp_seconds: float = Field(..., description="Clip time this frame was sampled at")
+    normalized_time: float = Field(..., description="Position within the previewed range, 0.0 to 1.0")
+    source: str = Field(
+        ...,
+        description="Why this frame was selected: boundary, clip_event, motion_peak, or equidistant",
+    )
+    event_functions: list[str] = Field(
+        default_factory=list,
+        description="Every AnimationEvent function at this frame; Unity permits several at one time",
+    )
+    image_base64: str = Field(..., description="Base64 encoded PNG frame")
+    width: int = Field(..., description="Frame width in pixels")
+    height: int = Field(..., description="Frame height in pixels")
+    changed_pixel_ratio_from_previous: float | None = Field(
+        default=None, description="Motion into this frame; None for the first frame"
+    )
+
+
+class AnimationPreviewMotionSummary(BaseModel):
+    """Where the previewed range moves and where it holds still."""
+
+    peak_motion_timestamp: float | None = Field(
+        default=None, description="Clip time of the largest inter-frame change; None when static"
+    )
+    peak_changed_pixel_ratio: float = Field(default=0.0, description="Largest inter-frame changed-pixel ratio")
+    mean_changed_pixel_ratio: float = Field(default=0.0, description="Mean inter-frame changed-pixel ratio")
+    static_intervals: list[list[float]] = Field(
+        default_factory=list, description="Ranges [start, end] where consecutive frames matched"
+    )
+    is_static: bool = Field(default=False, description="True when no frame pair exceeded the motion threshold")
+
+
+class AnimationPreviewResult(BaseToolResult):
+    """Result schema for the one-step authored animation review."""
+
+    clip_name: str | None = Field(default=None, description="Resolved AnimationClip name")
+    clip_path: str | None = Field(default=None, description="Requested AnimationClip asset path or name")
+    clip_length: float | None = Field(default=None, description="Full clip length in seconds")
+    loop_time: bool = Field(default=False, description="Whether the clip is configured to loop")
+    target_object_path: str = Field(..., description="Scene path of the GameObject the clip was sampled on")
+
+    camera_name: str = Field(..., description="Camera the caller requested")
+    rendered_camera_name: str = Field(..., description="Camera that actually rendered; differs when auto-framed")
+    auto_frame_status: str = Field(
+        default="disabled",
+        description=(
+            "applied, not_needed, disabled, unsupported, or failed. unsupported and failed both mean "
+            "the framing problem, if any, was not corrected"
+        ),
+    )
+    framing_status_before: str | None = Field(
+        default=None,
+        description=(
+            "Framing of the subject for the requested camera before auto-framing: visible, clipped, "
+            "off_screen, behind_camera, no_renderers, or camera_missing"
+        ),
+    )
+
+    start_time: float = Field(default=0.0, description="First sampled clip time")
+    end_time: float = Field(default=0.0, description="Last sampled clip time")
+    fps: int = Field(default=0, description="Requested sampling rate")
+    effective_fps: float = Field(default=0.0, description="Rate Unity was asked to sample at after the frame ceiling")
+    actual_fps: float | None = Field(
+        default=None, description="Rate measured from the returned frame timestamps; the MP4 is encoded at it"
+    )
+    frame_ceiling_applied: bool = Field(
+        default=False, description="True when the rate was lowered to keep the whole range within the frame ceiling"
+    )
+    range_truncated: bool = Field(
+        default=False, description="True only when even the minimum rate could not cover the requested range"
+    )
+    timing_source: str = Field(default="edit_mode_sampled", description="How frame timing was produced")
+    frame_count: int = Field(default=0, description="Frames actually captured")
+    width: int = Field(default=0, description="Frame width in pixels")
+    height: int = Field(default=0, description="Frame height in pixels")
+
+    video_artifact_path: str | None = Field(default=None, description="Local path of the encoded MP4, when written")
+    video_base64: str | None = Field(default=None, description="Base64 MP4 bytes; only when explicitly requested")
+    key_frames: list[AnimationPreviewKeyFrame] = Field(default_factory=list, description="Frames worth inspecting")
+    motion_timeline: list[float] = Field(
+        default_factory=list, description="Changed-pixel ratio for every adjacent frame pair"
+    )
+    motion_summary: AnimationPreviewMotionSummary | None = Field(
+        default=None, description="Reduced view of the motion timeline"
+    )
+    dangerous_curves: list[str] = Field(
+        default_factory=list, description="Curve diagnostics from clip inspection, when requested"
+    )
+
+    pose_restored: bool = Field(default=False, description="Whether Unity confirmed the sampled pose was restored")
+    preview_camera_destroyed: bool | None = Field(
+        default=None, description="Whether the temporary camera was destroyed; None when none was created"
+    )
+    scene_dirtied_by_preview: bool = Field(
+        default=False, description="Whether sampling marked the scene modified despite restoration"
+    )
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking preview warnings")
+    recommended_interpretation: str = Field(..., description="Guidance for how an agent should read this preview")

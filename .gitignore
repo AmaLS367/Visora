@@ -164,3 +164,6 @@ Thumbs.db
 # .NET build output for the Unity package compile gate
 tools/unity-compile-gate/bin/
 tools/unity-compile-gate/obj/
+
+# Agent design specs (local working notes, not shipped)
+docs/superpowers/

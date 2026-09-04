@@ -71,6 +71,7 @@ namespace Visora.Editor.Core
         public float fps = 24f;
         public float startTime;
         public float endTime;
+        public bool autoFrame;
     }
 
     [Serializable]
@@ -219,6 +220,7 @@ namespace Visora.Editor.Core
                             "camera_diagnostic",
                             "camera_diagnostic_sequence",
                             "animation_preview_sequence",
+                            "animation_preview_autoframe",
                             "camera_inventory",
                             "camera_projection",
                             "camera_framing",
@@ -390,7 +392,7 @@ namespace Visora.Editor.Core
                     await MainThreadDispatcher.EnqueueSteppedAsync(
                         () => AnimationPreviewService.CapturePreviewRoutine(
                             p.cameraName, p.clipPath, p.targetObjectPath, p.width, p.height,
-                            p.frameCount, p.fps, p.startTime, p.endTime, preview),
+                            p.frameCount, p.fps, p.startTime, p.endTime, p.autoFrame, preview),
                         () => preview);
                     responseJson = JsonUtility.ToJson(preview);
                 }

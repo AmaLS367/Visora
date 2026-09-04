@@ -15,8 +15,9 @@
 * **Delivered:** Both tools share a capture core with their own fps ceiling, so `get_video_mp4` no longer fails on its own default of 24. Raising the limit alone was not enough: capture spent one bridge round trip per frame, so a 24 fps request really ran at 0.58 fps. Unity now records a sequence on its own clock in a single response (`diagnostic_lit` 0.58 → 9.65 fps, `game_camera` 10.8 fps, both measured live), `authored_clip` samples a clip in Edit Mode at an exact 24 fps, and every sequence reports `actual_fps` and `timing_source` rather than assuming the requested rate. Empty and non-JSON reload responses are typed and retried, dropped frames are retried, stale Game View frames are discarded, and a C# compile gate now builds the Unity package in CI.
 
 ### 2. ▶️ One-Step Animation Review
-* **Status:** 🔜 Planned
+* **Status:** ✅ Completed
 * **Scope:** Add a high-level `preview_animation` workflow that prepares the target and clip, captures a low-resolution MP4 from the chosen camera, returns timestamped key frames and motion metrics, and restores temporary animation and editor state. This turns animation review into a fast preview → assess → adjust loop instead of manual per-frame screenshots.
+* **Delivered:** Live on scene `Тестинг`, `RebeccaDropkick` captured 49 Edit Mode frames over 2.0 seconds at 24.0 effective and actual fps. The requested `Main Camera` was initially `clipped`, so auto-framing used then destroyed a temporary `Visora Preview Camera`; the pose was restored and the scene remained clean. Key frames covered the jump and landing, and motion was non-static with its peak at 1.083s.
 
 ### 3. 🎬 Typed Clip, Event, and Camera Authoring
 * **Status:** 🔜 Planned

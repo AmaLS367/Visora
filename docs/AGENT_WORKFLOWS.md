@@ -31,6 +31,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `instantiate_scene_asset` | `asset_path`*, `parent_path`, `position`, `rotation`, `scale`, `name` | `InstantiateSceneAssetResult` |
 | `list_scene_cameras` | — | `ListSceneCamerasResult` |
 | `playmode_management` | `play`*, `wait_for_idle`, `timeout_seconds` | `PlayModeManagementResult` |
+| `preview_animation` | `target_object_path`*, `clip_path`*, `camera_name`, `start_time`, `end_time`, `fps`, `width`, `height`, `auto_frame`, `max_key_frames`, `include_video_base64`, `include_clip_diagnostics` | `AnimationPreviewResult` |
 | `project_world_points` | `points`*, `camera_name` | `ProjectWorldPointsResult` |
 | `restore_scene_state` | `undo_group`, `reload_active_scene` | `RestoreSceneResult` |
 | `safe_transaction` | `editor_code`*, `auto_save`, `record_undo`, `undo_name`, `restore_on_failure`, `timeout_seconds` | `SafeTransactionResult` |
@@ -66,4 +67,3 @@ Use a result's provider ID (for example, `sketchfab:<uid>`) as `asset_id` when n
 ## Scene safety
 
 `save_scene` rejects Play Mode and compilation by default. `force_during_play_mode=True` is an intentional dangerous override; use it only when persistence of Play Mode state is explicitly required. `safe_transaction(auto_save=True)` skips automatic saves in Play Mode and reports this as a warning.
-
