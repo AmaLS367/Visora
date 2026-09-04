@@ -22,8 +22,8 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |
 | `get_bridge_status` | `scan_all_ports` | `BridgeStatusResult` |
 | `get_editor_state` | `include_scene_details` | `EditorStateResult` |
-| `get_video_frames` | `camera_names`, `subject_path`, `mode`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `VideoFramesResult` |
-| `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode` | `VideoMp4Result` |
+| `get_video_frames` | `camera_names`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `VideoFramesResult` |
+| `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode` | `VideoMp4Result` |
 | `import_local_asset` | `source_path`*, `target_folder`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
 | `inspect_animation_clip` | `clip_path`* | `ClipInspectorResult` |
 | `inspect_imported_asset` | `asset_path`* | `InspectAssetResult` |
@@ -66,3 +66,4 @@ Use a result's provider ID (for example, `sketchfab:<uid>`) as `asset_id` when n
 ## Scene safety
 
 `save_scene` rejects Play Mode and compilation by default. `force_during_play_mode=True` is an intentional dangerous override; use it only when persistence of Play Mode state is explicitly required. `safe_transaction(auto_save=True)` skips automatic saves in Play Mode and reports this as a warning.
+

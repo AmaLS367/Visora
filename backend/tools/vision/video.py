@@ -40,6 +40,12 @@ _STATIC_FRAME_RATIO = 0.001
 # Frame timing is measured, never assumed. Each source says how the timestamps were produced.
 _TIMING_PYTHON_WALLCLOCK = "python_wallclock"
 _TIMING_NATIVE_REALTIME = "native_realtime"
+_TIMING_EDIT_MODE_SAMPLED = "edit_mode_sampled"
+
+# Play Mode records whatever the running game does; authored_clip instead samples a clip at exact
+# timestamps in Edit Mode, which is deterministic at any frame rate and needs no domain reload.
+_AUTHORED_CLIP_MODE = "authored_clip"
+_PLAY_MODE_CAPTURE_MODES = {"diagnostic_lit", "game_camera"}
 
 # Unity records a whole sequence itself when the package advertises these. Recording per frame over
 # HTTP costs a round trip each time, which caps the real rate far below any requested one.
@@ -448,6 +454,75 @@ async def _capture_native_sequence(  # noqa: PLR0913
     return sequence
 
 
+async def _capture_authored_clip(  # noqa: PLR0913
+    *,
+    camera_name: str,
+    clip_path: str | None,
+    target_object_path: str | None,
+    duration_seconds: float,
+    fps: int,
+    width: int,
+    height: int,
+    count: int,
+    include_motion_metrics: bool,
+) -> _CaptureOutcome:
+    """
+    Renders an authored clip by sampling it at exact timestamps in Edit Mode.
+
+    Unlike Play Mode recording this hits the requested frame rate exactly, because Unity poses the
+    rig per frame instead of racing a running game. It shows only what the clip drives - no physics,
+    particles, or gameplay logic - and it needs the native package, since there is no way to sample a
+    clip frame by frame over the legacy bridge without re-posing the rig on every request.
+    """
+    if not clip_path or not target_object_path:
+        return _CaptureOutcome(error=f"mode '{_AUTHORED_CLIP_MODE}' requires both clip_path and target_object_path")
+
+    if not await _bridge_supports("animation_preview_sequence"):
+        return _CaptureOutcome(
+            error=(
+                f"mode '{_AUTHORED_CLIP_MODE}' requires the Visora Unity package with the "
+                "animation_preview_sequence capability; install or update it, or use game_camera."
+            )
+        )
+
+    try:
+        payload = await vision_pkg.bridge.preview_animation_sequence_native(
+            camera_name=camera_name,
+            clip_path=clip_path,
+            target_object_path=target_object_path,
+            width=width,
+            height=height,
+            frame_count=count,
+            fps=float(fps),
+        )
+    except Exception as exc:
+        vision_pkg.logger.exception("Authored clip preview failed")
+        return _CaptureOutcome(error=str(exc))
+
+    sequence = _sequence_from_native_payload(
+        payload=payload,
+        camera_name=camera_name,
+        mode=_AUTHORED_CLIP_MODE,
+        duration_seconds=duration_seconds,
+        fps=fps,
+        width=width,
+        height=height,
+        include_motion_metrics=include_motion_metrics,
+    )
+    if sequence is None:
+        return _CaptureOutcome(error=str(payload.get("error") or "authored clip preview produced no frames"))
+
+    outcome = _CaptureOutcome(sequences=[sequence])
+    if not payload.get("poseRestored", False):
+        outcome.warnings.append("Unity did not confirm the target pose was restored after sampling.")
+    if payload.get("sceneDirtiedByPreview", False):
+        outcome.warnings.append(
+            "Sampling marked the scene as modified even though the pose was restored; discard the "
+            "change rather than saving the scene."
+        )
+    return outcome
+
+
 async def _enter_play_mode_for_capture(  # noqa: PLR0913
     *,
     camera_name: str,
@@ -528,6 +603,8 @@ async def _capture_frame_sequences(  # noqa: PLR0913
     enter_play_mode: bool,
     include_motion_metrics: bool,
     max_fps: int,
+    clip_path: str | None = None,
+    target_object_path: str | None = None,
 ) -> _CaptureOutcome:
     """
     Shared capture core owning validation, Play Mode lifecycle, and frame timing.
@@ -541,10 +618,23 @@ async def _capture_frame_sequences(  # noqa: PLR0913
     if validation_error is not None:
         return _CaptureOutcome(error=validation_error)
 
-    if mode not in {"diagnostic_lit", "game_camera"}:
-        return _CaptureOutcome(error="mode must be either diagnostic_lit or game_camera")
+    if mode not in _PLAY_MODE_CAPTURE_MODES and mode != _AUTHORED_CLIP_MODE:
+        return _CaptureOutcome(error="mode must be diagnostic_lit, game_camera, or authored_clip")
 
     count = _frame_count(duration_seconds, fps)
+
+    if mode == _AUTHORED_CLIP_MODE:
+        return await _capture_authored_clip(
+            camera_name=camera_names[0],
+            clip_path=clip_path,
+            target_object_path=target_object_path,
+            duration_seconds=duration_seconds,
+            fps=fps,
+            width=width,
+            height=height,
+            count=count,
+            include_motion_metrics=include_motion_metrics,
+        )
     outcome = _CaptureOutcome()
     started_play_mode = False
 
@@ -621,6 +711,8 @@ async def get_video_frames(  # noqa: PLR0913
     camera_names: list[str] | None = None,
     subject_path: str | None = None,
     mode: str = "diagnostic_lit",
+    clip_path: str | None = None,
+    target_object_path: str | None = None,
     duration_seconds: float = 2.0,
     fps: int = 6,
     width: int = 1280,
@@ -634,15 +726,20 @@ async def get_video_frames(  # noqa: PLR0913
     Args:
         camera_names: Optional list of Unity camera names to sample from. Defaults to ["Main Camera"].
         subject_path: Optional hierarchy path to the subject GameObject to frame.
-        mode: Capture mode ("diagnostic_lit" or "game_camera"). Defaults to "diagnostic_lit".
+        mode: Capture mode. "diagnostic_lit" renders a neutral temporary rig, "game_camera" records a
+            scene camera in Play Mode, and "authored_clip" samples an AnimationClip at exact
+            timestamps in Edit Mode - deterministic at any fps, but showing only what the clip drives.
+        clip_path: AnimationClip asset path or name. Required for mode "authored_clip".
+        target_object_path: Scene path of the GameObject the clip is applied to. Required for
+            mode "authored_clip".
         duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
         fps: Sampling frame rate (1 to 12). Every frame is returned as base64 in the payload, which is
             what bounds this rate; use get_video_mp4 for higher frame rates. Defaults to 6.
         width: Frame width in pixels. Defaults to 1280.
         height: Frame height in pixels. Defaults to 720.
         enter_play_mode: If True, temporarily enters Play Mode during capture. Visora polls the bridge
-            to ensure domain reload completes before frames are captured. For authored clips, consider
-            sample_animation_clip in Edit Mode as a lightweight alternative.
+            to ensure domain reload completes before frames are captured. Ignored by "authored_clip",
+            which samples in Edit Mode and needs no domain reload.
         include_motion_metrics: If True, computes delta motion metrics between adjacent frames.
 
     Returns:
@@ -652,6 +749,8 @@ async def get_video_frames(  # noqa: PLR0913
         camera_names=camera_names or ["Main Camera"],
         subject_path=subject_path,
         mode=mode,
+        clip_path=clip_path,
+        target_object_path=target_object_path,
         duration_seconds=duration_seconds,
         fps=fps,
         width=width,
@@ -690,6 +789,8 @@ async def get_video_mp4(  # noqa: PLR0913
     camera_name: str = "Main Camera",
     subject_path: str | None = None,
     mode: str = "diagnostic_lit",
+    clip_path: str | None = None,
+    target_object_path: str | None = None,
     duration_seconds: float = 2.0,
     fps: int = 24,
     width: int = 1280,
@@ -702,14 +803,19 @@ async def get_video_mp4(  # noqa: PLR0913
     Args:
         camera_name: Name of the Unity camera used for video recording. Defaults to "Main Camera".
         subject_path: Optional hierarchy path to the subject GameObject to frame.
-        mode: Capture mode ("diagnostic_lit" or "game_camera"). Defaults to "diagnostic_lit".
+        mode: Capture mode. "diagnostic_lit" renders a neutral temporary rig, "game_camera" records a
+            scene camera in Play Mode, and "authored_clip" samples an AnimationClip at exact
+            timestamps in Edit Mode - the only mode that hits a high fps exactly.
+        clip_path: AnimationClip asset path or name. Required for mode "authored_clip".
+        target_object_path: Scene path of the GameObject the clip is applied to. Required for
+            mode "authored_clip".
         duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
         fps: Recording frame rate (1 to 30). Defaults to 24.
         width: Video width in pixels. Defaults to 1280.
         height: Video height in pixels. Defaults to 720.
         enter_play_mode: If True, temporarily enters Play Mode during capture. Visora polls the bridge
-            to ensure domain reload completes before frames are captured. For authored clips, consider
-            sample_animation_clip in Edit Mode as a lightweight alternative.
+            to ensure domain reload completes before frames are captured. Ignored by "authored_clip",
+            which samples in Edit Mode and needs no domain reload.
 
     Returns:
         A VideoMp4Result containing base64-encoded MP4 bytes, saved artifact path, and video metadata.
@@ -719,6 +825,8 @@ async def get_video_mp4(  # noqa: PLR0913
         camera_names=[camera_name],
         subject_path=subject_path,
         mode=mode,
+        clip_path=clip_path,
+        target_object_path=target_object_path,
         duration_seconds=duration_seconds,
         fps=fps,
         width=width,

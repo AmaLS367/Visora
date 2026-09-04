@@ -947,3 +947,150 @@ async def test_repeated_frame_warnings_are_reported_once(monkeypatch: pytest.Mon
 
     lighting = [w for w in result.sequences[0].warnings if "temporary camera" in w]
     assert lighting == ["diagnostic_lit uses temporary camera (reported on 4 frames)"]
+
+
+class AuthoredClipBridge(FakeBridge):
+    """Bridge double serving the Edit Mode clip preview endpoint."""
+
+    def __init__(self, payload: dict[str, object], features: set[str] | None = None) -> None:
+        super().__init__([])
+        self.payload = payload
+        self.features = features if features is not None else {"animation_preview_sequence"}
+        self.preview_calls: list[dict[str, object]] = []
+
+    async def supports_feature(self, feature: str, force_refresh: bool = False) -> bool:
+        del force_refresh
+        return feature in self.features
+
+    async def preview_animation_sequence_native(  # noqa: PLR0913
+        self,
+        camera_name: str,
+        clip_path: str,
+        target_object_path: str,
+        width: int = 640,
+        height: int = 360,
+        frame_count: int = 24,
+        fps: float = 24.0,
+        start_time: float = 0.0,
+        end_time: float = 0.0,
+    ) -> dict[str, object]:
+        del width, height, start_time, end_time
+        self.preview_calls.append(
+            {"camera": camera_name, "clip": clip_path, "target": target_object_path, "frames": frame_count, "fps": fps}
+        )
+        return self.payload
+
+
+def _authored_payload(images: list[str], **overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "success": True,
+        "cameraName": "Main Camera",
+        "width": 4,
+        "height": 3,
+        "actualFps": 24.0,
+        "timingSource": "edit_mode_sampled",
+        "poseRestored": True,
+        "sceneDirtiedByPreview": False,
+        "frames": [
+            {"frameIndex": index, "timestamp": index / 24, "imageBase64": image} for index, image in enumerate(images)
+        ],
+        "warnings": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.anyio
+async def test_authored_clip_samples_in_edit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sampling a clip hits the requested fps exactly and never enters Play Mode."""
+    first = _png_base64((0, 0, 0), (4, 3))
+    second = _png_base64((0, 0, 0), (4, 3), changed_pixel=(1, 1, (255, 255, 255)))
+    bridge = AuthoredClipBridge(_authored_payload([first, second]))
+    monkeypatch.setattr(vision, "bridge", bridge)
+    monkeypatch.setattr(vision, "_sleep", _no_sleep)
+
+    result = await vision.get_video_frames(
+        mode="authored_clip",
+        clip_path="Assets/Animations/Punch.anim",
+        target_object_path="Fighter",
+        duration_seconds=1.0,
+        fps=12,
+        width=4,
+        height=3,
+    )
+
+    assert result.success is True
+    assert result.sequences[0].timing_source == "edit_mode_sampled"
+    assert result.sequences[0].actual_fps == pytest.approx(24.0)
+    assert bridge.preview_calls[0]["clip"] == "Assets/Animations/Punch.anim"
+    assert bridge.preview_calls[0]["target"] == "Fighter"
+    # Edit Mode sampling needs no domain reload.
+    assert bridge.play_mode_changes == []
+
+
+@pytest.mark.anyio
+async def test_authored_clip_requires_clip_and_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    bridge = AuthoredClipBridge(_authored_payload([]))
+    monkeypatch.setattr(vision, "bridge", bridge)
+
+    result = await vision.get_video_frames(mode="authored_clip", duration_seconds=1.0, fps=2, width=4, height=3)
+
+    assert result.success is False
+    assert result.error is not None
+    assert "clip_path and target_object_path" in result.error
+    assert bridge.preview_calls == []
+
+
+@pytest.mark.anyio
+async def test_authored_clip_requires_the_native_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    """There is no legacy equivalent, so this reports the missing capability instead of falling back."""
+    bridge = AuthoredClipBridge(_authored_payload([]), features=set())
+    monkeypatch.setattr(vision, "bridge", bridge)
+
+    result = await vision.get_video_frames(
+        mode="authored_clip",
+        clip_path="Punch",
+        target_object_path="Fighter",
+        duration_seconds=1.0,
+        fps=2,
+        width=4,
+        height=3,
+    )
+
+    assert result.success is False
+    assert result.error is not None
+    assert "animation_preview_sequence" in result.error
+    assert bridge.preview_calls == []
+
+
+@pytest.mark.anyio
+async def test_authored_clip_reports_scene_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame = _png_base64((0, 0, 0), (4, 3))
+    bridge = AuthoredClipBridge(
+        _authored_payload([frame], poseRestored=False, sceneDirtiedByPreview=True)
+    )
+    monkeypatch.setattr(vision, "bridge", bridge)
+
+    result = await vision.get_video_frames(
+        mode="authored_clip",
+        clip_path="Punch",
+        target_object_path="Fighter",
+        duration_seconds=1.0,
+        fps=2,
+        width=4,
+        height=3,
+    )
+
+    assert result.success is True
+    assert any("pose was restored" in warning for warning in result.warnings)
+    assert any("marked the scene as modified" in warning for warning in result.warnings)
+
+
+@pytest.mark.anyio
+async def test_unknown_capture_mode_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(vision, "bridge", FakeBridge([]))
+
+    result = await vision.get_video_frames(mode="cinematic", duration_seconds=1.0, fps=2, width=4, height=3)
+
+    assert result.success is False
+    assert result.error == "mode must be diagnostic_lit, game_camera, or authored_clip"

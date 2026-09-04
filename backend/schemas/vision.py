@@ -150,7 +150,11 @@ class VideoFrameSequence(BaseModel):
     )
     timing_source: str = Field(
         default="python_wallclock",
-        description="How frame timing was produced: python_wallclock (per-frame bridge round trips)",
+        description=(
+            "How frame timing was produced: native_realtime (Unity recorded on its own clock), "
+            "edit_mode_sampled (clip sampled at exact timestamps), or python_wallclock "
+            "(one bridge round trip per frame, so far below the requested rate)"
+        ),
     )
     frames: list[VideoFrame] = Field(default_factory=list, description="Sampled PNG frames")
     motion_metrics: list[FrameMotionMetrics] = Field(default_factory=list, description="Adjacent-frame motion metrics")
