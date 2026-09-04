@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`preview_animation` one-step review:** one Edit Mode call inspects an authored clip, preserves its full range within the native frame ceiling, captures a low-resolution MP4, selects timestamped boundary/event/motion key frames, and returns motion and restoration diagnostics. Live verification on `Тестинг` captured `RebeccaDropkick` at an actual 24.0 fps across 49 frames; auto-framing corrected a clipped `Main Camera` view with a temporary camera that was destroyed afterwards, while the target pose and clean scene state were restored.
 - **Native real-time sequence recording:** Unity records a whole camera sequence on its own clock and returns it in one response. Measured against a live editor, `diagnostic_lit` went from 0.58 to 9.65 fps and `game_camera` reached 10.8 fps, because per-frame capture spent a bridge round trip on every frame.
 - **`authored_clip` capture mode:** samples an AnimationClip at exact timestamps in Edit Mode, hitting 23.999998 of a requested 24 fps in 1.87s with no domain reload, and restoring the target pose afterwards.
 - **Measured frame timing:** sequences report `actual_fps` and `timing_source` (`native_realtime`, `edit_mode_sampled`, or `python_wallclock`), and MP4 is encoded at the rate actually achieved so playback runs at real speed.
