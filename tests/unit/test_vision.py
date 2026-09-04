@@ -1094,3 +1094,40 @@ async def test_unknown_capture_mode_is_rejected(monkeypatch: pytest.MonkeyPatch)
 
     assert result.success is False
     assert result.error == "mode must be diagnostic_lit, game_camera, or authored_clip"
+
+
+@pytest.mark.anyio
+async def test_failed_play_mode_transition_still_restores_edit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Unity accepts the transition and then drops the connection for its domain reload, so a failure
+    while waiting still leaves the editor playing. Ownership must be claimed before the attempt.
+    """
+
+    class StuckBridge(FakeBridge):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.waits: list[bool] = []
+
+        async def wait_for_play_mode(
+            self,
+            target_playing: bool,
+            timeout_seconds: float = 30.0,
+            poll_interval_seconds: float = 0.5,
+        ) -> dict[str, object]:
+            del timeout_seconds, poll_interval_seconds
+            self.waits.append(target_playing)
+            if target_playing:
+                raise RuntimeError("timed out waiting for the domain reload")
+            self.editor_state = {"isPlaying": False, "isCompiling": False, "isUpdating": False}
+            return self.editor_state
+
+    bridge = StuckBridge()
+    monkeypatch.setattr(vision, "bridge", bridge)
+    monkeypatch.setattr(vision, "_sleep", _no_sleep)
+
+    result = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+
+    assert result.success is False
+    # Entered, failed to confirm, and was still returned to Edit Mode.
+    assert bridge.play_mode_changes == [True, False]
+    assert bridge.waits == [True, False]

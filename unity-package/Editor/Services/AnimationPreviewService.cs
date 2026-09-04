@@ -59,9 +59,12 @@ namespace Visora.Editor.Services
 
         /// <summary>
         /// Samples the clip across [startTime, endTime] and renders one camera frame per sample,
-        /// advancing one frame per editor update tick so the editor stays responsive. The target's
-        /// transform hierarchy is snapshotted before sampling and restored afterwards, and a scene
-        /// that was clean before the preview is left clean.
+        /// advancing one frame per editor update tick so the editor stays responsive.
+        ///
+        /// Sampling runs inside Unity's animation mode - the same mechanism the Animation window uses
+        /// - so every property the clip drives is restored afterwards. Snapshotting transforms by hand
+        /// would miss blend-shape weights, component fields, and material properties, leaving those
+        /// final sampled values in the scene while still reporting the pose as restored.
         /// </summary>
         public static IEnumerator CapturePreviewRoutine(  // NOSONAR - sequential capture stages read better inline
             string cameraName,
@@ -104,6 +107,18 @@ namespace Visora.Editor.Services
                 frameCount = CameraRenderingService.MaxSequenceFrames;
             }
 
+            if (EditorApplication.isPlaying)
+            {
+                // Animation mode is an Edit Mode facility, and in Play Mode the running animator
+                // would fight every sampled pose. Recording the running game is what the camera
+                // sequence endpoints are for.
+                result.success = false;
+                result.error =
+                    "Authored clip preview requires Edit Mode. Exit Play Mode, or record the running " +
+                    "game with the camera sequence endpoint instead.";
+                yield break;
+            }
+
             var clip = ResolveClip(clipPathOrName);
             if (clip == null)
             {
@@ -133,13 +148,6 @@ namespace Visora.Editor.Services
 
             result.cameraName = cam.name;
 
-            if (EditorApplication.isPlaying)
-            {
-                result.warnings.Add(
-                    "Editor is in Play Mode: runtime animator state may fight the sampled pose. " +
-                    "Edit Mode gives deterministic authored-clip preview.");
-            }
-
             float rangeStart = Mathf.Clamp(startTime, 0f, clip.length);
             float rangeEnd = endTime > 0f ? Mathf.Clamp(endTime, rangeStart, clip.length) : clip.length;
             if (Mathf.Approximately(rangeEnd, rangeStart) && clip.length > 0f)
@@ -151,21 +159,6 @@ namespace Visora.Editor.Services
 
             result.startTime = rangeStart;
             result.endTime = rangeEnd;
-
-            var scene = SceneManager.GetActiveScene();
-            bool sceneWasDirty = scene.isDirty;
-
-            var transforms = target.GetComponentsInChildren<Transform>(true);
-            var restPosition = new Dictionary<Transform, Vector3>(transforms.Length);
-            var restRotation = new Dictionary<Transform, Quaternion>(transforms.Length);
-            var restScale = new Dictionary<Transform, Vector3>(transforms.Length);
-
-            foreach (var t in transforms)
-            {
-                restPosition[t] = t.localPosition;
-                restRotation[t] = t.localRotation;
-                restScale[t] = t.localScale;
-            }
 
             // fps defines the sampling step so the preview really runs at the requested rate; the time
             // range only bounds how much of the clip is covered. Falling back to an even split across
@@ -189,65 +182,86 @@ namespace Visora.Editor.Services
 
             result.requestedFrameCount = frameCount;
 
-            for (int i = 0; i < frameCount; i++)
+            var scene = SceneManager.GetActiveScene();
+            bool sceneWasDirty = scene.isDirty;
+
+            // Someone else - an open Animation window - may already own animation mode. Sampling
+            // inside their session is fine, but ending it is theirs to do, so this only stops a
+            // session it started itself.
+            bool ownsAnimationMode = !AnimationMode.InAnimationMode();
+            if (ownsAnimationMode)
             {
-                float sampleTime = frameCount > 1 ? Mathf.Min(rangeStart + (step * i), rangeEnd) : rangeStart;
+                AnimationMode.StartAnimationMode();
+            }
+            else
+            {
+                result.warnings.Add(
+                    "The editor was already in animation mode, so this preview did not end it; " +
+                    "property restoration is owned by whatever started it.");
+            }
 
-                // Swallowing the failure here (rather than letting it escape the iterator) guarantees
-                // the routine always reaches the pose restore below instead of dying mid-capture with
-                // the rig left posed. C# forbids yielding from a catch clause, so the per-frame yield
-                // happens once at the end of the loop body either way.
-                bool sampled = true;
-                try
+            try
+            {
+                for (int i = 0; i < frameCount; i++)
                 {
-                    clip.SampleAnimation(target, sampleTime);
-                }
-                catch (Exception ex)
-                {
-                    result.warnings.Add($"Frame {i} sampling at {sampleTime:F3}s failed: {ex.Message}");
-                    sampled = false;
-                }
+                    float sampleTime = frameCount > 1 ? Mathf.Min(rangeStart + (step * i), rangeEnd) : rangeStart;
 
-                if (sampled)
-                {
-                    var render = CameraRenderingService.RenderCamera(cam, width, height, "PNG");
-                    if (!render.success)
+                    // Kept exception-free and yield-free so the routine always reaches the finally
+                    // block below instead of dying mid-capture with the rig left posed.
+                    bool sampled = true;
+                    try
                     {
-                        result.warnings.Add($"Frame {i} render at {sampleTime:F3}s failed: {render.error}");
+                        AnimationMode.BeginSampling();
+                        AnimationMode.SampleAnimationClip(target, clip, sampleTime);
+                        AnimationMode.EndSampling();
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        result.frames.Add(new SequenceFrameData
+                        result.warnings.Add($"Frame {i} sampling at {sampleTime:F3}s failed: {ex.Message}");
+                        sampled = false;
+                    }
+
+                    if (sampled)
+                    {
+                        var render = CameraRenderingService.RenderCamera(cam, width, height, "PNG");
+                        if (!render.success)
                         {
-                            frameIndex = i,
-                            timestamp = sampleTime,
-                            imageBase64 = render.imageBase64
-                        });
+                            result.warnings.Add($"Frame {i} render at {sampleTime:F3}s failed: {render.error}");
+                        }
+                        else
+                        {
+                            result.frames.Add(new SequenceFrameData
+                            {
+                                frameIndex = i,
+                                timestamp = sampleTime,
+                                imageBase64 = render.imageBase64
+                            });
+                        }
                     }
+
+                    yield return null;
                 }
-
-                yield return null;
             }
-
-            foreach (var t in transforms)
+            finally
             {
-                if (t == null) continue;
-                t.localPosition = restPosition[t];
-                t.localRotation = restRotation[t];
-                t.localScale = restScale[t];
+                if (ownsAnimationMode)
+                {
+                    AnimationMode.StopAnimationMode();
+                }
             }
 
-            result.poseRestored = true;
+            result.poseRestored = ownsAnimationMode;
 
             if (!sceneWasDirty && scene.isDirty)
             {
-                // Sampling can mark the scene dirty even though every transform was restored.
-                // EditorSceneManager.ClearSceneDirtiness is internal in Unity 6, so the preview
-                // reports the side effect instead of silently reaching around the API.
+                // Sampling can mark the scene dirty even though animation mode restored every driven
+                // property. EditorSceneManager.ClearSceneDirtiness is internal in Unity 6, so the
+                // preview reports the side effect instead of silently reaching around the API.
                 result.sceneDirtiedByPreview = true;
                 result.warnings.Add(
-                    "Sampling marked the scene as modified. The target pose was restored, so the flagged " +
-                    "change is not a real edit - discard it rather than saving the scene.");
+                    "Sampling marked the scene as modified. Animation mode restored the driven " +
+                    "properties, so the flagged change is not a real edit - discard it rather than " +
+                    "saving the scene.");
             }
 
             result.frameCount = result.frames.Count;

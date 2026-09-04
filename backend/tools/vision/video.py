@@ -645,6 +645,11 @@ async def _capture_frame_sequences(  # noqa: PLR0913
         use_native = await _bridge_supports(_NATIVE_SEQUENCE_FEATURE[mode])
 
         if enter_play_mode and not was_playing:
+            # Ownership is claimed before the attempt, not after it. Unity accepts the transition and
+            # then drops the connection for the domain reload, so a failure while waiting still
+            # leaves the editor playing; restoring Edit Mode we never actually left is harmless,
+            # stranding the editor in Play Mode is not.
+            started_play_mode = True
             await _enter_play_mode_for_capture(
                 camera_name=camera_names[0],
                 subject_path=subject_path,
@@ -654,7 +659,6 @@ async def _capture_frame_sequences(  # noqa: PLR0913
                 warnings=outcome.warnings,
                 needs_warm_up=not use_native,
             )
-            started_play_mode = True
 
         for camera_name in camera_names:
             sequence = (

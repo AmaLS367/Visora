@@ -847,3 +847,55 @@ async def test_port_discovery_survives_empty_ping_body(mock_settings: Settings) 
         port = await bridge.get_active_port()
 
     assert port == 7890
+
+
+@pytest.mark.anyio
+async def test_capabilities_are_not_cached_after_a_transient_failure(mock_settings: Settings) -> None:
+    """
+    A single failed capability probe must not pin the client to the slow capture path forever: the
+    next call has to ask again rather than reuse a cached "no capabilities".
+    """
+    bridge = UnityBridge(settings=mock_settings)
+    request = httpx.Request("GET", "http://127.0.0.1:7890/api/visora/info")
+    attempts = 0
+
+    async def flaky_info(_method: str, _path: str, **_kwargs: Any) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise BridgeConnectionError("bridge briefly unreachable", ports=[7890])
+        return httpx.Response(
+            200,
+            json={"success": True, "supportedFeatures": ["camera_sequence_realtime"]},
+            request=request,
+        )
+
+    with (
+        patch.object(bridge, "is_native_bridge", new_callable=AsyncMock) as mock_native,
+        patch.object(bridge, "_request", side_effect=flaky_info),
+    ):
+        mock_native.return_value = True
+
+        assert await bridge.supports_feature("camera_sequence_realtime") is False
+        assert await bridge.supports_feature("camera_sequence_realtime") is True
+
+    assert attempts == 2
+
+
+@pytest.mark.anyio
+async def test_capabilities_are_cached_once_read(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    request = httpx.Request("GET", "http://127.0.0.1:7890/api/visora/info")
+    response = httpx.Response(200, json={"supportedFeatures": ["animation_preview_sequence"]}, request=request)
+
+    with (
+        patch.object(bridge, "is_native_bridge", new_callable=AsyncMock) as mock_native,
+        patch.object(bridge, "_request", new_callable=AsyncMock) as mock_request,
+    ):
+        mock_native.return_value = True
+        mock_request.return_value = response
+
+        assert await bridge.supports_feature("animation_preview_sequence") is True
+        assert await bridge.supports_feature("camera_sequence_realtime") is False
+
+    assert mock_request.await_count == 1

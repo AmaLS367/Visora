@@ -47,35 +47,39 @@ namespace Visora.Editor.Core
         }
 
         /// <summary>
-        /// Advances every active stepped routine by exactly one step per editor update tick, so a
-        /// routine can span many frames of real editor time instead of blocking a single tick.
+        /// Advances the queued stepped routines by one step per editor update tick, so a routine can
+        /// span many frames of real editor time instead of blocking a single tick.
+        ///
+        /// Exactly one routine runs at a time, and the rest wait their turn. These routines snapshot
+        /// and restore global editor state - RenderSettings, animation mode, a temporary lighting rig
+        /// - and interleaving two of them corrupts it: whichever finishes second restores the values
+        /// it captured while the first was active, making the first routine's temporary settings
+        /// permanent. A routine's body does not run until its first MoveNext, so a queued routine
+        /// snapshots the state it will actually restore.
         /// </summary>
         private static void StepRoutines()
         {
             if (ActiveRoutines.Count == 0) return;
 
-            for (int i = ActiveRoutines.Count - 1; i >= 0; i--)
+            var entry = ActiveRoutines[0];
+            bool hasMore;
+
+            try
             {
-                var entry = ActiveRoutines[i];
-                bool hasMore;
+                hasMore = entry.Routine.MoveNext();
+            }
+            catch (Exception ex)
+            {
+                ActiveRoutines.RemoveAt(0);
+                (entry.Routine as IDisposable)?.Dispose();
+                entry.OnFailed?.Invoke(ex);
+                return;
+            }
 
-                try
-                {
-                    hasMore = entry.Routine.MoveNext();
-                }
-                catch (Exception ex)
-                {
-                    ActiveRoutines.RemoveAt(i);
-                    (entry.Routine as IDisposable)?.Dispose();
-                    entry.OnFailed?.Invoke(ex);
-                    continue;
-                }
-
-                if (!hasMore)
-                {
-                    ActiveRoutines.RemoveAt(i);
-                    entry.OnCompleted?.Invoke();
-                }
+            if (!hasMore)
+            {
+                ActiveRoutines.RemoveAt(0);
+                entry.OnCompleted?.Invoke();
             }
         }
 

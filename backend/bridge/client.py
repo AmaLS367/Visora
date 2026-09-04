@@ -418,20 +418,28 @@ class UnityBridge:
         if force_refresh:
             self._supported_features = None
 
-        if self._supported_features is None:
-            if not await self.is_native_bridge():
-                self._supported_features = frozenset()
-            else:
-                try:
-                    info = await self.get_bridge_info()
-                    features = info.get("supportedFeatures", [])
-                    self._supported_features = (
-                        frozenset(str(item) for item in features) if isinstance(features, list) else frozenset()
-                    )
-                except Exception as exc:
-                    logger.warning("Could not read bridge capabilities, assuming none: %s", exc)
-                    return False
+        if self._supported_features is not None:
+            return feature in self._supported_features
 
+        if not await self.is_native_bridge():
+            self._supported_features = frozenset()
+            return False
+
+        # Deliberately not get_bridge_info(): that synthesizes a legacy-shaped answer when the info
+        # endpoint fails, and caching a synthesized answer would pin this client to the slow capture
+        # path for its whole lifetime over one transient failure. An unanswered probe caches nothing.
+        try:
+            response = await self._request("GET", "/api/visora/info")
+            features = _decode_json(response).get("supportedFeatures", [])
+        except Exception as exc:
+            logger.warning("Bridge capabilities could not be read and were not cached: %s", exc)
+            return False
+
+        if not isinstance(features, list):
+            logger.warning("Bridge reported capabilities in an unexpected shape and they were not cached")
+            return False
+
+        self._supported_features = frozenset(str(item) for item in features)
         return feature in self._supported_features
 
     async def get_bridge_info(self) -> dict[str, Any]:
