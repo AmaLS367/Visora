@@ -1,5 +1,7 @@
+import httpx
 import pytest
 
+from backend.bridge.client import UnityBridge
 from backend.schemas import AnimationPreviewKeyFrame, AnimationPreviewResult
 from backend.tools.animation.preview_keyframes import select_key_frames
 from backend.tools.animation.preview_math import (
@@ -236,3 +238,26 @@ def test_preview_key_frame_holds_every_event_at_one_timestamp() -> None:
 
     assert key_frame.event_functions == ["OnHit", "PlaySound"]
     assert key_frame.changed_pixel_ratio_from_previous is None
+
+
+@pytest.mark.anyio
+async def test_preview_sequence_sends_auto_frame_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: dict[str, object] = {}
+
+    async def fake_request(_self: object, _method: str, _path: str, **kwargs: object) -> httpx.Response:
+        payload = kwargs.get("json")
+        if isinstance(payload, dict):
+            sent.update(payload)
+        return httpx.Response(200, json={"success": True, "frames": []})
+
+    monkeypatch.setattr(UnityBridge, "_request", fake_request)
+    client = UnityBridge()
+
+    await client.preview_animation_sequence_native(
+        camera_name="Main Camera",
+        clip_path="Assets/A.anim",
+        target_object_path="Rebecca",
+        auto_frame=False,
+    )
+
+    assert sent["autoFrame"] is False
