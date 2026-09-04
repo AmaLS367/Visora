@@ -1,5 +1,6 @@
 import pytest
 
+from backend.schemas import AnimationPreviewKeyFrame, AnimationPreviewResult
 from backend.tools.animation.preview_keyframes import select_key_frames
 from backend.tools.animation.preview_math import (
     MAX_SEQUENCE_FRAMES,
@@ -202,3 +203,36 @@ def test_key_frames_handle_a_single_frame_clip() -> None:
 
     assert len(chosen) == 1
     assert chosen[0].frame_index == 0
+
+
+def test_preview_result_defaults_keep_optional_state_unasserted() -> None:
+    result = AnimationPreviewResult(
+        success=True,
+        clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
+        target_object_path="Rebecca",
+        camera_name="Main Camera",
+        rendered_camera_name="Main Camera",
+        recommended_interpretation="x",
+    )
+
+    assert result.auto_frame_status == "disabled"
+    assert result.preview_camera_destroyed is None
+    assert result.key_frames == []
+    assert result.motion_timeline == []
+    assert result.video_base64 is None
+
+
+def test_preview_key_frame_holds_every_event_at_one_timestamp() -> None:
+    key_frame = AnimationPreviewKeyFrame(
+        frame_index=5,
+        timestamp_seconds=0.5,
+        normalized_time=0.25,
+        source="clip_event",
+        event_functions=["OnHit", "PlaySound"],
+        image_base64="AAA",
+        width=640,
+        height=360,
+    )
+
+    assert key_frame.event_functions == ["OnHit", "PlaySound"]
+    assert key_frame.changed_pixel_ratio_from_previous is None

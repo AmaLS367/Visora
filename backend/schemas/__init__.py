@@ -1,6 +1,9 @@
 from backend.schemas.animation import (
     AnimationBindingCurve,
     AnimationEventInfo,
+    AnimationPreviewKeyFrame,
+    AnimationPreviewMotionSummary,
+    AnimationPreviewResult,
     BoneMatch,
     BoneNode,
     BoneSearchResult,
@@ -66,6 +69,9 @@ from backend.schemas.vision import (
 __all__ = [
     "AnimationBindingCurve",
     "AnimationEventInfo",
+    "AnimationPreviewKeyFrame",
+    "AnimationPreviewMotionSummary",
+    "AnimationPreviewResult",
     "AssetSearchResultItem",
     "BaseToolResult",
     "BoneBindingInfo",
