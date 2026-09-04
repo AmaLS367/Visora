@@ -33,8 +33,10 @@ def _nearest_frame(timestamps: list[float], time_seconds: float) -> int:
 def _min_gap(timestamps: list[float]) -> float:
     if len(timestamps) < 2:
         return _MIN_GAP_SECONDS
-    step = (timestamps[-1] - timestamps[0]) / (len(timestamps) - 1)
-    return max(_MIN_GAP_FRAMES * step, _MIN_GAP_SECONDS)
+    duration = timestamps[-1] - timestamps[0]
+    step = duration / (len(timestamps) - 1)
+    max_allowed = duration * 0.5 if duration > 0 else _MIN_GAP_SECONDS
+    return min(max(_MIN_GAP_FRAMES * step, _MIN_GAP_SECONDS), max_allowed)
 
 
 def _accept(

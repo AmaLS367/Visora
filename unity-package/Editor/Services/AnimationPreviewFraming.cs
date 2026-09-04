@@ -30,7 +30,7 @@ namespace Visora.Editor.Services
 
         public static int ResolveBoundsSampleCount(int frameCount)
         {
-            return Mathf.Clamp(frameCount, 1, Mathf.Min(Mathf.Max(frameCount, MinBoundsSamples), MaxBoundsSamples));
+            return Mathf.Clamp(frameCount, 1, MaxBoundsSamples);
         }
 
         /// <summary>
@@ -88,7 +88,7 @@ namespace Visora.Editor.Services
 
                     foreach (var renderer in renderers)
                     {
-                        if (renderer == null || !renderer.enabled) continue;
+                        if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
                         if (!initialized)
                         {
                             bounds = renderer.bounds;
@@ -188,17 +188,20 @@ namespace Visora.Editor.Services
 
             float radius = Mathf.Max(0.01f, bounds.extents.magnitude);
             float distance;
+            float aspect = height > 0 ? (float)width / height : 1f;
             if (source.orthographic)
             {
                 distance = Mathf.Max(radius * 2f, Vector3.Distance(source.transform.position, bounds.center));
-                float aspect = height > 0 ? (float)width / height : 1f;
                 previewCamera.orthographicSize =
                     Mathf.Max(Mathf.Max(bounds.size.y * 0.55f, bounds.size.x / (2f * aspect)) * 1.15f, 0.1f);
             }
             else
             {
                 float halfFov = Mathf.Deg2Rad * Mathf.Clamp(source.fieldOfView, 1f, 179f) * 0.5f;
-                distance = radius / Mathf.Max(0.01f, Mathf.Sin(halfFov));
+                float effectiveHalfFov = aspect < 1f
+                    ? Mathf.Atan(Mathf.Tan(halfFov) * aspect)
+                    : halfFov;
+                distance = radius / Mathf.Max(0.01f, Mathf.Sin(effectiveHalfFov));
             }
 
             // Along the source camera's own forward axis, so the author's angle survives the reframing.

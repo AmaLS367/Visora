@@ -122,6 +122,19 @@ def test_key_frames_always_include_both_boundaries() -> None:
     assert chosen[-1].source == "boundary"
 
 
+def test_key_frames_preserves_both_boundaries_on_sub_tenth_second_clip() -> None:
+    chosen = select_key_frames(
+        timestamps=[0.0, 0.04, 0.08],
+        timeline=[0.0, 0.0],
+        events=[],
+        max_key_frames=6,
+    )
+
+    indices = [choice.frame_index for choice in chosen]
+    assert 0 in indices
+    assert 2 in indices
+
+
 def test_key_frames_fill_a_static_loop_clip_with_equidistant_frames() -> None:
     chosen = select_key_frames(
         timestamps=_even_timestamps(20),
