@@ -109,6 +109,18 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             width=width,
             height=height,
         )
+    if width > 1920 or height > 1080:
+        return _failed_preview(
+            error="width and height must not exceed 1920x1080",
+            target_object_path=target_object_path,
+            clip_path=clip_path,
+            camera_name=camera_name,
+            start_time=start_time,
+            end_time=requested_end,
+            fps=fps,
+            width=width,
+            height=height,
+        )
 
     try:
         editor_state = await animation_pkg.bridge.get_editor_state()

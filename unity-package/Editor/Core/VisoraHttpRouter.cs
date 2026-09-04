@@ -71,7 +71,7 @@ namespace Visora.Editor.Core
         public float fps = 24f;
         public float startTime;
         public float endTime;
-        public bool autoFrame = true;
+        public bool autoFrame;
     }
 
     [Serializable]

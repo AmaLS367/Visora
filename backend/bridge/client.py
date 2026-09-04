@@ -587,7 +587,7 @@ class UnityBridge:
         fps: float = 24.0,
         start_time: float = 0.0,
         end_time: float = 0.0,
-        auto_frame: bool = True,
+        auto_frame: bool = False,
     ) -> dict[str, Any]:
         """Deterministic Edit Mode clip preview via /api/visora/animation/preview-sequence."""
         response = await self._request(

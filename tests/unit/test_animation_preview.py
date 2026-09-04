@@ -552,3 +552,39 @@ async def test_preview_animation_preserves_an_explicit_zero_length_range(monkeyp
     assert result.end_time == 0.0
     assert bridge.preview_calls[0]["frame_count"] == 1
     assert bridge.preview_calls[0]["end_time"] == pytest.approx(0.000001)
+
+
+@pytest.mark.anyio
+async def test_preview_animation_rejects_oversized_dimensions() -> None:
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca",
+        clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
+        width=2000,
+        height=1000,
+    )
+
+    assert result.success is False
+    assert result.error == "width and height must not exceed 1920x1080"
+
+
+@pytest.mark.anyio
+async def test_preview_animation_sequence_native_defaults_to_no_auto_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_json: dict[str, Any] = {}
+
+    async def fake_request(
+        _self: Any, _method: str, _endpoint: str, *, json: dict[str, Any], **_kwargs: Any
+    ) -> httpx.Response:
+        captured_json.update(json)
+        return httpx.Response(200, json={"success": True})
+
+    monkeypatch.setattr(UnityBridge, "_request", fake_request)
+    bridge = UnityBridge()
+    await bridge.preview_animation_sequence_native(
+        camera_name="Main Camera",
+        clip_path="Assets/clip.anim",
+        target_object_path="Target",
+    )
+
+    assert captured_json.get("autoFrame") is False
