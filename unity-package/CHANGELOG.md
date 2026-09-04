@@ -12,6 +12,9 @@ All notable changes to the `com.visora.editor` package will be documented in thi
   leaves a previously clean scene clean.
 - Sequence responses now report `requestedFps`, `actualFps`, measured per-frame `timestamp` values,
   and a `timingSource` so clients can encode video at the rate actually achieved.
+- `/api/visora/camera/diagnostic` and `/api/visora/camera/diagnostic-sequence`: native diagnostic_lit
+  capture. The temporary camera and lights are built once per sequence instead of being recreated by
+  a compiled script on every frame, which is what made diagnostic capture slow.
 
 ### Fixed
 - `/api/visora/camera/sequence` captured every frame inside one main-thread call, so no editor

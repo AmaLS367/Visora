@@ -8,10 +8,11 @@
 ## 🔮 Planned for v0.1.3 — Animation Authoring & Temporal Verification
 
 ### 1. 🎥 Reliable High-FPS Animation Preview
-* **Status:** 🔜 Planned
+* **Status:** ✅ Completed
 * **Scope:** Make short `game_camera` previews reliable for animation iteration. Harden Play Mode capture against every transient bridge response observed during domain reloads, including empty/non-JSON successful HTTP responses; wait for bridge re-binding and the first valid Game View render; discard or retry a pre-initialization camera frame; and always restore the original editor mode.
 * **Issue #4 follow-up:** The initial domain-reload/reconnect path is released, and explicit `playmode_management` can recover after the reload. Live Unity verification nevertheless exposed an unhandled empty-response edge case in video capture and a stale first Game View frame. Cover both with regressions before considering Play Mode preview dependable.
 * **Issue #6:** Make the documented 1–30 fps range of `get_video_mp4` real end-to-end. Its internal capture path must not reapply `get_video_frames`' 12 fps public-payload limit; retain an explicit maximum-frame safety bound and clear validation errors. Keep frame-sequence payload limits intentional and documented separately.
+* **Delivered:** Both tools share a capture core with their own fps ceiling, so `get_video_mp4` no longer fails on its own default of 24. Raising the limit alone was not enough: capture spent one bridge round trip per frame, so a 24 fps request really ran at 0.58 fps. Unity now records a sequence on its own clock in a single response (`diagnostic_lit` 0.58 → 9.65 fps, `game_camera` 10.8 fps, both measured live), `authored_clip` samples a clip in Edit Mode at an exact 24 fps, and every sequence reports `actual_fps` and `timing_source` rather than assuming the requested rate. Empty and non-JSON reload responses are typed and retried, dropped frames are retried, stale Game View frames are discarded, and a C# compile gate now builds the Unity package in CI.
 
 ### 2. ▶️ One-Step Animation Review
 * **Status:** 🔜 Planned
