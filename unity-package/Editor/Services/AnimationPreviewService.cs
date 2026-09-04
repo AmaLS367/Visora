@@ -30,8 +30,29 @@ namespace Visora.Editor.Services
         public string timingSource = "edit_mode_sampled";
         public bool poseRestored;
         public bool sceneDirtiedByPreview;
+        public float clipFps;
+        public bool loopTime;
+        public bool isHumanoidClip;
+        public int unresolvedCurvePaths;
+        public List<string> unresolvedCurvePathSamples = new List<string>();
+        public string autoFrameStatus = "disabled";
+        public string framingStatusBefore;
+        public string previewCameraUsed;
+
+        // Two booleans rather than a nullable: JsonUtility does not serialize bool?, and "no camera
+        // was created" must stay distinguishable from "a camera was created and leaked".
+        public bool previewCameraCreated;
+        public bool previewCameraDestroyed;
+        public List<PreviewClipEvent> events = new List<PreviewClipEvent>();
         public List<SequenceFrameData> frames = new List<SequenceFrameData>();
         public List<string> warnings = new List<string>();
+    }
+
+    [Serializable]
+    public class PreviewClipEvent
+    {
+        public float time;
+        public string functionName;
     }
 
     /// <summary>
@@ -57,6 +78,37 @@ namespace Visora.Editor.Services
             return AnimationInspectionService.FindClip(clipPathOrName);
         }
 
+
+        /// <summary>
+        /// Counts clip bindings that do not resolve under the target, as a warning signal only.
+        ///
+        /// Never a blocker: humanoid clips bind muscle properties rather than Transform paths, so
+        /// this skips them entirely, and clips legitimately carry curves for props a given prefab
+        /// does not have - AnimationMode ignores those by design.
+        /// </summary>
+        private static void ReportUnresolvedBindings(
+            AnimationClip clip,
+            GameObject target,
+            AnimationPreviewSequenceResult result)
+        {
+            if (clip.isHumanMotion) return;
+
+            var unresolved = new HashSet<string>();
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                if (string.IsNullOrEmpty(binding.path)) continue;
+                if (target.transform.Find(binding.path) != null) continue;
+                unresolved.Add(binding.path);
+            }
+
+            result.unresolvedCurvePaths = unresolved.Count;
+            foreach (var path in unresolved)
+            {
+                if (result.unresolvedCurvePathSamples.Count >= 5) break;
+                result.unresolvedCurvePathSamples.Add(path);
+            }
+        }
+
         /// <summary>
         /// Samples the clip across [startTime, endTime] and renders one camera frame per sample,
         /// advancing one frame per editor update tick so the editor stays responsive.
@@ -76,6 +128,7 @@ namespace Visora.Editor.Services
             float fps,
             float startTime,
             float endTime,
+            bool autoFrame,
             AnimationPreviewSequenceResult result)
         {
             result.cameraName = cameraName;
@@ -129,6 +182,18 @@ namespace Visora.Editor.Services
 
             result.clipName = clip.name;
             result.clipLength = clip.length;
+            result.clipFps = clip.frameRate;
+            result.loopTime = AnimationUtility.GetAnimationClipSettings(clip).loopTime;
+            result.isHumanoidClip = clip.isHumanMotion;
+
+            foreach (var clipEvent in AnimationUtility.GetAnimationEvents(clip))
+            {
+                result.events.Add(new PreviewClipEvent
+                {
+                    time = clipEvent.time,
+                    functionName = clipEvent.functionName
+                });
+            }
 
             var target = GameObject.Find(targetObjectPath);
             if (target == null)
@@ -137,6 +202,8 @@ namespace Visora.Editor.Services
                 result.error = $"Target GameObject '{targetObjectPath}' was not found in the active scene.";
                 yield break;
             }
+
+            ReportUnresolvedBindings(clip, target, result);
 
             var cam = CameraRenderingService.FindCamera(cameraName);
             if (cam == null)
@@ -200,8 +267,58 @@ namespace Visora.Editor.Services
                     "property restoration is owned by whatever started it.");
             }
 
+            GameObject previewCameraRoot = null;
+            var renderCamera = cam;
+
             try
             {
+                int boundsSamples = AnimationPreviewFraming.ResolveBoundsSampleCount(frameCount);
+                if (AnimationPreviewFraming.TryComputeClipBounds(
+                        target, clip, rangeStart, rangeEnd, boundsSamples, result.warnings, out var clipBounds))
+                {
+                    if (boundsSamples < frameCount)
+                    {
+                        result.warnings.Add(
+                            $"Framing bounds were measured from {boundsSamples} of {frameCount} frames, so they are approximate.");
+                    }
+
+                    result.framingStatusBefore = AnimationPreviewFraming.EvaluateFraming(cam, clipBounds);
+
+                    if (result.framingStatusBefore == AnimationPreviewFraming.StatusVisible)
+                    {
+                        result.autoFrameStatus = "not_needed";
+                    }
+                    else if (!autoFrame)
+                    {
+                        result.autoFrameStatus = "disabled";
+                    }
+                    else
+                    {
+                        try
+                        {
+                            previewCameraRoot = AnimationPreviewFraming.CreatePreviewCamera(
+                                cam, clipBounds, width, height, out var previewCamera);
+                            result.previewCameraCreated = true;
+                            renderCamera = previewCamera;
+                            result.autoFrameStatus = "applied";
+                        }
+                        catch (Exception ex)
+                        {
+                            result.autoFrameStatus = "failed";
+                            result.warnings.Add($"Auto-framing failed, capturing with the requested camera: {ex.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                    result.framingStatusBefore = AnimationPreviewFraming.StatusNoRenderers;
+                    result.autoFrameStatus = "not_needed";
+                    result.warnings.Add(
+                        $"Target '{targetObjectPath}' has no renderers, so framing could not be evaluated.");
+                }
+
+                result.previewCameraUsed = renderCamera != null ? renderCamera.name : cam.name;
+
                 for (int i = 0; i < frameCount; i++)
                 {
                     float sampleTime = frameCount > 1 ? Mathf.Min(rangeStart + (step * i), rangeEnd) : rangeStart;
@@ -223,7 +340,7 @@ namespace Visora.Editor.Services
 
                     if (sampled)
                     {
-                        var render = CameraRenderingService.RenderCamera(cam, width, height, "PNG");
+                        var render = CameraRenderingService.RenderCamera(renderCamera, width, height, "PNG");
                         if (!render.success)
                         {
                             result.warnings.Add($"Frame {i} render at {sampleTime:F3}s failed: {render.error}");
@@ -244,6 +361,15 @@ namespace Visora.Editor.Services
             }
             finally
             {
+                if (previewCameraRoot != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(previewCameraRoot);
+
+                    // Not a tautology: Unity overloads == so a destroyed object compares equal to
+                    // null. This asks whether the destroy actually took, rather than assuming it.
+                    result.previewCameraDestroyed = previewCameraRoot == null;
+                }
+
                 if (ownsAnimationMode)
                 {
                     AnimationMode.StopAnimationMode();
