@@ -13,6 +13,7 @@ from backend.tools.animation.inspector import (
     clip_inspector,
     inspect_animation_clip,
 )
+from backend.tools.animation.preview import preview_animation
 from backend.tools.animation.sampling import sample_animation_clip
 from backend.tools.animation.scripts import (
     _inspect_clip_code,
@@ -38,6 +39,7 @@ __all__ = [
     "logger",
     "map_humanoid_bones",
     "match_bones_fuzzy",
+    "preview_animation",
     "sample_animation_clip",
     "skeleton_mapper",
 ]

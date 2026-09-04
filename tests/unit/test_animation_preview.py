@@ -1,8 +1,16 @@
+import base64
+import struct
+import zlib
+from pathlib import Path
+from typing import Any
+
 import httpx
 import pytest
 
 from backend.bridge.client import UnityBridge
 from backend.schemas import AnimationPreviewKeyFrame, AnimationPreviewResult
+from backend.tools import animation as animation_pkg
+from backend.tools import vision as vision_pkg
 from backend.tools.animation.preview_keyframes import select_key_frames
 from backend.tools.animation.preview_math import (
     MAX_SEQUENCE_FRAMES,
@@ -261,3 +269,273 @@ async def test_preview_sequence_sends_auto_frame_flag(monkeypatch: pytest.Monkey
     )
 
     assert sent["autoFrame"] is False
+
+
+def _png_base64(color: tuple[int, int, int], size: tuple[int, int] = (2, 2)) -> str:
+    """Minimal valid PNG so motion metrics have real pixels to diff."""
+    width, height = size
+    rows = []
+    for _ in range(height):
+        row = bytearray([0])
+        for _ in range(width):
+            row.extend(color)
+        rows.append(bytes(row))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(b"".join(rows)))
+        + chunk(b"IEND", b"")
+    )
+    return base64.b64encode(png).decode("ascii")
+
+
+class FakePreviewBridge:
+    """Bridge double covering only what preview_animation calls."""
+
+    def __init__(
+        self,
+        payload: dict[str, Any],
+        *,
+        clip_length: float = 2.0,
+        supports_autoframe: bool = True,
+        is_playing: bool = False,
+    ) -> None:
+        self.payload = payload
+        self.clip_length = clip_length
+        self.supports_autoframe = supports_autoframe
+        self.is_playing = is_playing
+        self.preview_calls: list[dict[str, Any]] = []
+
+    async def get_editor_state(self) -> dict[str, Any]:
+        return {"isPlaying": self.is_playing}
+
+    async def supports_feature(self, feature: str, force_refresh: bool = False) -> bool:
+        del force_refresh
+        return feature != "animation_preview_autoframe" or self.supports_autoframe
+
+    async def execute_capability(
+        self, code: str, *, native_path: str | None = None, native_payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        del code, native_path, native_payload
+        return {
+            "result": {
+                "success": True,
+                "clipName": "RebeccaDropkick",
+                "clipPath": "Assets/VisoraAnim/RebeccaDropkick.anim",
+                "length": self.clip_length,
+                "fps": 30.0,
+                "bindings": [],
+                "events": [],
+            }
+        }
+
+    async def preview_animation_sequence_native(self, **kwargs: Any) -> dict[str, Any]:
+        self.preview_calls.append(kwargs)
+        return self.payload
+
+
+def _preview_payload(**overrides: Any) -> dict[str, Any]:
+    dark = _png_base64((0, 0, 0))
+    light = _png_base64((255, 255, 255))
+    payload: dict[str, Any] = {
+        "success": True,
+        "cameraName": "Main Camera",
+        "previewCameraUsed": "Main Camera",
+        "autoFrameStatus": "not_needed",
+        "framingStatusBefore": "visible",
+        "poseRestored": True,
+        "sceneDirtiedByPreview": False,
+        "previewCameraCreated": False,
+        "previewCameraDestroyed": False,
+        "events": [],
+        "isHumanoidClip": False,
+        "unresolvedCurvePaths": 0,
+        "clipFps": 30.0,
+        "loopTime": False,
+        "width": 640,
+        "height": 360,
+        "frames": [
+            {"frameIndex": 0, "timestamp": 0.0, "imageBase64": dark},
+            {"frameIndex": 1, "timestamp": 0.5, "imageBase64": light},
+            {"frameIndex": 2, "timestamp": 1.0, "imageBase64": dark},
+        ],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _stub_encoder(monkeypatch: pytest.MonkeyPatch, artifact: Path) -> None:
+    def fake_encode(_frames: list[str], _fps: float, _width: int, _height: int) -> tuple[bytes, Path]:
+        return b"mp4", artifact
+
+    monkeypatch.setattr(vision_pkg, "_encode_frames_to_mp4", fake_encode)
+
+
+@pytest.mark.anyio
+async def test_preview_animation_returns_key_frames_and_artifact_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload()))
+    _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca",
+        clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
+    )
+
+    assert result.success is True
+    assert result.frame_count == 3
+    assert result.key_frames
+    assert result.video_artifact_path == str(tmp_path / "preview.mp4")
+    assert result.video_base64 is None
+    assert result.rendered_camera_name == "Main Camera"
+    assert result.preview_camera_destroyed is None
+
+
+@pytest.mark.anyio
+async def test_preview_animation_reports_unsupported_auto_frame(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bridge = FakePreviewBridge(_preview_payload(), supports_autoframe=False)
+    monkeypatch.setattr(animation_pkg, "bridge", bridge)
+    _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
+    )
+
+    assert result.success is True
+    assert result.auto_frame_status == "unsupported"
+    assert bridge.preview_calls[0]["auto_frame"] is False
+    assert any("animation_preview_autoframe" in warning for warning in result.warnings)
+
+
+@pytest.mark.anyio
+async def test_preview_animation_keeps_key_frames_when_mp4_encoding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload()))
+
+    def failing_encode(*_args: Any) -> tuple[bytes, Path]:
+        raise RuntimeError("ffmpeg missing")
+
+    monkeypatch.setattr(vision_pkg, "_encode_frames_to_mp4", failing_encode)
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
+    )
+
+    assert result.success is True
+    assert result.video_artifact_path is None
+    assert result.key_frames
+    assert any("ffmpeg missing" in warning for warning in result.warnings)
+
+
+@pytest.mark.anyio
+async def test_preview_animation_refuses_play_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload(), is_playing=True))
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
+    )
+
+    assert result.success is False
+    assert result.error is not None
+    assert "game_camera" in result.error
+
+
+@pytest.mark.anyio
+async def test_preview_animation_lowers_fps_for_a_long_clip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    bridge = FakePreviewBridge(_preview_payload(), clip_length=30.0)
+    monkeypatch.setattr(animation_pkg, "bridge", bridge)
+    _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
+    )
+
+    assert result.effective_fps < 24
+    assert result.frame_ceiling_applied is True
+    assert result.range_truncated is False
+    assert result.end_time == 30.0
+
+
+@pytest.mark.anyio
+async def test_preview_animation_surfaces_unrestored_pose(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload(poseRestored=False)))
+    _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
+    )
+
+    assert result.success is True
+    assert result.pose_restored is False
+    assert any("pose" in warning.lower() for warning in result.warnings)
+
+
+@pytest.mark.anyio
+async def test_preview_animation_includes_video_bytes_only_when_requested(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload()))
+    _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca",
+        clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
+        include_video_base64=True,
+    )
+
+    assert result.success is True
+    assert result.video_base64 == base64.b64encode(b"mp4").decode("ascii")
+
+
+@pytest.mark.anyio
+async def test_preview_animation_keeps_a_single_key_frame_without_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image = _png_base64((0, 0, 0))
+    monkeypatch.setattr(
+        animation_pkg,
+        "bridge",
+        FakePreviewBridge(_preview_payload(frames=[{"frameIndex": 0, "timestamp": 0.0, "imageBase64": image}])),
+    )
+
+    def encoder_must_not_run(*_args: Any) -> tuple[bytes, Path]:
+        raise AssertionError("a single frame must not be encoded as MP4")
+
+    monkeypatch.setattr(vision_pkg, "_encode_frames_to_mp4", encoder_must_not_run)
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
+    )
+
+    assert result.success is True
+    assert result.frame_count == 1
+    assert len(result.key_frames) == 1
+    assert result.video_artifact_path is None
+    assert any("single captured frame" in warning.lower() for warning in result.warnings)
+
+
+@pytest.mark.anyio
+async def test_preview_animation_preserves_an_explicit_zero_length_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    bridge = FakePreviewBridge(_preview_payload())
+    monkeypatch.setattr(animation_pkg, "bridge", bridge)
+    monkeypatch.setattr(vision_pkg, "_encode_frames_to_mp4", lambda *_: (b"", Path("preview.mp4")))
+
+    result = await animation_pkg.preview_animation(
+        target_object_path="Rebecca",
+        clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
+        start_time=0.0,
+        end_time=0.0,
+    )
+
+    assert result.start_time == 0.0
+    assert result.end_time == 0.0
+    assert bridge.preview_calls[0]["frame_count"] == 1
+    assert bridge.preview_calls[0]["end_time"] == pytest.approx(0.000001)

@@ -217,13 +217,6 @@ namespace Visora.Editor.Services
 
             float rangeStart = Mathf.Clamp(startTime, 0f, clip.length);
             float rangeEnd = endTime > 0f ? Mathf.Clamp(endTime, rangeStart, clip.length) : clip.length;
-            if (Mathf.Approximately(rangeEnd, rangeStart) && clip.length > 0f)
-            {
-                result.warnings.Add("Requested time range was empty; previewing the full clip instead.");
-                rangeStart = 0f;
-                rangeEnd = clip.length;
-            }
-
             result.startTime = rangeStart;
             result.endTime = rangeEnd;
 
@@ -284,13 +277,13 @@ namespace Visora.Editor.Services
 
                     result.framingStatusBefore = AnimationPreviewFraming.EvaluateFraming(cam, clipBounds);
 
-                    if (result.framingStatusBefore == AnimationPreviewFraming.StatusVisible)
-                    {
-                        result.autoFrameStatus = "not_needed";
-                    }
-                    else if (!autoFrame)
+                    if (!autoFrame)
                     {
                         result.autoFrameStatus = "disabled";
+                    }
+                    else if (result.framingStatusBefore == AnimationPreviewFraming.StatusVisible)
+                    {
+                        result.autoFrameStatus = "not_needed";
                     }
                     else
                     {
