@@ -836,7 +836,8 @@ async def test_wait_for_editor_ready_retries_through_unusable_body(mock_settings
 async def test_port_discovery_survives_empty_ping_body(mock_settings: Settings) -> None:
     """
     A bridge mid-reload answers /api/ping with 200 and no body. Discovery must still accept the port
-    rather than treating the whole bridge as unreachable.
+    rather than treating the whole bridge as unreachable - but it must not guess the flavor, because
+    caching a native bridge as legacy silently disables every native capability for good.
     """
     bridge = UnityBridge(settings=mock_settings)
     request = httpx.Request("GET", "http://127.0.0.1:7890/api/ping")
@@ -847,6 +848,52 @@ async def test_port_discovery_survives_empty_ping_body(mock_settings: Settings) 
         port = await bridge.get_active_port()
 
     assert port == 7890
+    assert bridge._bridge_flavor is None
+
+
+@pytest.mark.anyio
+async def test_native_flavor_is_resolved_after_the_reload_finishes(mock_settings: Settings) -> None:
+    """
+    The flavor left unresolved during a reload must be probed again once Unity answers properly,
+    instead of staying at the legacy default and pinning the client to the slow capture path.
+    """
+    # Native capabilities only matter outside legacy mode, which is the Settings default.
+    bridge = UnityBridge(settings=mock_settings.model_copy(update={"unity_bridge_mode": "auto"}))
+    probes = 0
+
+    async def ping(url: str, **_kwargs: Any) -> httpx.Response:
+        nonlocal probes
+        request = httpx.Request("GET", url)
+        if not url.startswith("http://127.0.0.1:7890/"):
+            raise httpx.ConnectError("no bridge on this port", request=request)
+        probes += 1
+        if probes == 1:
+            # Still reloading: 200 with nothing usable in the body.
+            return httpx.Response(200, text="", request=request)
+        return httpx.Response(200, json={"flavor": "visora-native"}, request=request)
+
+    with patch.object(bridge.client, "get", side_effect=ping):
+        assert await bridge.get_active_port() == 7890
+        assert bridge._bridge_flavor is None
+
+        # Unity has finished reloading by the time anything asks about capabilities.
+        assert await bridge.is_native_bridge() is True
+
+    assert bridge._bridge_flavor == "visora-native"
+
+
+@pytest.mark.anyio
+async def test_capabilities_are_not_cached_while_the_flavor_is_unresolved(mock_settings: Settings) -> None:
+    """An unknown flavor is not a confirmed legacy bridge, so 'no capabilities' must not be cached."""
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = 7890
+    bridge._bridge_flavor = None
+
+    with patch.object(bridge, "is_native_bridge", new_callable=AsyncMock) as mock_native:
+        mock_native.return_value = False
+        assert await bridge.supports_feature("camera_sequence_realtime") is False
+
+    assert bridge._supported_features is None
 
 
 @pytest.mark.anyio

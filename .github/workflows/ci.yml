@@ -350,10 +350,10 @@ jobs:
       # Compiles the package the way Unity would. A parse-only check was measured against two real
       # defects in this package (a yield inside a catch clause, and a call to an API that is internal
       # in Unity 6) and caught neither: both are semantic, so real assemblies are required.
-      - name: Compile Unity package
+      - name: Compile and format-check Unity package
         run: >-
           uv run --no-project python scripts/check_unity_package.py
-          --unity-managed-dir "$UNITY_MANAGED_DIR"
+          --unity-managed-dir "$UNITY_MANAGED_DIR" --format
 
   docker:
     name: Build and smoke-test container image

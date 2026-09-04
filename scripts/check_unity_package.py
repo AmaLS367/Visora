@@ -46,9 +46,17 @@ def resolve_managed_dir(explicit: str | None) -> Path:
     )
 
 
-def run(command: list[str], step: str) -> None:
+def run(command: list[str], step: str, managed_dir: Path) -> None:
+    """
+    Runs one gate command with the Unity path supplied through the environment.
+
+    It cannot be passed as an MSBuild -p: argument: `dotnet format` rejects unknown arguments and
+    exits with its usage text, so the format gate failed before inspecting a single file. MSBuild
+    reads environment variables as properties, which both `build` and `format` honour.
+    """
     print(f"==> {step}")
-    result = subprocess.run(command, cwd=REPO_ROOT, check=False)
+    environment = {**os.environ, "UnityManagedDir": str(managed_dir)}
+    result = subprocess.run(command, cwd=REPO_ROOT, check=False, env=environment)
     if result.returncode != 0:
         fail(f"{step} failed with exit code {result.returncode}.")
 
@@ -61,7 +69,9 @@ def main() -> None:
         )
     )
     parser.add_argument("--unity-managed-dir", default=None, help="Path to <Unity>/Editor/Data/Managed.")
-    parser.add_argument("--format", action="store_true", help="Also verify C# formatting instead of only compiling.")
+    parser.add_argument(
+        "--format", action="store_true", help="Also verify C# whitespace formatting, not only compilation."
+    )
     args = parser.parse_args()
 
     if shutil.which("dotnet") is None:
@@ -78,20 +88,22 @@ def main() -> None:
         "--no-incremental",
         "-v",
         "q",
-        f"-p:UnityManagedDir={managed_dir}",
     ]
-    run(build, "Compiling unity-package/Editor")
+    run(build, "Compiling unity-package/Editor", managed_dir)
 
     if args.format:
+        # whitespace, not the full `dotnet format`: the default also runs analyzer fixes and exits
+        # non-zero when it cannot auto-fix a diagnostic, which reports an analyzer finding as a
+        # formatting failure. Analyzers are already enforced by the compile step above.
         verify = [
             "dotnet",
             "format",
+            "whitespace",
             str(GATE_PROJECT),
             "--verify-no-changes",
             "--no-restore",
-            f"-p:UnityManagedDir={managed_dir}",
         ]
-        run(verify, "Verifying C# formatting")
+        run(verify, "Verifying C# formatting", managed_dir)
 
     print("Unity package compiles cleanly.")
 

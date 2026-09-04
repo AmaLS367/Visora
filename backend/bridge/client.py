@@ -102,6 +102,7 @@ class UnityBridge:
 
         ports = self.candidate_ports
         native_candidate: tuple[int, str] | None = None
+        unidentified_port: int | None = None
         for port in ports:
             test_url = f"{self.base_url}:{port}/api/ping"
             try:
@@ -111,9 +112,13 @@ class UnityBridge:
                     try:
                         data: dict[str, Any] = _decode_json(response)
                     except BridgeProtocolError:
-                        # A bridge answering 200 with no usable body is mid-domain-reload; treat it
-                        # as an unidentified flavor rather than letting discovery fail outright.
-                        data = {}
+                        # Mid-domain-reload Unity answers 200 with no usable body. The port is alive
+                        # but the flavor is genuinely unknown, and defaulting it here would cache a
+                        # native bridge as legacy for the lifetime of this client, silently disabling
+                        # every native capability. Remember the port, decide the flavor later.
+                        if unidentified_port is None:
+                            unidentified_port = port
+                        continue
                     flavor = data.get("flavor", "anklebreaker") if isinstance(data, dict) else "anklebreaker"
                     if not self._flavor_matches_mode(flavor):
                         logger.debug(
@@ -142,6 +147,17 @@ class UnityBridge:
                 self._active_port,
             )
             return self._active_port
+
+        if unidentified_port is not None:
+            # Usable for requests, but the flavor stays unresolved so it is probed again once Unity
+            # finishes reloading rather than being frozen at a guess.
+            self._active_port = unidentified_port
+            self._bridge_flavor = None
+            logger.info(
+                "Unity Bridge on port %s answered without an identifiable flavor; will re-probe",
+                unidentified_port,
+            )
+            return unidentified_port
 
         msg = (
             f"No Unity bridge matching mode '{self.settings.unity_bridge_mode}' is reachable "
@@ -396,7 +412,7 @@ class UnityBridge:
         Returns the detected bridge flavor ('visora-native' or 'anklebreaker').
         """
         if self._bridge_flavor is None or force_refresh:
-            await self.get_active_port(force_refresh=force_refresh)
+            await self.get_active_port(force_refresh=True)
         return self._bridge_flavor or "anklebreaker"
 
     async def is_native_bridge(self, force_refresh: bool = False) -> bool:
@@ -422,7 +438,8 @@ class UnityBridge:
             return feature in self._supported_features
 
         if not await self.is_native_bridge():
-            self._supported_features = frozenset()
+            if self._bridge_flavor is not None:
+                self._supported_features = frozenset()
             return False
 
         # Deliberately not get_bridge_info(): that synthesizes a legacy-shaped answer when the info
