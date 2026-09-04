@@ -824,6 +824,7 @@ class NativeSequenceBridge(FakeBridge):
         frame_count: int = 10,
         interval: float = 0.1,
     ) -> dict[str, object]:
+        del width, height
         self.native_sequence_calls.append(
             {"camera": camera_name, "frame_count": frame_count, "interval": interval, "mode": "game_camera"}
         )
@@ -837,6 +838,7 @@ class NativeSequenceBridge(FakeBridge):
         frame_count: int = 10,
         interval: float = 0.1,
     ) -> dict[str, object]:
+        del width, height
         self.native_sequence_calls.append(
             {"subject": subject_path, "frame_count": frame_count, "interval": interval, "mode": "diagnostic_lit"}
         )
