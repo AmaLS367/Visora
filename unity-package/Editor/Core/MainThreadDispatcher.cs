@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEditor;
 
@@ -12,6 +14,14 @@ namespace Visora.Editor.Core
     public static class MainThreadDispatcher
     {
         private static readonly ConcurrentQueue<Action> ExecutionQueue = new ConcurrentQueue<Action>();
+        private static readonly List<SteppedRoutine> ActiveRoutines = new List<SteppedRoutine>();
+
+        private sealed class SteppedRoutine
+        {
+            public IEnumerator Routine;
+            public Action OnCompleted;
+            public Action<Exception> OnFailed;
+        }
 
         static MainThreadDispatcher()
         {
@@ -31,6 +41,45 @@ namespace Visora.Editor.Core
                 {
                     UnityEngine.Debug.LogError($"[Visora] Error executing task on MainThread: {ex}");
                 }
+            }
+
+            StepRoutines();
+        }
+
+        /// <summary>
+        /// Advances the queued stepped routines by one step per editor update tick, so a routine can
+        /// span many frames of real editor time instead of blocking a single tick.
+        ///
+        /// Exactly one routine runs at a time, and the rest wait their turn. These routines snapshot
+        /// and restore global editor state - RenderSettings, animation mode, a temporary lighting rig
+        /// - and interleaving two of them corrupts it: whichever finishes second restores the values
+        /// it captured while the first was active, making the first routine's temporary settings
+        /// permanent. A routine's body does not run until its first MoveNext, so a queued routine
+        /// snapshots the state it will actually restore.
+        /// </summary>
+        private static void StepRoutines()
+        {
+            if (ActiveRoutines.Count == 0) return;
+
+            var entry = ActiveRoutines[0];
+            bool hasMore;
+
+            try
+            {
+                hasMore = entry.Routine.MoveNext();
+            }
+            catch (Exception ex)
+            {
+                ActiveRoutines.RemoveAt(0);
+                (entry.Routine as IDisposable)?.Dispose();
+                entry.OnFailed?.Invoke(ex);
+                return;
+            }
+
+            if (!hasMore)
+            {
+                ActiveRoutines.RemoveAt(0);
+                entry.OnCompleted?.Invoke();
             }
         }
 
@@ -82,6 +131,62 @@ namespace Visora.Editor.Core
                     tcs.SetException(ex);
                 }
             });
+            return tcs.Task;
+        }
+
+        /// <summary>
+        /// Runs a routine on the Editor main thread one step per update tick, then resolves with
+        /// resultSelector. Use this - not EnqueueAsync - whenever the work must observe real editor
+        /// time passing between steps, such as recording animation frames at a target frame rate.
+        /// </summary>
+        public static Task<T> EnqueueSteppedAsync<T>(Func<IEnumerator> routineFactory, Func<T> resultSelector)
+        {
+            var tcs = new TaskCompletionSource<T>();
+
+            Post(() =>
+            {
+                IEnumerator routine;
+                try
+                {
+                    routine = routineFactory();
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                    return;
+                }
+
+                if (routine == null)
+                {
+                    try
+                    {
+                        tcs.SetResult(resultSelector());
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.SetException(ex);
+                    }
+                    return;
+                }
+
+                ActiveRoutines.Add(new SteppedRoutine
+                {
+                    Routine = routine,
+                    OnCompleted = () =>
+                    {
+                        try
+                        {
+                            tcs.SetResult(resultSelector());
+                        }
+                        catch (Exception ex)
+                        {
+                            tcs.SetException(ex);
+                        }
+                    },
+                    OnFailed = ex => tcs.SetException(ex)
+                });
+            });
+
             return tcs.Task;
         }
     }

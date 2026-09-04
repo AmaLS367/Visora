@@ -144,6 +144,18 @@ class VideoFrameSequence(BaseModel):
     mode: str = Field(..., description="Capture mode")
     duration_seconds: float = Field(..., description="Requested capture duration")
     fps: int = Field(..., description="Requested frame sampling rate")
+    actual_fps: float | None = Field(
+        default=None,
+        description="Frame rate actually achieved, measured from frame timestamps; None if fewer than two frames",
+    )
+    timing_source: str = Field(
+        default="python_wallclock",
+        description=(
+            "How frame timing was produced: native_realtime (Unity recorded on its own clock), "
+            "edit_mode_sampled (clip sampled at exact timestamps), or python_wallclock "
+            "(one bridge round trip per frame, so far below the requested rate)"
+        ),
+    )
     frames: list[VideoFrame] = Field(default_factory=list, description="Sampled PNG frames")
     motion_metrics: list[FrameMotionMetrics] = Field(default_factory=list, description="Adjacent-frame motion metrics")
     warnings: list[str] = Field(default_factory=list, description="Sequence-level warnings")
@@ -167,6 +179,14 @@ class VideoMp4Result(BaseToolResult):
     mode: str = Field(..., description="Capture mode")
     duration_seconds: float = Field(..., description="Requested capture duration")
     fps: int = Field(..., description="Requested video frame rate")
+    actual_fps: float | None = Field(
+        default=None,
+        description="Frame rate the capture achieved and the MP4 is encoded at, so playback runs at real speed",
+    )
+    timing_source: str = Field(
+        default="python_wallclock",
+        description="How frame timing was produced",
+    )
     width: int = Field(..., description="Video width in pixels")
     height: int = Field(..., description="Video height in pixels")
     warnings: list[str] = Field(default_factory=list, description="Video export warnings")

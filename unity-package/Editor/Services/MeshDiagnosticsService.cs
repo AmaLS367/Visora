@@ -52,8 +52,8 @@ namespace Visora.Editor.Services
                 }
             }
 
-            var smrs = targetGo != null ? targetGo.GetComponentsInChildren<SkinnedMeshRenderer>(true) : UnityEngine.Object.FindObjectsOfType<SkinnedMeshRenderer>();
-            var mfs = targetGo != null ? targetGo.GetComponentsInChildren<MeshFilter>(true) : UnityEngine.Object.FindObjectsOfType<MeshFilter>();
+            var smrs = targetGo != null ? targetGo.GetComponentsInChildren<SkinnedMeshRenderer>(true) : UnityEngine.Object.FindObjectsByType<SkinnedMeshRenderer>();
+            var mfs = targetGo != null ? targetGo.GetComponentsInChildren<MeshFilter>(true) : UnityEngine.Object.FindObjectsByType<MeshFilter>();
 
             result.hasSkinnedMesh = smrs.Length > 0;
             result.hasMeshFilter = mfs.Length > 0;

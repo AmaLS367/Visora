@@ -9,6 +9,7 @@ from backend.bridge.exceptions import (
     BridgeError,
     BridgeExecutionError,
     BridgeHTTPError,
+    BridgeProtocolError,
     BridgeStateError,
     BridgeTimeoutError,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "BridgeError",
     "BridgeExecutionError",
     "BridgeHTTPError",
+    "BridgeProtocolError",
     "BridgeStateError",
     "BridgeTimeoutError",
     "UnityBridge",

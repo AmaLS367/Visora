@@ -117,7 +117,7 @@ namespace Visora.Editor.Services
                         return result;
                     }
                     var beforePaths = new HashSet<string>(AssetDatabase.GetAllAssetPaths());
-                    AssetDatabase.ImportPackage(normalizedPath, false);
+                    UnityEditor.AssetPackage.Package.Import(normalizedPath, false);
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                     foreach (var importedPath in AssetDatabase.GetAllAssetPaths())
                     {
@@ -346,11 +346,11 @@ namespace Visora.Editor.Services
                 // GetInstanceID() is a hard compile error (CS0619) on Unity 6.6+; GetEntityId()'s
                 // own implicit int conversion is ALSO obsolete-as-error there ("EntityId will not
                 // be representable by an int in the future") - confirmed live, the first fix just
-                // traded one CS0619 for another. GetRawData() (raw ulong, not obsolete) plus a
-                // plain numeric cast avoids the deprecated operator entirely; truncating to int
-                // keeps instance_id's wire type unchanged for now, same tradeoff the deprecated
+                // traded one CS0619 for another, and GetRawData() became obsolete in turn.
+                // EntityId.ToULong is the current supported accessor; truncating to int keeps
+                // instance_id's wire type unchanged for now, the same tradeoff the deprecated
                 // conversion already made.
-                result.instance_id = unchecked((int)instance.GetEntityId().GetRawData());
+                result.instance_id = unchecked((int)EntityId.ToULong(instance.GetEntityId()));
                 result.world_position = new List<float>
                 {
                     instance.transform.position.x,

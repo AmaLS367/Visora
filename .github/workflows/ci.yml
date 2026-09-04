@@ -273,7 +273,12 @@ jobs:
   unity-package:
     name: Validate Unity package
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 30
+    env:
+      # The Unity release whose assemblies the package is compiled against. Bumping this invalidates
+      # the assembly cache below, which is the only step that pays for the multi-gigabyte image.
+      UNITY_IMAGE: unityci/editor:ubuntu-6000.6.0f1-base-3
+      UNITY_MANAGED_DIR: ${{ github.workspace }}/.unity-managed
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -283,12 +288,72 @@ jobs:
           jq -e '
             .name == "com.visora.editor" and
             (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
-            (.unity | test("^20[0-9]{2}\\.[0-9]+$"))
+            (.unity | test("^(20[0-9]{2}|[0-9]{4,})\\.[0-9]+$"))
           ' unity-package/package.json > /dev/null
           jq -e . unity-package/Editor/Visora.Editor.asmdef > /dev/null
           jq -e . unity-package/Tests/Editor/Visora.Editor.Tests.asmdef > /dev/null
           test -f unity-package/README.md
           test -f unity-package/CHANGELOG.md
+
+      # Unity does not publish UnityEngine/UnityEditor to NuGet and its assemblies may not be
+      # redistributed, so they are extracted from the official editor image at build time. Only the
+      # ~140 MB Managed directory is kept; no Unity licence is involved because the editor is never
+      # run - the assemblies are only referenced by the compiler.
+      - name: Restore cached Unity assemblies
+        id: unity-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.UNITY_MANAGED_DIR }}
+          key: unity-managed-${{ env.UNITY_IMAGE }}
+
+      - name: Extract Unity assemblies from the editor image
+        if: steps.unity-cache.outputs.cache-hit != 'true'
+        run: |
+          docker pull "$UNITY_IMAGE"
+          mkdir -p "$UNITY_MANAGED_DIR"
+          # The install path differs between editor image variants, so the Managed directory is
+          # located by finding UnityEditor.dll rather than assumed to sit at a fixed path.
+          docker run --rm -v "$UNITY_MANAGED_DIR:/out" --entrypoint sh "$UNITY_IMAGE" -c '
+            set -eu
+            editor_dll="$(find / -maxdepth 9 -type f -name UnityEditor.dll -path "*/Managed/*" -print -quit)"
+            if [ -z "$editor_dll" ]; then
+              echo "UnityEditor.dll was not found in the editor image" >&2
+              exit 1
+            fi
+            cp -r "$(dirname "$editor_dll")/." /out/
+            chmod -R a+rX /out
+          '
+
+      - name: Verify extracted assemblies
+        run: |
+          test -f "$UNITY_MANAGED_DIR/UnityEditor.dll"
+          test -f "$UNITY_MANAGED_DIR/UnityEngine.dll"
+          test -d "$UNITY_MANAGED_DIR/UnityEngine"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.10"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10
+        with:
+          version: "0.12.9"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # Compiles the package the way Unity would. A parse-only check was measured against two real
+      # defects in this package (a yield inside a catch clause, and a call to an API that is internal
+      # in Unity 6) and caught neither: both are semantic, so real assemblies are required.
+      - name: Compile and format-check Unity package
+        run: >-
+          uv run --no-project python scripts/check_unity_package.py
+          --unity-managed-dir "$UNITY_MANAGED_DIR" --format
 
   docker:
     name: Build and smoke-test container image

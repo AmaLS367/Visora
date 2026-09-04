@@ -1,0 +1,23 @@
+# Analyzer rules for the Visora Unity Editor package.
+#
+# Applied by the compile gate in tools/unity-compile-gate and by any IDE that opens these sources.
+# Unity's conventions collide with a few general .NET rules; silencing those here keeps the gate
+# output meaningful instead of drowning real findings in noise.
+
+root = true
+
+[*.cs]
+
+# Unity serializes response DTOs through JsonUtility, which only sees public fields. Properties
+# would break every native endpoint's payload, so visible instance fields are the correct design.
+dotnet_diagnostic.CA1051.severity = none
+
+# Assembly-level attributes (CLSCompliant, AssemblyVersion) are Unity's job, not the package's.
+dotnet_diagnostic.CA1016.severity = none
+dotnet_diagnostic.CA1014.severity = none
+
+# EditorTaskQueue really is a queue; the name is accurate.
+dotnet_diagnostic.CA1711.severity = none
+
+# Obsolete Unity APIs must stay visible - they are how a package silently rots across Unity versions.
+dotnet_diagnostic.CS0618.severity = warning

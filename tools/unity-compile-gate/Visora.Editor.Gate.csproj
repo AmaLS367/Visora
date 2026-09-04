@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Compile gate for the Visora Unity Editor package.
+
+    Unity itself is the only thing that normally compiles unity-package/, which means a C# mistake is
+    invisible until someone opens the Editor. This project builds the very same sources against the
+    real UnityEngine/UnityEditor assemblies of an installed Unity, so the compiler runs in CI and on
+    a dev machine without launching Unity.
+
+    It is a checking tool, not a shipped artifact: nothing here is packaged or referenced by Unity.
+    Run it through scripts/check-unity-package.sh, which locates the Unity installation.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <!-- Unity 6 compiles user scripts as C# 9; pinning it here makes the gate reject syntax that
+         Unity itself would reject, instead of silently accepting newer language features. -->
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Visora.Editor.Gate</AssemblyName>
+    <RootNamespace>Visora.Editor</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <DebugType>none</DebugType>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+
+    <!-- Unity deserializes these types by reflection (JsonUtility), so public fields are assigned
+         outside the compiler's view. CS0649 would flag every single response DTO field. -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+
+    <UnityManagedDir Condition="'$(UnityManagedDir)' == ''">$(HOME)/Unity/Hub/Editor/6000.6.0f1/Editor/Data/Managed</UnityManagedDir>
+    <UnityPackageDir Condition="'$(UnityPackageDir)' == ''">$(MSBuildThisFileDirectory)../../unity-package</UnityPackageDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Editor sources only. Tests/ needs the Unity Test Framework (NUnit) assemblies, which ship
+         with the Test Framework package rather than the Editor installation. -->
+    <Compile Include="$(UnityPackageDir)/Editor/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="$(UnityManagedDir)/UnityEditor.dll" />
+    <Reference Include="$(UnityManagedDir)/UnityEngine.dll" />
+    <Reference Include="$(UnityManagedDir)/UnityEngine/*.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Unity.Analyzers" Version="1.27.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

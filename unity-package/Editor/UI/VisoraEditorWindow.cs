@@ -36,7 +36,7 @@ namespace Visora.Editor.UI
 
             GUILayout.Space(10);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            
+
             bool isRunning = VisoraServer.IsRunning;
             var statusColor = isRunning ? new Color(0.2f, 0.8f, 0.2f) : new Color(0.8f, 0.2f, 0.2f);
             var statusText = isRunning ? $"Running (Port {VisoraServer.ActivePort})" : "Stopped";

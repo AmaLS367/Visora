@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Native real-time sequence recording:** Unity records a whole camera sequence on its own clock and returns it in one response. Measured against a live editor, `diagnostic_lit` went from 0.58 to 9.65 fps and `game_camera` reached 10.8 fps, because per-frame capture spent a bridge round trip on every frame.
+- **`authored_clip` capture mode:** samples an AnimationClip at exact timestamps in Edit Mode, hitting 23.999998 of a requested 24 fps in 1.87s with no domain reload, and restoring the target pose afterwards.
+- **Measured frame timing:** sequences report `actual_fps` and `timing_source` (`native_realtime`, `edit_mode_sampled`, or `python_wallclock`), and MP4 is encoded at the rate actually achieved so playback runs at real speed.
+- **C# compile gate:** `scripts/check_unity_package.py` builds the Unity package against real Unity assemblies with .NET and Unity analyzers, in CI as well as locally. Unity was previously the only thing that ever compiled this code.
+
+### Fixed
+
+- **`get_video_mp4` rejected its own default frame rate ([#6](https://github.com/AmaLS367/Visora/issues/6)):** it validated fps up to 30, then delegated to `get_video_frames`, which re-validated at the 12 fps frame-payload limit. Both tools now share a capture core with their own ceiling.
+- **Transient Unity responses during domain reload:** the bridge answers 200 with an empty or non-JSON body while reloading, which surfaced as a raw `JSONDecodeError` that no retry path recognised. All decode sites now raise a typed `BridgeProtocolError`, and the play-mode and readiness polls treat it as transient.
+- **Stale first Game View frame:** `game_camera` discards frames still showing pre-Play-Mode content, warning instead of failing when a scene is simply static.
+- **Lost recordings on a single dropped frame:** a transient bridge failure is retried instead of ending the sequence.
+- **Duplicated frame warnings:** an identical per-frame caveat is reported once with its frame count, rather than repeated for every frame.
+- **Unity 6 deprecations:** replaced `FindObjectsOfType`, `AssetDatabase.ImportPackage`, and `EntityId.GetRawData` with their current equivalents.
+
+---
+
 ## [0.1.2] - 2026-09-03
 
 ### Added

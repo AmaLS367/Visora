@@ -50,6 +50,30 @@ namespace Visora.Editor.Core
     }
 
     [Serializable]
+    public class DiagnosticCaptureRequest
+    {
+        public string subjectPath;
+        public int width = 1280;
+        public int height = 720;
+        public int frameCount = 1;
+        public float frameIntervalSeconds = 0.1f;
+    }
+
+    [Serializable]
+    public class AnimationPreviewRequest
+    {
+        public string cameraName = "Main Camera";
+        public string clipPath;
+        public string targetObjectPath;
+        public int width = 640;
+        public int height = 360;
+        public int frameCount = 24;
+        public float fps = 24f;
+        public float startTime;
+        public float endTime;
+    }
+
+    [Serializable]
     public class CameraProjectRequest
     {
         public string cameraName = "Main Camera";
@@ -166,7 +190,7 @@ namespace Visora.Editor.Core
                     {
                         success = true,
                         message = "Visora Editor Bridge active",
-                        version = "1.1.0",
+                        version = "1.2.0",
                         flavor = "visora-native",
                         unityVersion = Application.unityVersion
                     });
@@ -181,8 +205,8 @@ namespace Visora.Editor.Core
                     {
                         success = true,
                         flavor = "visora-native",
-                        version = "1.1.0",
-                        apiVersion = 2,
+                        version = "1.2.0",
+                        apiVersion = 3,
                         unityVersion = Application.unityVersion,
                         isPlaying = EditorApplication.isPlaying,
                         isCompiling = EditorApplication.isCompiling,
@@ -191,6 +215,10 @@ namespace Visora.Editor.Core
                         {
                             "camera_render",
                             "camera_sequence",
+                            "camera_sequence_realtime",
+                            "camera_diagnostic",
+                            "camera_diagnostic_sequence",
+                            "animation_preview_sequence",
                             "camera_inventory",
                             "camera_projection",
                             "camera_framing",
@@ -322,9 +350,49 @@ namespace Visora.Editor.Core
                 {
                     var body = ReadBody(req);
                     var p = JsonUtility.FromJson<CameraSequenceRequest>(body) ?? new CameraSequenceRequest();
+
+                    // Stepped, not EnqueueAsync: the capture has to span real editor time so game and
+                    // animation state advance between frames. This request stays open for roughly
+                    // frameCount * frameIntervalSeconds - clients must budget their timeout for it.
+                    var sequence = new CameraSequenceResult();
+                    await MainThreadDispatcher.EnqueueSteppedAsync(
+                        () => CameraRenderingService.CaptureSequenceRoutine(
+                            p.cameraName, p.width, p.height, p.frameCount, p.frameIntervalSeconds, sequence),
+                        () => sequence);
+                    responseJson = JsonUtility.ToJson(sequence);
+                }
+                else if (method == "POST" && path == "/api/visora/camera/diagnostic")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<DiagnosticCaptureRequest>(body) ?? new DiagnosticCaptureRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
-                        CameraRenderingService.CaptureSequence(p.cameraName, p.width, p.height, p.frameCount, p.frameIntervalSeconds));
+                        DiagnosticCaptureService.Capture(p.subjectPath, p.width, p.height));
                     responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/camera/diagnostic-sequence")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<DiagnosticCaptureRequest>(body) ?? new DiagnosticCaptureRequest();
+
+                    var sequence = new CameraSequenceResult();
+                    await MainThreadDispatcher.EnqueueSteppedAsync(
+                        () => DiagnosticCaptureService.CaptureSequenceRoutine(
+                            p.subjectPath, p.width, p.height, p.frameCount, p.frameIntervalSeconds, sequence),
+                        () => sequence);
+                    responseJson = JsonUtility.ToJson(sequence);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/preview-sequence")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<AnimationPreviewRequest>(body) ?? new AnimationPreviewRequest();
+
+                    var preview = new AnimationPreviewSequenceResult();
+                    await MainThreadDispatcher.EnqueueSteppedAsync(
+                        () => AnimationPreviewService.CapturePreviewRoutine(
+                            p.cameraName, p.clipPath, p.targetObjectPath, p.width, p.height,
+                            p.frameCount, p.fps, p.startTime, p.endTime, preview),
+                        () => preview);
+                    responseJson = JsonUtility.ToJson(preview);
                 }
                 else if (method == "POST" && path == "/api/visora/camera/list")
                 {

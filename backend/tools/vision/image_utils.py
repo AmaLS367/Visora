@@ -115,13 +115,13 @@ def _frame_count(duration_seconds: float, fps: int) -> int:
     return max(1, math.ceil(duration_seconds * fps))
 
 
-def _encode_frames_to_mp4(frame_images_base64: list[str], fps: int, width: int, height: int) -> tuple[bytes, Path]:
+def _encode_frames_to_mp4(frame_images_base64: list[str], fps: float, width: int, height: int) -> tuple[bytes, Path]:
     """
     Encodes a list of base64 image frames into an H.264 MP4 video file saved in artifacts/.
 
     Args:
         frame_images_base64: Ordered list of base64-encoded frame images.
-        fps: Target frames per second.
+        fps: Frames per second to encode at - the rate the capture actually achieved, not the requested one.
         width: Frame width in pixels.
         height: Frame height in pixels.
 

@@ -56,6 +56,30 @@ class BridgeHTTPError(BridgeError):
         self.response_body = response_body
 
 
+class BridgeProtocolError(BridgeError):
+    """
+    Raised when the bridge answers with HTTP success but not a usable JSON object.
+
+    Unity does this while a domain reload is in flight: the HTTP listener is already up and returns
+    200, but the body is empty or not yet JSON. Without a type of its own that surfaced as a raw
+    JSONDecodeError, which callers waiting on a play mode transition could not recognise as the
+    transient condition it is.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        content_type: str | None = None,
+        body_preview: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details)
+        self.status_code = status_code
+        self.content_type = content_type
+        self.body_preview = body_preview
+
+
 class BridgeExecutionError(BridgeError):
     """Raised when Unity Editor dynamic script compilation or C# execution fails."""
 
