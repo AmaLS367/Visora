@@ -1068,9 +1068,7 @@ async def test_authored_clip_requires_the_native_package(monkeypatch: pytest.Mon
 @pytest.mark.anyio
 async def test_authored_clip_reports_scene_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
     frame = _png_base64((0, 0, 0), (4, 3))
-    bridge = AuthoredClipBridge(
-        _authored_payload([frame], poseRestored=False, sceneDirtiedByPreview=True)
-    )
+    bridge = AuthoredClipBridge(_authored_payload([frame], poseRestored=False, sceneDirtiedByPreview=True))
     monkeypatch.setattr(vision, "bridge", bridge)
 
     result = await vision.get_video_frames(
