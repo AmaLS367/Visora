@@ -4,6 +4,7 @@ from backend.tools.animation.preview_math import (
     MAX_SEQUENCE_FRAMES,
     measure_actual_fps,
     resolve_frame_budget,
+    summarize_motion,
 )
 
 
@@ -55,3 +56,37 @@ def test_measure_actual_fps_is_none_without_two_distinct_timestamps() -> None:
     assert measure_actual_fps([0.25]) is None
     assert measure_actual_fps([]) is None
     assert measure_actual_fps([1.0, 1.0]) is None
+
+
+def test_summarize_motion_locates_the_peak_at_the_later_frame_of_the_pair() -> None:
+    summary = summarize_motion(timeline=[0.01, 0.40, 0.02], timestamps=[0.0, 0.1, 0.2, 0.3])
+
+    assert summary.peak_changed_pixel_ratio == 0.40
+    assert summary.peak_motion_timestamp == 0.2
+    assert summary.is_static is False
+
+
+def test_summarize_motion_reports_a_static_clip() -> None:
+    summary = summarize_motion(timeline=[0.0, 0.0, 0.0], timestamps=[0.0, 0.1, 0.2, 0.3])
+
+    assert summary.is_static is True
+    assert summary.peak_motion_timestamp is None
+    assert summary.static_intervals == [(0.0, 0.3)]
+
+
+def test_summarize_motion_reports_a_hold_inside_a_moving_clip() -> None:
+    summary = summarize_motion(
+        timeline=[0.5, 0.0, 0.0, 0.5],
+        timestamps=[0.0, 0.1, 0.2, 0.3, 0.4],
+    )
+
+    assert summary.is_static is False
+    assert summary.static_intervals == [(0.1, 0.3)]
+
+
+def test_summarize_motion_handles_a_single_frame() -> None:
+    summary = summarize_motion(timeline=[], timestamps=[0.0])
+
+    assert summary.is_static is True
+    assert summary.peak_changed_pixel_ratio == 0.0
+    assert summary.static_intervals == []
