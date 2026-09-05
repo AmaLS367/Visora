@@ -16,6 +16,10 @@ from backend.tools.animation.authoring import (
     set_animation_keyframe,
     set_keyframe_hold,
 )
+from backend.tools.animation.backups import (
+    list_animation_backups,
+    restore_animation_clip,
+)
 from backend.tools.animation.common import bridge, logger
 from backend.tools.animation.inspector import (
     analyze_animation_curves,
@@ -46,6 +50,7 @@ __all__ = [
     "detect_mmd_bone_chains",
     "find_bones",
     "inspect_animation_clip",
+    "list_animation_backups",
     "list_animation_keyframes",
     "logger",
     "map_humanoid_bones",
@@ -54,6 +59,7 @@ __all__ = [
     "preview_animation",
     "remove_animation_event",
     "remove_animation_keyframe",
+    "restore_animation_clip",
     "sample_animation_clip",
     "set_animation_keyframe",
     "set_keyframe_hold",
