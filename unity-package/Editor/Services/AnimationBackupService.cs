@@ -395,5 +395,6 @@ namespace Visora.Editor.Services
 
             return result;
         }
+        // SHARED-ALGORITHM:RestoreBackup END
     }
 }

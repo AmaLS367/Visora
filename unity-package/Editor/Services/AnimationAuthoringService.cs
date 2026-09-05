@@ -980,6 +980,8 @@ namespace Visora.Editor.Services
 
             return result;
         }
+        // SHARED-ALGORITHM:SetKeyframeHold END
+
         public static Dictionary<string, object> ToDictionary(AnimationEventEditResult r)
         {
             var dict = new Dictionary<string, object>
