@@ -158,6 +158,20 @@ namespace Visora.Editor.Core
         public string name;
     }
 
+    [Serializable]
+    public class ClipPathRequest
+    {
+        public string clipPath;
+    }
+
+    [Serializable]
+    public class RestoreClipRequest
+    {
+        public string clipPath;
+        public string backupId;
+        public string operationId;
+    }
+
     public static class VisoraHttpRouter
     {
         public static async Task HandleRequestAsync(HttpListenerContext context)
@@ -221,6 +235,7 @@ namespace Visora.Editor.Core
                             "camera_diagnostic_sequence",
                             "animation_preview_sequence",
                             "animation_preview_autoframe",
+                            "animation_authoring",
                             "camera_inventory",
                             "camera_projection",
                             "camera_framing",
@@ -447,6 +462,34 @@ namespace Visora.Editor.Core
                     var p = JsonUtility.FromJson<AnimationSampleRequest>(body) ?? new AnimationSampleRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         AnimationInspectionService.SampleClip(p.clipName, p.targetObjectName, p.sampleTime));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/backups/list")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<ClipPathRequest>(body) ?? new ClipPathRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationBackupService.ListBackups(p.clipPath));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/backups/restore")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<RestoreClipRequest>(body) ?? new RestoreClipRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                    {
+                        var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(p.clipPath);
+                        if (clip == null)
+                        {
+                            return new RestoreAnimationClipResult
+                            {
+                                success = false,
+                                clipPath = p.clipPath,
+                                error = $"AnimationClip not found at '{p.clipPath}'."
+                            };
+                        }
+                        return AnimationBackupService.RestoreBackup(clip, p.clipPath, p.backupId, p.operationId);
+                    });
                     responseJson = JsonUtility.ToJson(result);
                 }
                 else if (method == "POST" && path == "/api/visora/transaction/begin")
