@@ -17,6 +17,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `check_ticket_status` | `ticket_id`* | `QueueStatusResult` |
 | `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
 | `compare_screenshots` | `before_image_base64`*, `after_image_base64`*, `threshold` | `VisualComparisonResult` |
+| `create_animation_event` | `clip_path`*, `time`*, `function_name`*, `string_param`, `float_param`, `int_param` | `AnimationEventEditResult` |
 | `diagnose_camera_framing` | `subject_path`*, `camera_name` | `CameraFramingDiagnosticsResult` |
 | `download_and_import_asset` | `url`, `asset_id`, `target_folder`, `file_name`, `extract_archive`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |
@@ -29,16 +30,24 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `inspect_imported_asset` | `asset_path`* | `InspectAssetResult` |
 | `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `VisualInspectionResult` |
 | `instantiate_scene_asset` | `asset_path`*, `parent_path`, `position`, `rotation`, `scale`, `name` | `InstantiateSceneAssetResult` |
+| `list_animation_backups` | `clip_path`* | `ListAnimationBackupsResult` |
+| `list_animation_keyframes` | `clip_path`*, `target_path`*, `type_name`*, `property_name`* | `ListAnimationKeyframesResult` |
 | `list_scene_cameras` | — | `ListSceneCamerasResult` |
+| `move_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `from_time`*, `to_time`* | `AnimationClipEditResult` |
 | `playmode_management` | `play`*, `wait_for_idle`, `timeout_seconds` | `PlayModeManagementResult` |
 | `preview_animation` | `target_object_path`*, `clip_path`*, `camera_name`, `start_time`, `end_time`, `fps`, `width`, `height`, `auto_frame`, `max_key_frames`, `include_video_base64`, `include_clip_diagnostics` | `AnimationPreviewResult` |
 | `project_world_points` | `points`*, `camera_name` | `ProjectWorldPointsResult` |
+| `remove_animation_event` | `clip_path`*, `time`*, `function_name` | `AnimationEventEditResult` |
+| `remove_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`* | `AnimationClipEditResult` |
+| `restore_animation_clip` | `clip_path`*, `backup_id`* | `RestoreAnimationClipResult` |
 | `restore_scene_state` | `undo_group`, `reload_active_scene` | `RestoreSceneResult` |
 | `safe_transaction` | `editor_code`*, `auto_save`, `record_undo`, `undo_name`, `restore_on_failure`, `timeout_seconds` | `SafeTransactionResult` |
 | `sample_animation_clip` | `target_game_object_path`*, `clip_path`*, `time`, `normalized_time`, `restore_pose_after`, `track_transforms` | `SampleAnimationResult` |
 | `save_scene` | `save_as_path`, `force_during_play_mode` | `SaveSceneResult` |
 | `screenshot` | `camera_name`, `width`, `height` | `ScreenshotResult` |
 | `search_assets` | `query`*, `category`, `source`, `limit`, `downloadable_only` | `SearchAssetsResult` |
+| `set_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `value`*, `tangent_mode`, `in_tangent`, `out_tangent` | `AnimationClipEditResult` |
+| `set_keyframe_hold` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `hold_until`*, `value` | `AnimationClipEditResult` |
 | `skeleton_mapper` | `root_transform_path`* | `SkeletonMapperResult` |
 | `skinned_mesh_diagnostics` | `mesh_renderer_path`* | `SkinnedMeshDiagnosticsResult` |
 | `wait_for_editor_idle` | `timeout_seconds`, `poll_interval_seconds` | `WaitForEditorIdleResult` |

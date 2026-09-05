@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from backend.bridge import UnityBridge
+from backend.tools.animation.common import _require_edit_mode, _unwrap_legacy_result
 
 
 @pytest.fixture
@@ -15,7 +16,9 @@ async def test_set_keyframe_native_sends_expected_payload(monkeypatch: pytest.Mo
 
     async def fake_request(_self: object, _method: str, path: str, **kwargs: object) -> httpx.Response:
         sent["path"] = path
-        sent.update(kwargs.get("json") or {})
+        json_payload = kwargs.get("json")
+        if isinstance(json_payload, dict):
+            sent.update(json_payload)
         return httpx.Response(200, json={"success": True})
 
     monkeypatch.setattr(UnityBridge, "_request", fake_request)
@@ -36,7 +39,8 @@ async def test_set_keyframe_native_sends_expected_payload(monkeypatch: pytest.Mo
     assert sent["path"] == "/api/visora/animation/keyframes/set"
     assert sent["values"] == [1.0, 2.0, 3.0]
     assert sent["tangentMode"] == "smooth"
-    assert isinstance(sent["operationId"], str) and len(sent["operationId"]) > 0
+    assert isinstance(sent["operationId"], str)
+    assert len(sent["operationId"]) > 0
 
 
 @pytest.mark.anyio
@@ -50,7 +54,9 @@ async def test_set_keyframe_native_reuses_one_operation_id_across_retries(monkey
     async def fake_transport_request(method: str, url: str, **kwargs: object) -> httpx.Response:
         nonlocal attempts
         attempts += 1
-        seen_operation_ids.append((kwargs.get("json") or {})["operationId"])
+        json_payload = kwargs.get("json")
+        if isinstance(json_payload, dict):
+            seen_operation_ids.append(str(json_payload["operationId"]))
         request = httpx.Request(method, url)
         if attempts == 1:
             raise httpx.ReadTimeout("simulated drop", request=request)
@@ -82,7 +88,9 @@ async def test_remove_event_native_sends_null_function_name_for_wildcard(monkeyp
 
     async def fake_request(_self: object, _method: str, path: str, **kwargs: object) -> httpx.Response:
         sent["path"] = path
-        sent.update(kwargs.get("json") or {})
+        json_payload = kwargs.get("json")
+        if isinstance(json_payload, dict):
+            sent.update(json_payload)
         return httpx.Response(200, json={"success": True})
 
     monkeypatch.setattr(UnityBridge, "_request", fake_request)
@@ -96,8 +104,6 @@ async def test_remove_event_native_sends_null_function_name_for_wildcard(monkeyp
 
 @pytest.mark.anyio
 async def test_require_edit_mode_rejects_play_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    from backend.tools.animation.common import _require_edit_mode
-
     async def fake_get_editor_state(_self: object) -> dict[str, object]:
         return {"isPlaying": True}
 
@@ -111,8 +117,6 @@ async def test_require_edit_mode_rejects_play_mode(monkeypatch: pytest.MonkeyPat
 
 @pytest.mark.anyio
 async def test_require_edit_mode_allows_edit_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    from backend.tools.animation.common import _require_edit_mode
-
     async def fake_get_editor_state(_self: object) -> dict[str, object]:
         return {"isPlaying": False}
 
@@ -122,16 +126,12 @@ async def test_require_edit_mode_allows_edit_mode(monkeypatch: pytest.MonkeyPatc
 
 
 def test_unwrap_legacy_result_reads_the_inner_result() -> None:
-    from backend.tools.animation.common import _unwrap_legacy_result
-
     outer = {"success": True, "logs": [], "result": {"success": False, "error": "Clip not found"}}
 
     assert _unwrap_legacy_result(outer) == {"success": False, "error": "Clip not found"}
 
 
 def test_unwrap_legacy_result_passes_through_when_there_is_no_result_key() -> None:
-    from backend.tools.animation.common import _unwrap_legacy_result
-
     already_flat = {"success": True, "clipPath": "Assets/A.anim"}
 
     assert _unwrap_legacy_result(already_flat) == already_flat

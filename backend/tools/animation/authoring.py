@@ -75,9 +75,7 @@ async def list_animation_keyframes(
     """
     try:
         if await _authoring_supported():
-            payload = await animation_pkg.bridge.list_keyframes_native(
-                clip_path, target_path, type_name, property_name
-            )
+            payload = await animation_pkg.bridge.list_keyframes_native(clip_path, target_path, type_name, property_name)
         else:
             code = _list_keyframes_code(
                 clip_path=clip_path, target_path=target_path, type_name=type_name, property_name=property_name

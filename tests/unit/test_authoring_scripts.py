@@ -25,11 +25,14 @@ def test_set_keyframe_code_is_fully_self_contained() -> None:
         operation_id="op-1",
     )
     assert "Visora.Editor.Services" not in code  # no reference to the compiled assembly at all
-    assert "using System;" not in code and "using UnityEditor;" not in code  # statement body only
-    assert "public static" not in code and "private static" not in code  # no member declarations
+    assert "using System;" not in code
+    assert "using UnityEditor;" not in code  # statement body only
+    assert "public static" not in code
+    assert "private static" not in code  # no member declarations
     assert '"Assets/A.anim"' in code
     assert "0.5f" in code
-    assert "ResolveComponentType(" in code and "ResolveChannels(" in code  # the algorithm is present, not referenced
+    assert "ResolveComponentType(" in code
+    assert "ResolveChannels(" in code  # the algorithm is present, not referenced
 
 
 def test_create_event_code_escapes_string_param() -> None:

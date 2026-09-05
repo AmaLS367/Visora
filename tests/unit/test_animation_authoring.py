@@ -13,7 +13,7 @@ from backend.tools.animation.authoring import (
 
 
 @pytest.fixture
-def anyio_backend():
+def anyio_backend() -> str:
     return "asyncio"
 
 
@@ -110,15 +110,15 @@ class _FakeBridge:
             "warnings": [],
         }
 
-    async def hold_keyframe_native(  # noqa: PLR0913
+    async def hold_keyframe_native(
         self,
         clip_path: str,
         target_path: str,
         type_name: str,
         property_name: str,
         time: float,
-        hold_until: float,
-        value: list[float] | None,
+        _hold_until: float,
+        _value: list[float] | None,
     ) -> dict[str, object]:
         self.calls.append("hold_native")
         return {
@@ -137,8 +137,14 @@ class _FakeBridge:
             "warnings": [],
         }
 
-    async def create_event_native(  # noqa: PLR0913
-        self, clip_path: str, time: float, function_name: str, string_param: str, float_param: float, int_param: int
+    async def create_event_native(
+        self,
+        clip_path: str,
+        time: float,
+        function_name: str,
+        _string_param: str,
+        _float_param: float,
+        _int_param: int,
     ) -> dict[str, object]:
         self.calls.append("create_event_native")
         return {
@@ -153,9 +159,7 @@ class _FakeBridge:
             "warnings": [],
         }
 
-    async def remove_event_native(
-        self, clip_path: str, time: float, function_name: str | None
-    ) -> dict[str, object]:
+    async def remove_event_native(self, clip_path: str, time: float, function_name: str | None) -> dict[str, object]:
         self.calls.append("remove_event_native")
         return {
             "success": True,
@@ -171,7 +175,7 @@ class _FakeBridge:
 
 
 @pytest.mark.anyio
-async def test_set_animation_keyframe_uses_native_path_when_supported(monkeypatch) -> None:
+async def test_set_animation_keyframe_uses_native_path_when_supported(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge()
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
@@ -191,7 +195,7 @@ async def test_set_animation_keyframe_uses_native_path_when_supported(monkeypatc
 
 
 @pytest.mark.anyio
-async def test_set_animation_keyframe_normalizes_scalar_value(monkeypatch) -> None:
+async def test_set_animation_keyframe_normalizes_scalar_value(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge()
     sent: dict[str, object] = {}
 
@@ -215,7 +219,7 @@ async def test_set_animation_keyframe_normalizes_scalar_value(monkeypatch) -> No
 
 
 @pytest.mark.anyio
-async def test_set_animation_keyframe_refuses_play_mode(monkeypatch) -> None:
+async def test_set_animation_keyframe_refuses_play_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge(is_playing=True)
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
@@ -229,17 +233,18 @@ async def test_set_animation_keyframe_refuses_play_mode(monkeypatch) -> None:
     )
 
     assert result.success is False
-    assert result.error is not None and "Edit Mode" in result.error
+    assert result.error is not None
+    assert "Edit Mode" in result.error
     assert fake.calls == []  # refused before any bridge write call was attempted
 
 
 @pytest.mark.anyio
-async def test_set_animation_keyframe_unwraps_a_legacy_business_failure(monkeypatch) -> None:
+async def test_set_animation_keyframe_unwraps_a_legacy_business_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     class _LegacyFailureBridge(_FakeBridge):
-        async def supports_feature(self, feature: str) -> bool:
+        async def supports_feature(self, _feature: str) -> bool:
             return False  # forces legacy path
 
-        async def execute_code(self, code: str) -> dict[str, object]:
+        async def execute_code(self, _code: str) -> dict[str, object]:
             self.calls.append("legacy")
             return {
                 "success": True,  # snippet executed cleanly
@@ -269,7 +274,7 @@ async def test_set_animation_keyframe_unwraps_a_legacy_business_failure(monkeypa
 
 
 @pytest.mark.anyio
-async def test_list_move_remove_hold_and_events(monkeypatch) -> None:
+async def test_list_move_remove_hold_and_events(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge()
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 

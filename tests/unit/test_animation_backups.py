@@ -5,7 +5,7 @@ from backend.tools.animation.backups import list_animation_backups, restore_anim
 
 
 @pytest.fixture
-def anyio_backend():
+def anyio_backend() -> str:
     return "asyncio"
 
 
@@ -79,7 +79,7 @@ class _FakeBridge:
 
 
 @pytest.mark.anyio
-async def test_list_animation_backups_parses_native_payload(monkeypatch) -> None:
+async def test_list_animation_backups_parses_native_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge()
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
@@ -92,7 +92,7 @@ async def test_list_animation_backups_parses_native_payload(monkeypatch) -> None
 
 
 @pytest.mark.anyio
-async def test_restore_animation_clip_reports_pre_restore_backup(monkeypatch) -> None:
+async def test_restore_animation_clip_reports_pre_restore_backup(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge()
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
@@ -106,19 +106,20 @@ async def test_restore_animation_clip_reports_pre_restore_backup(monkeypatch) ->
 
 
 @pytest.mark.anyio
-async def test_restore_animation_clip_refuses_play_mode(monkeypatch) -> None:
+async def test_restore_animation_clip_refuses_play_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge(is_playing=True)
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
     result = await restore_animation_clip(clip_path="Assets/A.anim", backup_id="b1")
 
     assert result.success is False
-    assert result.error is not None and "Edit Mode" in result.error
+    assert result.error is not None
+    assert "Edit Mode" in result.error
     assert fake.calls == []
 
 
 @pytest.mark.anyio
-async def test_backup_tools_legacy_fallback(monkeypatch) -> None:
+async def test_backup_tools_legacy_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge(native_supported=False)
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
