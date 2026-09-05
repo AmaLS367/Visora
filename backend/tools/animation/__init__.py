@@ -7,6 +7,15 @@ from backend.tools.animation.analysis import (
     map_humanoid_bones,
     match_bones_fuzzy,
 )
+from backend.tools.animation.authoring import (
+    create_animation_event,
+    list_animation_keyframes,
+    move_animation_keyframe,
+    remove_animation_event,
+    remove_animation_keyframe,
+    set_animation_keyframe,
+    set_keyframe_hold,
+)
 from backend.tools.animation.common import bridge, logger
 from backend.tools.animation.inspector import (
     analyze_animation_curves,
@@ -30,16 +39,23 @@ __all__ = [
     "analyze_sampled_pose",
     "bridge",
     "clip_inspector",
+    "create_animation_event",
     "detect_dangerous_curves",
     "detect_duplicate_bones",
     "detect_helper_bones",
     "detect_mmd_bone_chains",
     "find_bones",
     "inspect_animation_clip",
+    "list_animation_keyframes",
     "logger",
     "map_humanoid_bones",
     "match_bones_fuzzy",
+    "move_animation_keyframe",
     "preview_animation",
+    "remove_animation_event",
+    "remove_animation_keyframe",
     "sample_animation_clip",
+    "set_animation_keyframe",
+    "set_keyframe_hold",
     "skeleton_mapper",
 ]
