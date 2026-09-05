@@ -9,6 +9,7 @@ from backend.schemas import (
     AnimationPreviewMotionSummary,
     AnimationPreviewResult,
 )
+from backend.tools.animation.common import _bridge_supports
 from backend.tools.animation.inspector import inspect_animation_clip
 from backend.tools.animation.preview_keyframes import select_key_frames
 from backend.tools.animation.preview_math import (
@@ -22,15 +23,6 @@ from backend.tools.animation.preview_math import (
 # behavior for older get_video_* callers while still representing preview_animation's explicit
 # zero-length range as its one frame at time zero.
 _EMPTY_RANGE_NATIVE_END = 0.000001
-
-
-async def _bridge_supports(feature: str) -> bool:
-    """Treat a missing or unreachable capability as unavailable instead of hiding the reason."""
-    try:
-        return bool(await animation_pkg.bridge.supports_feature(feature))
-    except Exception as exc:
-        animation_pkg.logger.info("Bridge capability '%s' could not be confirmed: %s", feature, exc)
-        return False
 
 
 def _payload_warnings(payload: dict[str, Any]) -> list[str]:
