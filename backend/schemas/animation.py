@@ -345,3 +345,101 @@ class AnimationPreviewResult(BaseToolResult):
     )
     warnings: list[str] = Field(default_factory=list, description="Non-blocking preview warnings")
     recommended_interpretation: str = Field(..., description="Guidance for how an agent should read this preview")
+
+
+class AnimationKeyframeInfo(BaseModel):
+    """One keyframe across every resolved channel of a logical property."""
+
+    time: float = Field(description="Key time in seconds")
+    values: list[float] = Field(description="One value per resolved channel, in declared channel order")
+    exact: list[bool] = Field(
+        default_factory=list,
+        description="Per channel: True = a real key at exactly this time, False = an interpolated fill-in "
+        "(the channel's own keys are at other unioned times)",
+    )
+    in_tangents: list[float] = Field(
+        default_factory=list,
+        description="Incoming tangent slope per channel; 0.0 where exact is False",
+    )
+    out_tangents: list[float] = Field(
+        default_factory=list,
+        description="Outgoing tangent slope per channel; 0.0 where exact is False",
+    )
+    tangent_mode: str = Field(description="smooth | linear | step | ease_in | ease_out | ease_in_out | custom | n/a")
+
+
+class ListAnimationKeyframesResult(BaseToolResult):
+    """Result schema for reading every key of one logical property."""
+
+    clip_path: str | None = Field(default=None, description="Project asset path to the animation clip")
+    target_path: str | None = Field(default=None, description="Scene hierarchy path the curve is bound to")
+    type_name: str | None = Field(default=None, description="Component type name the curve is bound to")
+    property_name: str | None = Field(default=None, description="Logical property name, without channel suffix")
+    channels: list[str] = Field(
+        default_factory=list, description="Concrete resolved binding names, e.g. m_LocalPosition.x"
+    )
+    keyframes: list[AnimationKeyframeInfo] = Field(default_factory=list, description="Every key, ordered by time")
+
+
+class AnimationClipEditResult(BaseToolResult):
+    """Result schema shared by set/move/remove/hold keyframe operations."""
+
+    clip_path: str | None = Field(default=None, description="Project asset path to the animation clip")
+    target_path: str | None = Field(default=None, description="Scene hierarchy path the curve is bound to")
+    type_name: str | None = Field(default=None, description="Component type name the curve is bound to")
+    property_name: str | None = Field(default=None, description="Logical property name, without channel suffix")
+    channels_affected: list[str] = Field(default_factory=list, description="Concrete channels this call touched")
+    curve_created: bool = Field(default=False, description="True when this call brought the curve into existence")
+    time: float | None = Field(default=None, description="The key's time after the edit")
+    previous_time: float | None = Field(default=None, description="Prior key time; set only by move_animation_keyframe")
+    keys_cleared: list[float] = Field(
+        default_factory=list, description="Intermediate keys removed; set only by set_keyframe_hold"
+    )
+    backup_id: str | None = Field(
+        default=None, description="Relative path under VisoraBackups/ written before this edit"
+    )
+    undo_group_id: int | None = Field(default=None, description="Unity Undo group this edit collapsed into")
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking warnings")
+
+
+class AnimationEventEditResult(BaseToolResult):
+    """Result schema for create_animation_event / remove_animation_event."""
+
+    clip_path: str | None = Field(default=None, description="Project asset path to the animation clip")
+    time: float | None = Field(default=None, description="Event time in seconds")
+    function_name: str | None = Field(default=None, description="Target function name; None for a wildcard removal")
+    events_affected: int = Field(default=0, description="Events created (always 1) or removed (0 or more)")
+    backup_id: str | None = Field(
+        default=None, description="Relative path under VisoraBackups/ written before this edit"
+    )
+    undo_group_id: int | None = Field(default=None, description="Unity Undo group this edit collapsed into")
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking warnings")
+
+
+class AnimationBackupInfo(BaseModel):
+    """One backup snapshot of an AnimationClip."""
+
+    backup_id: str = Field(description="Path relative to VisoraBackups/, also the restore key")
+    clip_path: str = Field(description="Project asset path the backup was taken from")
+    created_at: str = Field(description="UTC ISO 8601 timestamp")
+    operation: str = Field(description="The tool call that produced this backup")
+    size_bytes: int = Field(description="Backup file size in bytes")
+
+
+class ListAnimationBackupsResult(BaseToolResult):
+    """Result schema for list_animation_backups."""
+
+    clip_path: str | None = Field(default=None, description="Project asset path queried")
+    backups: list[AnimationBackupInfo] = Field(default_factory=list, description="Newest first")
+
+
+class RestoreAnimationClipResult(BaseToolResult):
+    """Result schema for restore_animation_clip."""
+
+    clip_path: str | None = Field(default=None, description="Project asset path restored")
+    restored_from_backup_id: str | None = Field(default=None, description="The backup that was restored")
+    pre_restore_backup_id: str | None = Field(
+        default=None,
+        description="Backup of the state immediately before this restore, so the restore is itself undoable",
+    )
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking warnings")

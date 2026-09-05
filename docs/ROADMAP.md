@@ -20,8 +20,9 @@
 * **Delivered:** Live on scene `Тестинг`, `RebeccaDropkick` captured 49 Edit Mode frames over 2.0 seconds at 24.0 effective and actual fps. The requested `Main Camera` was initially `clipped`, so auto-framing used then destroyed a temporary `Visora Preview Camera`; the pose was restored and the scene remained clean. Key frames covered the jump and landing, and motion was non-static with its peak at 1.083s.
 
 ### 3. 🎬 Typed Clip, Event, and Camera Authoring
-* **Status:** 🔜 Planned
+* **Status:** ✅ Completed
 * **Scope:** Provide typed, safe operations to create and edit AnimationClip curves: set or move keys, configure tangents/easing and holds, and create or remove animation events. Support a shared action timeline for character motion, camera recoil, flashes, and hit-stop so every impact has one authoritative timestamp rather than independent procedural effects.
+* **Delivered:** Added 9 MCP tools across keyframe manipulation (`list_animation_keyframes`, `set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, `set_keyframe_hold`), event authoring (`create_animation_event`, `remove_animation_event`), and non-destructive backups (`list_animation_backups`, `restore_animation_clip`). Native Unity endpoints via `VisoraHttpRouter` (`animation_authoring` capability) provide typed C# execution, idempotency, and full Undo integration. Automatic pre-mutation snapshots safeguard clip edits under `VisoraBackups/`, with Undo grouping and Edit Mode enforcement.
 
 ### 4. 🦿 Humanoid Retargeting and Contact Constraints
 * **Status:** 🔜 Planned

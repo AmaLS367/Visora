@@ -50,7 +50,7 @@ def main() -> int:
             return 1
         return 0
 
-    print(expected)
+    WORKFLOW_PATH.write_text(expected, encoding="utf-8")
     return 0
 
 
