@@ -980,7 +980,203 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:SetKeyframeHold END
+        public static Dictionary<string, object> ToDictionary(AnimationEventEditResult r)
+        {
+            var dict = new Dictionary<string, object>
+            {
+                { "success", r.success },
+                { "clipPath", r.clipPath },
+                { "hasTime", r.hasTime },
+                { "functionName", r.functionName },
+                { "eventsAffected", r.eventsAffected },
+                { "backupId", r.backupId },
+                { "undoGroupId", r.undoGroupId },
+                { "warnings", r.warnings },
+            };
+            if (r.hasTime) dict["time"] = r.time;
+            if (r.error != null) dict["error"] = r.error;
+            return dict;
+        }
+
+        // SHARED-ALGORITHM:CreateEvent START
+        public static AnimationEventEditResult CreateEvent(
+            string clipPath, float time, string functionName, string stringParam, float floatParam, int intParam, string operationId)
+        {
+            if (AnimationBackupService.TryGetCached(operationId, out AnimationEventEditResult cached))
+            {
+                return cached;
+            }
+
+            var result = new AnimationEventEditResult
+            {
+                clipPath = clipPath,
+                time = time,
+                hasTime = true,
+                functionName = functionName,
+            };
+
+            string editModeError = AnimationBackupService.CheckEditMode();
+            if (editModeError != null)
+            {
+                result.success = false;
+                result.error = editModeError;
+                return result;
+            }
+
+            var clip = LoadClipForWrite(clipPath);
+            if (clip == null)
+            {
+                result.success = false;
+                result.error = $"AnimationClip not found at exact path '{clipPath}'.";
+                return result;
+            }
+
+            string backupId;
+            try
+            {
+                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "create_animation_event");
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Backup failed, edit aborted: {ex.Message}";
+                return result;
+            }
+
+            Undo.IncrementCurrentGroup();
+            int undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Visora: create_animation_event");
+
+            try
+            {
+                Undo.RecordObject(clip, "Visora: create_animation_event");
+                var events = AnimationUtility.GetAnimationEvents(clip).ToList();
+
+                bool duplicate = events.Any(e => Mathf.Approximately(e.time, time) && e.functionName == functionName
+                    && e.stringParameter == stringParam && Mathf.Approximately(e.floatParameter, floatParam) && e.intParameter == intParam);
+                if (duplicate)
+                {
+                    result.warnings.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, "An identical event already exists at {0:F4}s; added anyway.", time));
+                }
+
+                events.Add(new AnimationEvent
+                {
+                    time = time,
+                    functionName = functionName,
+                    stringParameter = stringParam,
+                    floatParameter = floatParam,
+                    intParameter = intParam,
+                });
+                events.Sort((a, b) => a.time.CompareTo(b.time));
+                AnimationUtility.SetAnimationEvents(clip, events.ToArray());
+
+                Undo.CollapseUndoOperations(undoGroup);
+
+                result.success = true;
+                result.eventsAffected = 1;
+                result.backupId = backupId;
+                result.undoGroupId = undoGroup;
+                AnimationBackupService.CacheSuccess(operationId, result);
+            }
+            catch (Exception ex)
+            {
+                Undo.RevertAllDownToGroup(undoGroup);
+                result.success = false;
+                result.error = ex.Message;
+            }
+
+            return result;
+        }
+        // SHARED-ALGORITHM:CreateEvent END
+
+        // SHARED-ALGORITHM:RemoveEvent START
+        public static AnimationEventEditResult RemoveEvent(string clipPath, float time, string functionName, string operationId)
+        {
+            if (AnimationBackupService.TryGetCached(operationId, out AnimationEventEditResult cached))
+            {
+                return cached;
+            }
+
+            var result = new AnimationEventEditResult
+            {
+                clipPath = clipPath,
+                time = time,
+                hasTime = true,
+                functionName = functionName,
+            };
+
+            string editModeError = AnimationBackupService.CheckEditMode();
+            if (editModeError != null)
+            {
+                result.success = false;
+                result.error = editModeError;
+                return result;
+            }
+
+            var clip = LoadClipForWrite(clipPath);
+            if (clip == null)
+            {
+                result.success = false;
+                result.error = $"AnimationClip not found at exact path '{clipPath}'.";
+                return result;
+            }
+
+            var events = AnimationUtility.GetAnimationEvents(clip);
+            float tolerance = Mathf.Max(0.5f / Mathf.Max(clip.frameRate, 1f), 0.0001f);
+            var toRemove = events.Where(e => Mathf.Abs(e.time - time) <= tolerance
+                && (functionName == null || e.functionName == functionName)).ToList();
+
+            if (toRemove.Count == 0)
+            {
+                result.success = false;
+                result.error = string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    "No animation event found near {0:F4}s{1}.",
+                    time,
+                    functionName != null ? $" named '{functionName}'" : "");
+                return result;
+            }
+
+            string backupId;
+            try
+            {
+                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "remove_animation_event");
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Backup failed, edit aborted: {ex.Message}";
+                return result;
+            }
+
+            Undo.IncrementCurrentGroup();
+            int undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Visora: remove_animation_event");
+
+            try
+            {
+                Undo.RecordObject(clip, "Visora: remove_animation_event");
+                var remaining = events.Except(toRemove).ToArray();
+                AnimationUtility.SetAnimationEvents(clip, remaining);
+
+                Undo.CollapseUndoOperations(undoGroup);
+
+                result.success = true;
+                result.eventsAffected = toRemove.Count;
+                result.backupId = backupId;
+                result.undoGroupId = undoGroup;
+                AnimationBackupService.CacheSuccess(operationId, result);
+            }
+            catch (Exception ex)
+            {
+                Undo.RevertAllDownToGroup(undoGroup);
+                result.success = false;
+                result.error = ex.Message;
+            }
+
+            return result;
+        }
+        // SHARED-ALGORITHM:RemoveEvent END
     }
 
     [Serializable]
@@ -1027,5 +1223,21 @@ namespace Visora.Editor.Services
         public int undoGroupId;
         public List<string> warnings = new List<string>();
     }
+
+    [Serializable]
+    public class AnimationEventEditResult
+    {
+        public bool success;
+        public string error;
+        public string clipPath;
+        public float time;
+        public bool hasTime;
+        public string functionName;
+        public int eventsAffected;
+        public string backupId;
+        public int undoGroupId;
+        public List<string> warnings = new List<string>();
+    }
 }
+
 

@@ -217,6 +217,27 @@ namespace Visora.Editor.Core
         public string operationId;
     }
 
+    [Serializable]
+    public class CreateAnimationEventRequest
+    {
+        public string clipPath;
+        public float time;
+        public string functionName;
+        public string stringParam = "";
+        public float floatParam;
+        public int intParam;
+        public string operationId;
+    }
+
+    [Serializable]
+    public class RemoveAnimationEventRequest
+    {
+        public string clipPath;
+        public float time;
+        public string functionName;
+        public string operationId;
+    }
+
     public static class VisoraHttpRouter
     {
         public static async Task HandleRequestAsync(HttpListenerContext context)
@@ -583,6 +604,24 @@ namespace Visora.Editor.Core
                         AnimationAuthoringService.SetKeyframeHold(
                             p.clipPath, p.targetPath, p.typeName, p.propertyName,
                             p.time, p.holdUntil, p.hasValue ? p.value : null, p.operationId));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/events/create")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<CreateAnimationEventRequest>(body) ?? new CreateAnimationEventRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationAuthoringService.CreateEvent(
+                            p.clipPath, p.time, p.functionName, p.stringParam ?? "", p.floatParam, p.intParam, p.operationId));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/events/remove")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<RemoveAnimationEventRequest>(body) ?? new RemoveAnimationEventRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationAuthoringService.RemoveEvent(
+                            p.clipPath, p.time, p.functionName, p.operationId));
                     responseJson = JsonUtility.ToJson(result);
                 }
                 else if (method == "POST" && path == "/api/visora/transaction/begin")
