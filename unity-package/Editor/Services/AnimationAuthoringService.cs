@@ -26,7 +26,6 @@ namespace Visora.Editor.Services
             ["localEulerAnglesRaw"] = new[] { "x", "y", "z" },
         };
 
-        // SHARED-ALGORITHM:ResolveComponentType START
         public static Type ResolveComponentType(string typeName)
         {
             if (string.IsNullOrEmpty(typeName))
@@ -34,18 +33,21 @@ namespace Visora.Editor.Services
                 throw new ArgumentException("typeName must not be empty.", nameof(typeName));
             }
 
-            // Transform is overwhelmingly the common case and resolving it by name through every
-            // loaded assembly on each call would be wasteful.
+            // Transform and GameObject are common cases; resolve without searching loaded assemblies.
             if (typeName == "Transform")
             {
                 return typeof(Transform);
+            }
+            if (typeName == "GameObject")
+            {
+                return typeof(GameObject);
             }
 
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 var candidate = assembly.GetType("UnityEngine." + typeName)
                     ?? assembly.GetType(typeName);
-                if (candidate != null && typeof(Component).IsAssignableFrom(candidate))
+                if (candidate != null && (typeof(Component).IsAssignableFrom(candidate) || candidate == typeof(GameObject)))
                 {
                     return candidate;
                 }
@@ -53,7 +55,6 @@ namespace Visora.Editor.Services
 
             throw new ArgumentException($"Could not resolve component type '{typeName}'.", nameof(typeName));
         }
-        // SHARED-ALGORITHM:ResolveComponentType END
 
         // Canonical component order, never alphabetical: alphabetical sort puts ".w" before ".x"
         // on an existing quaternion curve, which would silently transpose every value passed in
@@ -84,7 +85,6 @@ namespace Visora.Editor.Services
                 .ToArray();
         }
 
-        // SHARED-ALGORITHM:ResolveChannels START
         // Given a logical property (e.g. "m_LocalPosition"), returns the concrete curve binding
         // names already used by the clip if the curve exists, or a shape inferred from a built-in
         // table / SerializedObject introspection if it does not. Never mixes representations: an
@@ -155,9 +155,7 @@ namespace Visora.Editor.Services
                     $"Serialized property '{propertyName}' has unsupported type '{property.propertyType}' for curve authoring."),
             };
         }
-        // SHARED-ALGORITHM:ResolveChannels END
 
-        // SHARED-ALGORITHM:MapTangentMode START
         // Maps the curated agent-facing vocabulary onto Unity's tangent presets. "step" is also
         // what set_keyframe_hold uses internally: a hold is two step-tangent keys, not a separate
         // tangent concept.
@@ -223,9 +221,7 @@ namespace Visora.Editor.Services
             }
             curve.MoveKey(keyIndex, key);
         }
-        // SHARED-ALGORITHM:MapTangentMode END
 
-        // SHARED-ALGORITHM:FindKeyIndexNearTime START
         // Half a frame of tolerance, floored so a degenerate (zero or negative) frame rate cannot
         // divide by zero. Returns -1 rather than the closest key unconditionally: a caller outside
         // tolerance gets a clear "no key here" error instead of silently editing the wrong frame.
@@ -247,7 +243,6 @@ namespace Visora.Editor.Services
 
             return bestDistance <= tolerance ? bestIndex : -1;
         }
-        // SHARED-ALGORITHM:FindKeyIndexNearTime END
 
         public static Dictionary<string, object> ToDictionary(AnimationClipEditResult r)
         {
@@ -287,7 +282,6 @@ namespace Visora.Editor.Services
             return dict;
         }
 
-        // SHARED-ALGORITHM:KeyframeHelpers START
         private static AnimationClip LoadClipForWrite(string clipPath)
         {
             return AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
@@ -300,10 +294,24 @@ namespace Visora.Editor.Services
 
         private static float[] ExpandValue(float[] value, int channelCount, string paramName)
         {
-            if (value == null || value.Length != channelCount)
+            if (value == null || value.Length == 0)
             {
                 throw new ArgumentException(
                     $"{paramName} must have exactly {channelCount} value(s) for this property, got {(value?.Length ?? 0)}.", paramName);
+            }
+            if (value.Length == 1 && channelCount > 1)
+            {
+                var expanded = new float[channelCount];
+                for (int i = 0; i < channelCount; i++)
+                {
+                    expanded[i] = value[0];
+                }
+                return expanded;
+            }
+            if (value.Length != channelCount)
+            {
+                throw new ArgumentException(
+                    $"{paramName} must have exactly {channelCount} value(s) for this property, got {value.Length}.", paramName);
             }
             return value;
         }
@@ -328,9 +336,7 @@ namespace Visora.Editor.Services
             }
             return keyIndex;
         }
-        // SHARED-ALGORITHM:KeyframeHelpers END
 
-        // SHARED-ALGORITHM:SetKeyframe START
         public static AnimationClipEditResult SetKeyframe(
             string clipPath, string targetPath, string typeName, string propertyName,
             float time, float[] values, string tangentMode, float[] inTangent, float[] outTangent, string operationId)
@@ -383,6 +389,23 @@ namespace Visora.Editor.Services
                 return result;
             }
 
+            string[] channels;
+            bool curveExisted;
+            try
+            {
+                var liveInstance = FindLiveInstance(targetPath);
+                channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out curveExisted);
+                values = ExpandValue(values, channels.Length, nameof(values));
+                if (inTangent != null) inTangent = ExpandValue(inTangent, channels.Length, nameof(inTangent));
+                if (outTangent != null) outTangent = ExpandValue(outTangent, channels.Length, nameof(outTangent));
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = ex.Message;
+                return result;
+            }
+
             string backupId;
             try
             {
@@ -401,12 +424,6 @@ namespace Visora.Editor.Services
 
             try
             {
-                var liveInstance = FindLiveInstance(targetPath);
-                string[] channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out bool curveExisted);
-                values = ExpandValue(values, channels.Length, nameof(values));
-                if (inTangent != null) inTangent = ExpandValue(inTangent, channels.Length, nameof(inTangent));
-                if (outTangent != null) outTangent = ExpandValue(outTangent, channels.Length, nameof(outTangent));
-
                 for (int i = 0; i < channels.Length; i++)
                 {
                     var binding = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
@@ -440,9 +457,7 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:SetKeyframe END
 
-        // SHARED-ALGORITHM:MoveKeyframe START
         public static AnimationClipEditResult MoveKeyframe(
             string clipPath, string targetPath, string typeName, string propertyName,
             float fromTime, float toTime, string operationId)
@@ -572,9 +587,7 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:MoveKeyframe END
 
-        // SHARED-ALGORITHM:RemoveKeyframe START
         public static AnimationClipEditResult RemoveKeyframe(
             string clipPath, string targetPath, string typeName, string propertyName,
             float time, string operationId)
@@ -703,9 +716,7 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:RemoveKeyframe END
 
-        // SHARED-ALGORITHM:ListKeyframes START
         public static ListAnimationKeyframesResult ListKeyframes(
             string clipPath, string targetPath, string typeName, string propertyName)
         {
@@ -747,8 +758,9 @@ namespace Visora.Editor.Services
                 return result;
             }
 
+            float tolerance = Mathf.Max(0.5f / Mathf.Max(clip.frameRate, 1f), 0.0001f);
             var curves = new AnimationCurve[channels.Length];
-            var unionedTimes = new SortedSet<float>();
+            var rawTimes = new List<float>();
 
             for (int i = 0; i < channels.Length; i++)
             {
@@ -756,7 +768,17 @@ namespace Visora.Editor.Services
                 curves[i] = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
                 for (int k = 0; k < curves[i].length; k++)
                 {
-                    unionedTimes.Add(curves[i][k].time);
+                    rawTimes.Add(curves[i][k].time);
+                }
+            }
+
+            rawTimes.Sort();
+            var unionedTimes = new List<float>();
+            foreach (float t in rawTimes)
+            {
+                if (unionedTimes.Count == 0 || Mathf.Abs(unionedTimes[unionedTimes.Count - 1] - t) > tolerance)
+                {
+                    unionedTimes.Add(t);
                 }
             }
 
@@ -771,15 +793,7 @@ namespace Visora.Editor.Services
 
                 for (int c = 0; c < channels.Length; c++)
                 {
-                    int foundIdx = -1;
-                    for (int k = 0; k < curves[c].length; k++)
-                    {
-                        if (curves[c][k].time == t)
-                        {
-                            foundIdx = k;
-                            break;
-                        }
-                    }
+                    int foundIdx = FindKeyIndexNearTime(curves[c], t, clip.frameRate);
 
                     if (foundIdx >= 0)
                     {
@@ -837,20 +851,21 @@ namespace Visora.Editor.Services
             result.success = true;
             return result;
         }
-        // SHARED-ALGORITHM:ListKeyframes END
 
-        // SHARED-ALGORITHM:SetKeyframeHold START
-        private static int SetHoldBoundary(AnimationCurve curve, float t, float value)
+        private static int SetHoldBoundary(AnimationCurve curve, float t, float value, float clipFrameRate, bool setStepRightTangent)
         {
-            int existing = -1;
-            for (int i = 0; i < curve.length; i++)
-            {
-                if (curve[i].time == t) { existing = i; break; }
-            }
+            int existing = FindKeyIndexNearTime(curve, t, clipFrameRate);
             int index = existing >= 0
                 ? curve.MoveKey(existing, new Keyframe(t, value))
                 : curve.AddKey(new Keyframe(t, value));
-            ApplyTangentMode(curve, index, "step");
+            if (setStepRightTangent)
+            {
+                ApplyTangentMode(curve, index, "step");
+            }
+            else if (existing < 0)
+            {
+                ApplyTangentMode(curve, index, "smooth");
+            }
             return index;
         }
 
@@ -953,8 +968,8 @@ namespace Visora.Editor.Services
                         }
                     }
 
-                    SetHoldBoundary(curve, time, holdVal);
-                    SetHoldBoundary(curve, holdUntil, holdVal);
+                    SetHoldBoundary(curve, time, holdVal, clip.frameRate, setStepRightTangent: true);
+                    SetHoldBoundary(curve, holdUntil, holdVal, clip.frameRate, setStepRightTangent: false);
 
                     AnimationUtility.SetEditorCurve(clip, binding, curve);
                 }
@@ -980,7 +995,6 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:SetKeyframeHold END
 
         public static Dictionary<string, object> ToDictionary(AnimationEventEditResult r)
         {
@@ -1000,7 +1014,6 @@ namespace Visora.Editor.Services
             return dict;
         }
 
-        // SHARED-ALGORITHM:CreateEvent START
         public static AnimationEventEditResult CreateEvent(
             string clipPath, float time, string functionName, string stringParam, float floatParam, int intParam, string operationId)
         {
@@ -1089,9 +1102,7 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:CreateEvent END
 
-        // SHARED-ALGORITHM:RemoveEvent START
         public static AnimationEventEditResult RemoveEvent(string clipPath, float time, string functionName, string operationId)
         {
             if (AnimationBackupService.TryGetCached(operationId, out AnimationEventEditResult cached))
@@ -1126,7 +1137,7 @@ namespace Visora.Editor.Services
             var events = AnimationUtility.GetAnimationEvents(clip);
             float tolerance = Mathf.Max(0.5f / Mathf.Max(clip.frameRate, 1f), 0.0001f);
             var toRemove = events.Where(e => Mathf.Abs(e.time - time) <= tolerance
-                && (functionName == null || e.functionName == functionName)).ToList();
+                && (string.IsNullOrEmpty(functionName) || e.functionName == functionName)).ToList();
 
             if (toRemove.Count == 0)
             {
@@ -1135,7 +1146,7 @@ namespace Visora.Editor.Services
                     System.Globalization.CultureInfo.InvariantCulture,
                     "No animation event found near {0:F4}s{1}.",
                     time,
-                    functionName != null ? $" named '{functionName}'" : "");
+                    !string.IsNullOrEmpty(functionName) ? $" named '{functionName}'" : "");
                 return result;
             }
 
@@ -1178,7 +1189,6 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:RemoveEvent END
     }
 
     [Serializable]

@@ -14,6 +14,12 @@ namespace Visora.Editor.Tests
         }
 
         [Test]
+        public void ResolveComponentType_ResolvesGameObjectWithoutSearching()
+        {
+            Assert.That(AnimationAuthoringService.ResolveComponentType("GameObject"), Is.EqualTo(typeof(GameObject)));
+        }
+
+        [Test]
         public void ResolveComponentType_ResolvesAWellKnownComponentByName()
         {
             Assert.That(AnimationAuthoringService.ResolveComponentType("Light"), Is.EqualTo(typeof(Light)));
@@ -128,6 +134,24 @@ namespace Visora.Editor.Tests
             {
                 UnityEngine.Object.DestroyImmediate(clip);
             }
+        }
+
+        [Test]
+        public void IdempotencyPath_ThrowsOnPathTraversalOrInvalidCharacters()
+        {
+            Assert.Throws<ArgumentException>(() => AnimationBackupService.IdempotencyPath("../../evil"));
+            Assert.Throws<ArgumentException>(() => AnimationBackupService.IdempotencyPath("foo/bar"));
+            Assert.Throws<ArgumentException>(() => AnimationBackupService.IdempotencyPath("foo\\bar"));
+            Assert.Throws<ArgumentException>(() => AnimationBackupService.IdempotencyPath(""));
+            Assert.Throws<ArgumentException>(() => AnimationBackupService.IdempotencyPath(null));
+        }
+
+        [Test]
+        public void IdempotencyPath_AcceptsValidOperationId()
+        {
+            var path = AnimationBackupService.IdempotencyPath("op-123_UUID-456");
+            Assert.That(path, Does.EndWith("op-123_UUID-456.json"));
+            Assert.That(path, Does.StartWith(System.IO.Path.Combine("Library", "Visora", "Idempotency")));
         }
     }
 }

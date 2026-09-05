@@ -29,11 +29,14 @@ async def _authoring_supported() -> bool:
     return await _bridge_supports("animation_authoring")
 
 
-def _clip_edit_result(payload: dict[str, Any]) -> AnimationClipEditResult:
+def _clip_edit_result(payload: dict[str, Any], default_clip_path: str | None = None) -> AnimationClipEditResult:
+    success = bool(payload.get("success", False))
+    raw_undo = payload.get("undoGroupId")
+    undo_group_id: int | None = int(raw_undo) if raw_undo is not None and int(raw_undo) > 0 and success else None
     return AnimationClipEditResult(
-        success=bool(payload.get("success", False)),
+        success=success,
         error=cast("str | None", payload.get("error")),
-        clip_path=cast("str | None", payload.get("clipPath")),
+        clip_path=cast("str | None", payload.get("clipPath") or default_clip_path),
         target_path=cast("str | None", payload.get("targetPath")),
         type_name=cast("str | None", payload.get("typeName")),
         property_name=cast("str | None", payload.get("propertyName")),
@@ -45,21 +48,24 @@ def _clip_edit_result(payload: dict[str, Any]) -> AnimationClipEditResult:
         else None,
         keys_cleared=[float(k) for k in payload.get("keysCleared", [])],
         backup_id=cast("str | None", payload.get("backupId")),
-        undo_group_id=cast("int | None", payload.get("undoGroupId")),
+        undo_group_id=undo_group_id,
         warnings=[str(w) for w in payload.get("warnings", [])],
     )
 
 
-def _event_edit_result(payload: dict[str, Any]) -> AnimationEventEditResult:
+def _event_edit_result(payload: dict[str, Any], default_clip_path: str | None = None) -> AnimationEventEditResult:
+    success = bool(payload.get("success", False))
+    raw_undo = payload.get("undoGroupId")
+    undo_group_id: int | None = int(raw_undo) if raw_undo is not None and int(raw_undo) > 0 and success else None
     return AnimationEventEditResult(
-        success=bool(payload.get("success", False)),
+        success=success,
         error=cast("str | None", payload.get("error")),
-        clip_path=cast("str | None", payload.get("clipPath")),
+        clip_path=cast("str | None", payload.get("clipPath") or default_clip_path),
         time=float(payload["time"]) if payload.get("hasTime") and payload.get("time") is not None else None,
         function_name=cast("str | None", payload.get("functionName")),
         events_affected=int(payload.get("eventsAffected", 0)),
         backup_id=cast("str | None", payload.get("backupId")),
-        undo_group_id=cast("int | None", payload.get("undoGroupId")),
+        undo_group_id=undo_group_id,
         warnings=[str(w) for w in payload.get("warnings", [])],
     )
 
@@ -161,7 +167,7 @@ async def set_animation_keyframe(  # noqa: PLR0913
             )
             payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
 
-        return _clip_edit_result(payload)
+        return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during set_animation_keyframe for '%s': %s", clip_path, e)
         return AnimationClipEditResult(success=False, error=str(e), clip_path=clip_path)
@@ -192,7 +198,7 @@ async def move_animation_keyframe(  # noqa: PLR0913
                 operation_id=str(uuid.uuid4()),
             )
             payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
-        return _clip_edit_result(payload)
+        return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during move_animation_keyframe for '%s': %s", clip_path, e)
         return AnimationClipEditResult(success=False, error=str(e), clip_path=clip_path)
@@ -222,7 +228,7 @@ async def remove_animation_keyframe(
                 operation_id=str(uuid.uuid4()),
             )
             payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
-        return _clip_edit_result(payload)
+        return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during remove_animation_keyframe for '%s': %s", clip_path, e)
         return AnimationClipEditResult(success=False, error=str(e), clip_path=clip_path)
@@ -265,7 +271,7 @@ async def set_keyframe_hold(  # noqa: PLR0913
                 operation_id=str(uuid.uuid4()),
             )
             payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
-        return _clip_edit_result(payload)
+        return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during set_keyframe_hold for '%s': %s", clip_path, e)
         return AnimationClipEditResult(success=False, error=str(e), clip_path=clip_path)
@@ -304,7 +310,7 @@ async def create_animation_event(  # noqa: PLR0913
                 operation_id=str(uuid.uuid4()),
             )
             payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
-        return _event_edit_result(payload)
+        return _event_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during create_animation_event for '%s': %s", clip_path, e)
         return AnimationEventEditResult(success=False, error=str(e), clip_path=clip_path)
@@ -327,7 +333,7 @@ async def remove_animation_event(
                 clip_path=clip_path, time=time, function_name=function_name, operation_id=str(uuid.uuid4())
             )
             payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
-        return _event_edit_result(payload)
+        return _event_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during remove_animation_event for '%s': %s", clip_path, e)
         return AnimationEventEditResult(success=False, error=str(e), clip_path=clip_path)

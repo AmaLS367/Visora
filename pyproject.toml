@@ -75,6 +75,3 @@ skip_covered = true
 [tool.hatch.build.targets.wheel]
 packages = ["backend"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"unity-package/Editor/Services/AnimationAuthoringService.cs" = "backend/_unity_shared/AnimationAuthoringService.cs"
-"unity-package/Editor/Services/AnimationBackupService.cs" = "backend/_unity_shared/AnimationBackupService.cs"

@@ -2,6 +2,8 @@ import pytest
 
 import backend.tools.animation as animation_pkg
 from backend.tools.animation.authoring import (
+    _clip_edit_result,
+    _event_edit_result,
     create_animation_event,
     list_animation_keyframes,
     move_animation_keyframe,
@@ -341,3 +343,41 @@ async def test_list_move_remove_hold_and_events(monkeypatch: pytest.MonkeyPatch)
     )
     assert ev_remove.success is True
     assert ev_remove.events_affected == 1
+
+
+def test_clip_edit_result_fallback_and_undo_sanitization() -> None:
+    res_failed = _clip_edit_result(
+        {"success": False, "error": "failed", "undoGroupId": 5},
+        default_clip_path="Assets/Fallback.anim",
+    )
+    assert res_failed.clip_path == "Assets/Fallback.anim"
+    assert res_failed.undo_group_id is None
+
+    res_zero_undo = _clip_edit_result(
+        {"success": True, "undoGroupId": 0},
+        default_clip_path="Assets/Fallback.anim",
+    )
+    assert res_zero_undo.undo_group_id is None
+
+    res_valid = _clip_edit_result(
+        {"success": True, "clipPath": "Assets/Exact.anim", "undoGroupId": 42},
+        default_clip_path="Assets/Fallback.anim",
+    )
+    assert res_valid.clip_path == "Assets/Exact.anim"
+    assert res_valid.undo_group_id == 42
+
+
+def test_event_edit_result_fallback_and_undo_sanitization() -> None:
+    res_failed = _event_edit_result(
+        {"success": False, "error": "failed", "undoGroupId": 10},
+        default_clip_path="Assets/FallbackEvent.anim",
+    )
+    assert res_failed.clip_path == "Assets/FallbackEvent.anim"
+    assert res_failed.undo_group_id is None
+
+    res_valid = _event_edit_result(
+        {"success": True, "clipPath": "Assets/ExactEvent.anim", "undoGroupId": 7},
+        default_clip_path="Assets/FallbackEvent.anim",
+    )
+    assert res_valid.clip_path == "Assets/ExactEvent.anim"
+    assert res_valid.undo_group_id == 7

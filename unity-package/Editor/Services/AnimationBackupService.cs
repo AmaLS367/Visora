@@ -95,25 +95,20 @@ namespace Visora.Editor.Services
         // clip or a backup path goes through one of these two guards first.
         // Small helpers every mutating method needs, grouped into one region so every legacy
         // snippet splices them as one block rather than four separate lookups.
-        // SHARED-ALGORITHM:PathAndModeGuards START
+        private static readonly StringComparison PathComparison =
+            Application.platform == RuntimePlatform.WindowsEditor ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
         private static string ResolveProjectPath(string relativePath, string paramName)
         {
             string projectRoot = Path.GetFullPath(ProjectRoot) + Path.DirectorySeparatorChar;
             string resolved = Path.GetFullPath(Path.Combine(ProjectRoot, relativePath ?? string.Empty));
-            if (!resolved.StartsWith(projectRoot, StringComparison.Ordinal))
+            if (!resolved.StartsWith(projectRoot, PathComparison))
             {
                 throw new ArgumentException($"{paramName} '{relativePath}' resolves outside the project.");
             }
             return resolved;
         }
 
-        // Checked on the Unity main thread immediately before WriteBackup and the edit, by every
-        // mutating method in this file and in AnimationAuthoringService (Tasks 4-5) — not only
-        // once in Python before the HTTP call. A Python-side check is a fast-fail convenience;
-        // Play Mode can start in the gap between that check and the request arriving, and a
-        // caller invoking the native route directly bypasses the Python check entirely. Lives
-        // here (Task 2) rather than in AnimationAuthoringService (Task 3+) purely so both classes
-        // can reference it regardless of which one Unity compiles or the plan executes first.
         public static string CheckEditMode()
         {
             return EditorApplication.isPlaying
@@ -125,18 +120,13 @@ namespace Visora.Editor.Services
         {
             string backupRoot = Path.GetFullPath(BackupRootPath) + Path.DirectorySeparatorChar;
             string resolved = Path.GetFullPath(Path.Combine(BackupRootPath, backupId ?? string.Empty));
-            if (!resolved.StartsWith(backupRoot, StringComparison.Ordinal))
+            if (!resolved.StartsWith(backupRoot, PathComparison))
             {
                 throw new ArgumentException($"backupId '{backupId}' resolves outside VisoraBackups/.");
             }
             return resolved;
         }
 
-        // Rejects a clipPath that isn't itself a standalone, importable .anim file — an
-        // AnimationClip embedded as a sub-asset of an imported FBX is still a valid
-        // AssetDatabase.LoadAssetAtPath<AnimationClip> result, but its "file" is the FBX, not a
-        // .anim Visora can copy/replace independently; WriteBackup/RestoreBackup's whole approach
-        // assumes the on-disk file *is* the clip.
         private static void RequireStandaloneClipFile(AnimationClip clip, string clipPath)
         {
             if (!clipPath.EndsWith(".anim", StringComparison.OrdinalIgnoreCase) || !AssetDatabase.IsMainAsset(clip))
@@ -146,26 +136,23 @@ namespace Visora.Editor.Services
                     + "and cannot be backed up or restored as a file.");
             }
         }
-        // SHARED-ALGORITHM:PathAndModeGuards END
 
-        // Guards against the bridge transport's own retry-on-timeout re-applying a mutation that
-        // actually reached Unity the first time (the response was just lost). One JSON file per
-        // operationId under Library/Visora/Idempotency/ — survives exactly as long as it needs to
-        // (session-lifetime is enough; nothing here claims to survive a project move) and works
-        // identically whether called from a compiled class or from a duplicated local function in
-        // a freshly-compiled legacy snippet (Task 7), which is the whole reason this is
-        // file-based rather than an in-memory Dictionary: that snippet's assembly is thrown away
-        // after every single request, so nothing in memory persists between two separate
-        // execute_code calls, only the filesystem is shared. `public`, not `private`, because
-        // AnimationAuthoringService (Tasks 4-5) calls this cross-class.
-        // SHARED-ALGORITHM:IdempotencyCache START
-        public static string IdempotencyPath(string operationId) =>
-            Path.Combine("Library", "Visora", "Idempotency", operationId + ".json");
+        private static readonly System.Text.RegularExpressions.Regex SafeOperationIdRegex =
+            new System.Text.RegularExpressions.Regex(@"^[a-zA-Z0-9_\-]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        public static string IdempotencyPath(string operationId)
+        {
+            if (string.IsNullOrEmpty(operationId) || !SafeOperationIdRegex.IsMatch(operationId))
+            {
+                throw new ArgumentException($"Invalid operationId '{operationId}'. Must contain only alphanumeric characters, underscores, or hyphens.", nameof(operationId));
+            }
+            return Path.Combine("Library", "Visora", "Idempotency", Path.GetFileName(operationId) + ".json");
+        }
 
         public static bool TryGetCached<T>(string operationId, out T cached)
         {
             cached = default;
-            if (string.IsNullOrEmpty(operationId)) return false;
+            if (string.IsNullOrEmpty(operationId) || !SafeOperationIdRegex.IsMatch(operationId)) return false;
             string path = IdempotencyPath(operationId);
             if (!File.Exists(path)) return false;
             cached = JsonUtility.FromJson<T>(File.ReadAllText(path));
@@ -174,21 +161,11 @@ namespace Visora.Editor.Services
 
         public static void CacheSuccess<T>(string operationId, T result)
         {
-            if (string.IsNullOrEmpty(operationId)) return;
+            if (string.IsNullOrEmpty(operationId) || !SafeOperationIdRegex.IsMatch(operationId)) return;
             string path = IdempotencyPath(operationId);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, JsonUtility.ToJson(result));
         }
-        // SHARED-ALGORITHM:IdempotencyCache END
-
-        // SHARED-ALGORITHM:WriteBackup START
-        // Force-saves the clip before copying it: AnimationClip is a live in-memory object once
-        // loaded, and Undo.RecordObject/SetEditorCurve mark it dirty without serializing to disk.
-        // A backup of stale on-disk bytes can silently discard an earlier, already-succeeded edit
-        // the moment someone restores it. Throws on any failure rather than returning an error
-        // result, so a caller cannot proceed to edit the clip after a failed backup.
-
-        private static readonly char[] DashSeparator = { '-' };
 
         public static string WriteBackup(AnimationClip clip, string clipPath, string operation)
         {
@@ -210,9 +187,6 @@ namespace Visora.Editor.Services
             string clipFolder = Path.Combine(BackupRootPath, guid);
             Directory.CreateDirectory(clipFolder);
 
-            // No internal dash in the timestamp: ParseOperationFromFileName splits on '-' into
-            // exactly 3 parts (timestamp, random suffix, operation) and a dash inside the
-            // timestamp itself would shift "operation" to include half the random suffix.
             string timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
             string randomSuffix = Guid.NewGuid().ToString("N").Substring(0, 8);
             string safeOperation = operation.Replace('/', '_').Replace('\\', '_');
@@ -223,9 +197,7 @@ namespace Visora.Editor.Services
 
             return $"{guid}/{fileName}";
         }
-        // SHARED-ALGORITHM:WriteBackup END
 
-        // SHARED-ALGORITHM:ListBackups START
         public static ListAnimationBackupsResult ListBackups(string clipPath)
         {
             var result = new ListAnimationBackupsResult { clipPath = clipPath };
@@ -254,7 +226,8 @@ namespace Visora.Editor.Services
             {
                 var files = Directory.GetFiles(clipFolder, "*.anim")
                     .Select(path => new FileInfo(path))
-                    .OrderByDescending(info => info.CreationTimeUtc);
+                    .OrderByDescending(info => info.Name)
+                    .ThenByDescending(info => info.CreationTimeUtc);
 
                 foreach (var file in files)
                 {
@@ -281,6 +254,8 @@ namespace Visora.Editor.Services
             return result;
         }
 
+        private static readonly char[] DashSeparator = { '-' };
+
         private static string ParseOperationFromFileName(string fileName)
         {
             // "<yyyyMMddHHmmssfff>-<8-hex>-<operation>.anim" -> "<operation>"
@@ -288,9 +263,7 @@ namespace Visora.Editor.Services
             string[] parts = withoutExtension.Split(DashSeparator, 3);
             return parts.Length == 3 ? parts[2] : withoutExtension;
         }
-        // SHARED-ALGORITHM:ListBackups END
 
-        // SHARED-ALGORITHM:RestoreBackup START
         public static RestoreAnimationClipResult RestoreBackup(AnimationClip clip, string clipPath, string backupId, string operationId)
         {
             if (TryGetCached(operationId, out RestoreAnimationClipResult cached))
@@ -395,6 +368,5 @@ namespace Visora.Editor.Services
 
             return result;
         }
-        // SHARED-ALGORITHM:RestoreBackup END
     }
 }
