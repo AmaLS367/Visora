@@ -172,6 +172,51 @@ namespace Visora.Editor.Core
         public string operationId;
     }
 
+    [Serializable]
+    public class KeyframeIdentityRequest
+    {
+        public string clipPath;
+        public string targetPath;
+        public string typeName;
+        public string propertyName;
+    }
+
+    [Serializable]
+    public class SetKeyframeRequest : KeyframeIdentityRequest
+    {
+        public float time;
+        public float[] values;
+        public string tangentMode;
+        public float[] inTangent;
+        public float[] outTangent;
+        public string operationId;
+    }
+
+    [Serializable]
+    public class MoveKeyframeRequest : KeyframeIdentityRequest
+    {
+        public float fromTime;
+        public float toTime;
+        public string operationId;
+    }
+
+    [Serializable]
+    public class RemoveKeyframeRequest : KeyframeIdentityRequest
+    {
+        public float time;
+        public string operationId;
+    }
+
+    [Serializable]
+    public class HoldKeyframeRequest : KeyframeIdentityRequest
+    {
+        public float time;
+        public float holdUntil;
+        public float[] value;
+        public bool hasValue;
+        public string operationId;
+    }
+
     public static class VisoraHttpRouter
     {
         public static async Task HandleRequestAsync(HttpListenerContext context)
@@ -490,6 +535,54 @@ namespace Visora.Editor.Core
                         }
                         return AnimationBackupService.RestoreBackup(clip, p.clipPath, p.backupId, p.operationId);
                     });
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/keyframes/list")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<KeyframeIdentityRequest>(body) ?? new KeyframeIdentityRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationAuthoringService.ListKeyframes(p.clipPath, p.targetPath, p.typeName, p.propertyName));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/keyframes/set")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<SetKeyframeRequest>(body) ?? new SetKeyframeRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationAuthoringService.SetKeyframe(
+                            p.clipPath, p.targetPath, p.typeName, p.propertyName,
+                            p.time, p.values, p.tangentMode, p.inTangent, p.outTangent, p.operationId));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/keyframes/move")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<MoveKeyframeRequest>(body) ?? new MoveKeyframeRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationAuthoringService.MoveKeyframe(
+                            p.clipPath, p.targetPath, p.typeName, p.propertyName,
+                            p.fromTime, p.toTime, p.operationId));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/keyframes/remove")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<RemoveKeyframeRequest>(body) ?? new RemoveKeyframeRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationAuthoringService.RemoveKeyframe(
+                            p.clipPath, p.targetPath, p.typeName, p.propertyName,
+                            p.time, p.operationId));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/keyframes/hold")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<HoldKeyframeRequest>(body) ?? new HoldKeyframeRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationAuthoringService.SetKeyframeHold(
+                            p.clipPath, p.targetPath, p.typeName, p.propertyName,
+                            p.time, p.holdUntil, p.hasValue ? p.value : null, p.operationId));
                     responseJson = JsonUtility.ToJson(result);
                 }
                 else if (method == "POST" && path == "/api/visora/transaction/begin")

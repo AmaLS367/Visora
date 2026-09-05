@@ -248,5 +248,784 @@ namespace Visora.Editor.Services
             return bestDistance <= tolerance ? bestIndex : -1;
         }
         // SHARED-ALGORITHM:FindKeyIndexNearTime END
+
+        public static Dictionary<string, object> ToDictionary(AnimationClipEditResult r)
+        {
+            var dict = new Dictionary<string, object>
+            {
+                { "success", r.success }, { "clipPath", r.clipPath }, { "targetPath", r.targetPath },
+                { "typeName", r.typeName }, { "propertyName", r.propertyName },
+                { "channelsAffected", r.channelsAffected }, { "curveCreated", r.curveCreated },
+                { "hasTime", r.hasTime }, { "hasPreviousTime", r.hasPreviousTime },
+                { "keysCleared", r.keysCleared }, { "backupId", r.backupId }, { "undoGroupId", r.undoGroupId },
+                { "warnings", r.warnings },
+            };
+            if (r.hasTime) dict["time"] = r.time;
+            if (r.hasPreviousTime) dict["previousTime"] = r.previousTime;
+            if (r.error != null) dict["error"] = r.error;
+            return dict;
+        }
+
+        public static Dictionary<string, object> ToDictionary(ListAnimationKeyframesResult r)
+        {
+            var keyframes = new List<object>();
+            foreach (var k in r.keyframes)
+            {
+                keyframes.Add(new Dictionary<string, object>
+                {
+                    { "time", k.time }, { "values", k.values }, { "exact", k.exact },
+                    { "inTangents", k.inTangents }, { "outTangents", k.outTangents }, { "tangentMode", k.tangentMode },
+                });
+            }
+            var dict = new Dictionary<string, object>
+            {
+                { "success", r.success }, { "clipPath", r.clipPath }, { "targetPath", r.targetPath },
+                { "typeName", r.typeName }, { "propertyName", r.propertyName },
+                { "channels", r.channels }, { "keyframes", keyframes },
+            };
+            if (r.error != null) dict["error"] = r.error;
+            return dict;
+        }
+
+        // SHARED-ALGORITHM:KeyframeHelpers START
+        private static AnimationClip LoadClipForWrite(string clipPath)
+        {
+            return AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+        }
+
+        private static GameObject FindLiveInstance(string targetPath)
+        {
+            return string.IsNullOrEmpty(targetPath) ? null : GameObject.Find(targetPath);
+        }
+
+        private static float[] ExpandValue(float[] value, int channelCount, string paramName)
+        {
+            if (value == null || value.Length != channelCount)
+            {
+                throw new ArgumentException(
+                    $"{paramName} must have exactly {channelCount} value(s) for this property, got {(value?.Length ?? 0)}.", paramName);
+            }
+            return value;
+        }
+
+        private static int UpsertKey(AnimationCurve curve, float time, float value, string tangentMode, float clipFrameRate)
+        {
+            int existingIndex = FindKeyIndexNearTime(curve, time, clipFrameRate);
+            if (existingIndex < 0)
+            {
+                int newIndex = curve.AddKey(new Keyframe(time, value));
+                ApplyTangentMode(curve, newIndex, tangentMode ?? "smooth");
+                return newIndex;
+            }
+
+            var key = curve[existingIndex];
+            key.time = time;
+            key.value = value;
+            int keyIndex = curve.MoveKey(existingIndex, key);
+            if (tangentMode != null)
+            {
+                ApplyTangentMode(curve, keyIndex, tangentMode);
+            }
+            return keyIndex;
+        }
+        // SHARED-ALGORITHM:KeyframeHelpers END
+
+        // SHARED-ALGORITHM:SetKeyframe START
+        public static AnimationClipEditResult SetKeyframe(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float time, float[] values, string tangentMode, float[] inTangent, float[] outTangent, string operationId)
+        {
+            if (AnimationBackupService.TryGetCached(operationId, out AnimationClipEditResult cached))
+            {
+                return cached;
+            }
+
+            var result = new AnimationClipEditResult
+            {
+                clipPath = clipPath,
+                targetPath = targetPath,
+                typeName = typeName,
+                propertyName = propertyName,
+            };
+
+            string editModeError = AnimationBackupService.CheckEditMode();
+            if (editModeError != null)
+            {
+                result.success = false;
+                result.error = editModeError;
+                return result;
+            }
+
+            var clip = LoadClipForWrite(clipPath);
+            if (clip == null)
+            {
+                result.success = false;
+                result.error = $"AnimationClip not found at exact path '{clipPath}'.";
+                return result;
+            }
+
+            Type componentType;
+            string[] validModes = { "smooth", "linear", "step", "ease_in", "ease_out", "ease_in_out" };
+            if (tangentMode != null && Array.IndexOf(validModes, tangentMode) < 0)
+            {
+                result.success = false;
+                result.error = $"tangentMode '{tangentMode}' is not one of: {string.Join(", ", validModes)}.";
+                return result;
+            }
+            try
+            {
+                componentType = ResolveComponentType(typeName);
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = ex.Message;
+                return result;
+            }
+
+            string backupId;
+            try
+            {
+                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "set_animation_keyframe");
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Backup failed, edit aborted: {ex.Message}";
+                return result;
+            }
+
+            Undo.IncrementCurrentGroup();
+            int undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Visora: set_animation_keyframe");
+
+            try
+            {
+                var liveInstance = FindLiveInstance(targetPath);
+                string[] channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out bool curveExisted);
+                values = ExpandValue(values, channels.Length, nameof(values));
+                if (inTangent != null) inTangent = ExpandValue(inTangent, channels.Length, nameof(inTangent));
+                if (outTangent != null) outTangent = ExpandValue(outTangent, channels.Length, nameof(outTangent));
+
+                for (int i = 0; i < channels.Length; i++)
+                {
+                    var binding = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
+
+                    Undo.RecordObject(clip, "Visora: set_animation_keyframe");
+                    int keyIndex = UpsertKey(curve, time, values[i], tangentMode, clip.frameRate);
+                    if (inTangent != null) SetTangentValue(curve, keyIndex, left: true, value: inTangent[i]);
+                    if (outTangent != null) SetTangentValue(curve, keyIndex, left: false, value: outTangent[i]);
+
+                    AnimationUtility.SetEditorCurve(clip, binding, curve);
+                }
+
+                Undo.CollapseUndoOperations(undoGroup);
+
+                result.success = true;
+                result.channelsAffected.AddRange(channels);
+                result.curveCreated = !curveExisted;
+                result.time = time;
+                result.hasTime = true;
+                result.backupId = backupId;
+                result.undoGroupId = undoGroup;
+                AnimationBackupService.CacheSuccess(operationId, result);
+            }
+            catch (Exception ex)
+            {
+                Undo.RevertAllDownToGroup(undoGroup);
+                result.success = false;
+                result.error = ex.Message;
+            }
+
+            return result;
+        }
+        // SHARED-ALGORITHM:SetKeyframe END
+
+        // SHARED-ALGORITHM:MoveKeyframe START
+        public static AnimationClipEditResult MoveKeyframe(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float fromTime, float toTime, string operationId)
+        {
+            if (AnimationBackupService.TryGetCached(operationId, out AnimationClipEditResult cached))
+            {
+                return cached;
+            }
+
+            var result = new AnimationClipEditResult
+            {
+                clipPath = clipPath,
+                targetPath = targetPath,
+                typeName = typeName,
+                propertyName = propertyName,
+            };
+
+            string editModeError = AnimationBackupService.CheckEditMode();
+            if (editModeError != null)
+            {
+                result.success = false;
+                result.error = editModeError;
+                return result;
+            }
+
+            var clip = LoadClipForWrite(clipPath);
+            if (clip == null)
+            {
+                result.success = false;
+                result.error = $"AnimationClip not found at exact path '{clipPath}'.";
+                return result;
+            }
+
+            Type componentType;
+            try
+            {
+                componentType = ResolveComponentType(typeName);
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = ex.Message;
+                return result;
+            }
+
+            var liveInstance = FindLiveInstance(targetPath);
+            string[] channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out _);
+
+            var bindings = new EditorCurveBinding[channels.Length];
+            var curves = new AnimationCurve[channels.Length];
+            var fromIndices = new int[channels.Length];
+
+            for (int i = 0; i < channels.Length; i++)
+            {
+                bindings[i] = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
+                curves[i] = AnimationUtility.GetEditorCurve(clip, bindings[i]);
+                if (curves[i] == null)
+                {
+                    result.success = false;
+                    result.error = $"No curve found for '{channels[i]}'.";
+                    return result;
+                }
+
+                int fromIdx = FindKeyIndexNearTime(curves[i], fromTime, clip.frameRate);
+                if (fromIdx < 0)
+                {
+                    result.success = false;
+                    result.error = $"No keyframe found near {fromTime:F4}s on channel '{channels[i]}'.";
+                    return result;
+                }
+                fromIndices[i] = fromIdx;
+
+                int toIdx = FindKeyIndexNearTime(curves[i], toTime, clip.frameRate);
+                if (toIdx >= 0 && toIdx != fromIdx)
+                {
+                    result.success = false;
+                    result.error = $"A keyframe already exists near {toTime:F4}s on channel '{channels[i]}'; move aborted to prevent overwrite.";
+                    return result;
+                }
+            }
+
+            string backupId;
+            try
+            {
+                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "move_animation_keyframe");
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Backup failed, edit aborted: {ex.Message}";
+                return result;
+            }
+
+            Undo.IncrementCurrentGroup();
+            int undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Visora: move_animation_keyframe");
+
+            try
+            {
+                for (int i = 0; i < channels.Length; i++)
+                {
+                    Undo.RecordObject(clip, "Visora: move_animation_keyframe");
+                    var key = curves[i][fromIndices[i]];
+                    key.time = toTime;
+                    curves[i].MoveKey(fromIndices[i], key);
+                    AnimationUtility.SetEditorCurve(clip, bindings[i], curves[i]);
+                }
+
+                Undo.CollapseUndoOperations(undoGroup);
+
+                result.success = true;
+                result.channelsAffected.AddRange(channels);
+                result.time = toTime;
+                result.hasTime = true;
+                result.previousTime = fromTime;
+                result.hasPreviousTime = true;
+                result.backupId = backupId;
+                result.undoGroupId = undoGroup;
+                AnimationBackupService.CacheSuccess(operationId, result);
+            }
+            catch (Exception ex)
+            {
+                Undo.RevertAllDownToGroup(undoGroup);
+                result.success = false;
+                result.error = ex.Message;
+            }
+
+            return result;
+        }
+        // SHARED-ALGORITHM:MoveKeyframe END
+
+        // SHARED-ALGORITHM:RemoveKeyframe START
+        public static AnimationClipEditResult RemoveKeyframe(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float time, string operationId)
+        {
+            if (AnimationBackupService.TryGetCached(operationId, out AnimationClipEditResult cached))
+            {
+                return cached;
+            }
+
+            var result = new AnimationClipEditResult
+            {
+                clipPath = clipPath,
+                targetPath = targetPath,
+                typeName = typeName,
+                propertyName = propertyName,
+            };
+
+            string editModeError = AnimationBackupService.CheckEditMode();
+            if (editModeError != null)
+            {
+                result.success = false;
+                result.error = editModeError;
+                return result;
+            }
+
+            var clip = LoadClipForWrite(clipPath);
+            if (clip == null)
+            {
+                result.success = false;
+                result.error = $"AnimationClip not found at exact path '{clipPath}'.";
+                return result;
+            }
+
+            Type componentType;
+            try
+            {
+                componentType = ResolveComponentType(typeName);
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = ex.Message;
+                return result;
+            }
+
+            var liveInstance = FindLiveInstance(targetPath);
+            string[] channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out _);
+
+            var bindings = new EditorCurveBinding[channels.Length];
+            var curves = new AnimationCurve[channels.Length];
+            var keyIndices = new int[channels.Length];
+
+            for (int i = 0; i < channels.Length; i++)
+            {
+                bindings[i] = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
+                curves[i] = AnimationUtility.GetEditorCurve(clip, bindings[i]);
+                if (curves[i] == null)
+                {
+                    result.success = false;
+                    result.error = $"No curve found for '{channels[i]}'.";
+                    return result;
+                }
+
+                int keyIndex = FindKeyIndexNearTime(curves[i], time, clip.frameRate);
+                if (keyIndex < 0)
+                {
+                    float nearestTime = float.MaxValue;
+                    float minDiff = float.MaxValue;
+                    for (int k = 0; k < curves[i].length; k++)
+                    {
+                        float diff = Mathf.Abs(curves[i][k].time - time);
+                        if (diff < minDiff)
+                        {
+                            minDiff = diff;
+                            nearestTime = curves[i][k].time;
+                        }
+                    }
+                    result.success = false;
+                    result.error = minDiff < float.MaxValue
+                        ? $"No keyframe found near {time:F4}s on channel '{channels[i]}' (nearest is at {nearestTime:F4}s)."
+                        : $"No keyframe found near {time:F4}s on channel '{channels[i]}'.";
+                    return result;
+                }
+                keyIndices[i] = keyIndex;
+            }
+
+            string backupId;
+            try
+            {
+                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "remove_animation_keyframe");
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Backup failed, edit aborted: {ex.Message}";
+                return result;
+            }
+
+            Undo.IncrementCurrentGroup();
+            int undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Visora: remove_animation_keyframe");
+
+            try
+            {
+                for (int i = 0; i < channels.Length; i++)
+                {
+                    Undo.RecordObject(clip, "Visora: remove_animation_keyframe");
+                    curves[i].RemoveKey(keyIndices[i]);
+                    AnimationUtility.SetEditorCurve(clip, bindings[i], curves[i]);
+                }
+
+                Undo.CollapseUndoOperations(undoGroup);
+
+                result.success = true;
+                result.channelsAffected.AddRange(channels);
+                result.backupId = backupId;
+                result.undoGroupId = undoGroup;
+                AnimationBackupService.CacheSuccess(operationId, result);
+            }
+            catch (Exception ex)
+            {
+                Undo.RevertAllDownToGroup(undoGroup);
+                result.success = false;
+                result.error = ex.Message;
+            }
+
+            return result;
+        }
+        // SHARED-ALGORITHM:RemoveKeyframe END
+
+        // SHARED-ALGORITHM:ListKeyframes START
+        public static ListAnimationKeyframesResult ListKeyframes(
+            string clipPath, string targetPath, string typeName, string propertyName)
+        {
+            var result = new ListAnimationKeyframesResult
+            {
+                clipPath = clipPath,
+                targetPath = targetPath,
+                typeName = typeName,
+                propertyName = propertyName,
+            };
+
+            var clip = LoadClipForWrite(clipPath);
+            if (clip == null)
+            {
+                result.success = false;
+                result.error = $"AnimationClip not found at exact path '{clipPath}'.";
+                return result;
+            }
+
+            Type componentType;
+            try
+            {
+                componentType = ResolveComponentType(typeName);
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = ex.Message;
+                return result;
+            }
+
+            var liveInstance = FindLiveInstance(targetPath);
+            string[] channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out bool curveExisted);
+            result.channels.AddRange(channels);
+
+            if (!curveExisted)
+            {
+                result.success = true;
+                return result;
+            }
+
+            var curves = new AnimationCurve[channels.Length];
+            var unionedTimes = new SortedSet<float>();
+
+            for (int i = 0; i < channels.Length; i++)
+            {
+                var binding = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
+                curves[i] = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
+                for (int k = 0; k < curves[i].length; k++)
+                {
+                    unionedTimes.Add(curves[i][k].time);
+                }
+            }
+
+            foreach (float t in unionedTimes)
+            {
+                var vals = new float[channels.Length];
+                var exact = new bool[channels.Length];
+                var inT = new float[channels.Length];
+                var outT = new float[channels.Length];
+                var leftModes = new AnimationUtility.TangentMode[channels.Length];
+                var rightModes = new AnimationUtility.TangentMode[channels.Length];
+
+                for (int c = 0; c < channels.Length; c++)
+                {
+                    int foundIdx = -1;
+                    for (int k = 0; k < curves[c].length; k++)
+                    {
+                        if (curves[c][k].time == t)
+                        {
+                            foundIdx = k;
+                            break;
+                        }
+                    }
+
+                    if (foundIdx >= 0)
+                    {
+                        exact[c] = true;
+                        var kf = curves[c][foundIdx];
+                        vals[c] = kf.value;
+                        inT[c] = kf.inTangent;
+                        outT[c] = kf.outTangent;
+                        leftModes[c] = AnimationUtility.GetKeyLeftTangentMode(curves[c], foundIdx);
+                        rightModes[c] = AnimationUtility.GetKeyRightTangentMode(curves[c], foundIdx);
+                    }
+                    else
+                    {
+                        exact[c] = false;
+                        vals[c] = curves[c].Evaluate(t);
+                        inT[c] = 0f;
+                        outT[c] = 0f;
+                    }
+                }
+
+                string tangentMode;
+                if (exact.All(e => !e))
+                {
+                    tangentMode = "n/a";
+                }
+                else if (!exact.All(e => e))
+                {
+                    tangentMode = "custom";
+                }
+                else
+                {
+                    bool allClamped = leftModes.All(m => m == AnimationUtility.TangentMode.ClampedAuto)
+                        && rightModes.All(m => m == AnimationUtility.TangentMode.ClampedAuto);
+                    bool allLinear = leftModes.All(m => m == AnimationUtility.TangentMode.Linear)
+                        && rightModes.All(m => m == AnimationUtility.TangentMode.Linear);
+                    bool allStep = rightModes.All(m => m == AnimationUtility.TangentMode.Constant);
+
+                    if (allClamped) tangentMode = "smooth";
+                    else if (allLinear) tangentMode = "linear";
+                    else if (allStep) tangentMode = "step";
+                    else tangentMode = "custom";
+                }
+
+                result.keyframes.Add(new AnimationKeyframeInfo
+                {
+                    time = t,
+                    values = vals,
+                    exact = exact,
+                    inTangents = inT,
+                    outTangents = outT,
+                    tangentMode = tangentMode,
+                });
+            }
+
+            result.success = true;
+            return result;
+        }
+        // SHARED-ALGORITHM:ListKeyframes END
+
+        // SHARED-ALGORITHM:SetKeyframeHold START
+        private static int SetHoldBoundary(AnimationCurve curve, float t, float value)
+        {
+            int existing = -1;
+            for (int i = 0; i < curve.length; i++)
+            {
+                if (curve[i].time == t) { existing = i; break; }
+            }
+            int index = existing >= 0
+                ? curve.MoveKey(existing, new Keyframe(t, value))
+                : curve.AddKey(new Keyframe(t, value));
+            ApplyTangentMode(curve, index, "step");
+            return index;
+        }
+
+        public static AnimationClipEditResult SetKeyframeHold(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float time, float holdUntil, float[] value, string operationId)
+        {
+            if (AnimationBackupService.TryGetCached(operationId, out AnimationClipEditResult cached))
+            {
+                return cached;
+            }
+
+            var result = new AnimationClipEditResult
+            {
+                clipPath = clipPath,
+                targetPath = targetPath,
+                typeName = typeName,
+                propertyName = propertyName,
+            };
+
+            string editModeError = AnimationBackupService.CheckEditMode();
+            if (editModeError != null)
+            {
+                result.success = false;
+                result.error = editModeError;
+                return result;
+            }
+
+            if (holdUntil <= time)
+            {
+                result.success = false;
+                result.error = $"holdUntil ({holdUntil}) must be strictly greater than time ({time}).";
+                return result;
+            }
+
+            var clip = LoadClipForWrite(clipPath);
+            if (clip == null)
+            {
+                result.success = false;
+                result.error = $"AnimationClip not found at exact path '{clipPath}'.";
+                return result;
+            }
+
+            Type componentType;
+            try
+            {
+                componentType = ResolveComponentType(typeName);
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = ex.Message;
+                return result;
+            }
+
+            var liveInstance = FindLiveInstance(targetPath);
+            string[] channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out bool curveExisted);
+            if (value != null)
+            {
+                value = ExpandValue(value, channels.Length, nameof(value));
+            }
+
+            string backupId;
+            try
+            {
+                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "set_keyframe_hold");
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Backup failed, edit aborted: {ex.Message}";
+                return result;
+            }
+
+            Undo.IncrementCurrentGroup();
+            int undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("Visora: set_keyframe_hold");
+
+            try
+            {
+                var clearedTimes = new SortedSet<float>();
+
+                for (int i = 0; i < channels.Length; i++)
+                {
+                    var binding = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
+                    var curve = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
+
+                    Undo.RecordObject(clip, "Visora: set_keyframe_hold");
+
+                    float holdVal = value != null ? value[i] : curve.Evaluate(time);
+
+                    // Clear keys strictly between time and holdUntil
+                    for (int k = curve.length - 1; k >= 0; k--)
+                    {
+                        float kt = curve[k].time;
+                        if (kt > time && kt < holdUntil)
+                        {
+                            clearedTimes.Add(kt);
+                            curve.RemoveKey(k);
+                        }
+                    }
+
+                    SetHoldBoundary(curve, time, holdVal);
+                    SetHoldBoundary(curve, holdUntil, holdVal);
+
+                    AnimationUtility.SetEditorCurve(clip, binding, curve);
+                }
+
+                Undo.CollapseUndoOperations(undoGroup);
+
+                result.success = true;
+                result.channelsAffected.AddRange(channels);
+                result.curveCreated = !curveExisted;
+                result.time = time;
+                result.hasTime = true;
+                result.keysCleared.AddRange(clearedTimes);
+                result.backupId = backupId;
+                result.undoGroupId = undoGroup;
+                AnimationBackupService.CacheSuccess(operationId, result);
+            }
+            catch (Exception ex)
+            {
+                Undo.RevertAllDownToGroup(undoGroup);
+                result.success = false;
+                result.error = ex.Message;
+            }
+
+            return result;
+        }
+        // SHARED-ALGORITHM:SetKeyframeHold END
+    }
+
+    [Serializable]
+    public class AnimationKeyframeInfo
+    {
+        public float time;
+        public float[] values;
+        public bool[] exact;
+        public float[] inTangents;
+        public float[] outTangents;
+        public string tangentMode;
+    }
+
+    [Serializable]
+    public class ListAnimationKeyframesResult
+    {
+        public bool success;
+        public string error;
+        public string clipPath;
+        public string targetPath;
+        public string typeName;
+        public string propertyName;
+        public List<string> channels = new List<string>();
+        public List<AnimationKeyframeInfo> keyframes = new List<AnimationKeyframeInfo>();
+    }
+
+    [Serializable]
+    public class AnimationClipEditResult
+    {
+        public bool success;
+        public string error;
+        public string clipPath;
+        public string targetPath;
+        public string typeName;
+        public string propertyName;
+        public List<string> channelsAffected = new List<string>();
+        public bool curveCreated;
+        public float time;
+        public bool hasTime;
+        public float previousTime;
+        public bool hasPreviousTime;
+        public List<float> keysCleared = new List<float>();
+        public string backupId;
+        public int undoGroupId;
+        public List<string> warnings = new List<string>();
     }
 }
+
