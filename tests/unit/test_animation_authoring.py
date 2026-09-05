@@ -71,8 +71,16 @@ class _FakeBridge:
         }
 
     async def move_keyframe_native(  # noqa: PLR0913
-        self, clip_path: str, target_path: str, type_name: str, property_name: str, from_time: float, to_time: float
+        self,
+        clip_path: str,
+        target_path: str,
+        type_name: str,
+        property_name: str,
+        from_time: float,
+        to_time: float,
+        operation_id: str | None = None,
     ) -> dict[str, object]:
+        del operation_id
         self.calls.append("move_native")
         return {
             "success": True,
@@ -92,9 +100,16 @@ class _FakeBridge:
             "warnings": [],
         }
 
-    async def remove_keyframe_native(
-        self, clip_path: str, target_path: str, type_name: str, property_name: str, time: float
+    async def remove_keyframe_native(  # noqa: PLR0913
+        self,
+        clip_path: str,
+        target_path: str,
+        type_name: str,
+        property_name: str,
+        time: float,
+        operation_id: str | None = None,
     ) -> dict[str, object]:
+        del operation_id
         self.calls.append("remove_native")
         return {
             "success": True,
@@ -112,16 +127,18 @@ class _FakeBridge:
             "warnings": [],
         }
 
-    async def hold_keyframe_native(
+    async def hold_keyframe_native(  # noqa: PLR0913
         self,
         clip_path: str,
         target_path: str,
         type_name: str,
         property_name: str,
         time: float,
-        _hold_until: float,
-        _value: list[float] | None,
+        hold_until: float,
+        value: list[float] | None = None,
+        operation_id: str | None = None,
     ) -> dict[str, object]:
+        del hold_until, value, operation_id
         self.calls.append("hold_native")
         return {
             "success": True,
@@ -139,15 +156,17 @@ class _FakeBridge:
             "warnings": [],
         }
 
-    async def create_event_native(
+    async def create_event_native(  # noqa: PLR0913
         self,
         clip_path: str,
         time: float,
         function_name: str,
-        _string_param: str,
-        _float_param: float,
-        _int_param: int,
+        string_param: str = "",
+        float_param: float = 0.0,
+        int_param: int = 0,
+        operation_id: str | None = None,
     ) -> dict[str, object]:
+        del string_param, float_param, int_param, operation_id
         self.calls.append("create_event_native")
         return {
             "success": True,
@@ -161,7 +180,14 @@ class _FakeBridge:
             "warnings": [],
         }
 
-    async def remove_event_native(self, clip_path: str, time: float, function_name: str | None) -> dict[str, object]:
+    async def remove_event_native(
+        self,
+        clip_path: str,
+        time: float,
+        function_name: str | None,
+        operation_id: str | None = None,
+    ) -> dict[str, object]:
+        del operation_id
         self.calls.append("remove_event_native")
         return {
             "success": True,
@@ -241,24 +267,14 @@ async def test_set_animation_keyframe_refuses_play_mode(monkeypatch: pytest.Monk
 
 
 @pytest.mark.anyio
-async def test_set_animation_keyframe_unwraps_a_legacy_business_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _LegacyFailureBridge(_FakeBridge):
+async def test_set_animation_keyframe_returns_unsupported_error_when_feature_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _UnsupportedBridge(_FakeBridge):
         async def supports_feature(self, _feature: str) -> bool:
-            return False  # forces legacy path
+            return False
 
-        async def execute_code(self, _code: str) -> dict[str, object]:
-            self.calls.append("legacy")
-            return {
-                "success": True,  # snippet executed cleanly
-                "logs": [],
-                "result": {
-                    "success": False,
-                    "clipPath": "Assets/A.anim",
-                    "error": "AnimationClip not found at exact path 'Assets/A.anim'.",
-                },
-            }
-
-    fake = _LegacyFailureBridge()
+    fake = _UnsupportedBridge()
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
     result = await set_animation_keyframe(
@@ -270,9 +286,34 @@ async def test_set_animation_keyframe_unwraps_a_legacy_business_failure(monkeypa
         value=[1.0, 2.0, 3.0],
     )
 
-    assert fake.calls == ["legacy"]
+    assert fake.calls == []
     assert result.success is False
-    assert result.error == "AnimationClip not found at exact path 'Assets/A.anim'."
+    assert "requires the Visora Unity package" in (result.error or "")
+
+
+@pytest.mark.anyio
+async def test_set_animation_keyframe_passes_operation_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeBridge()
+    sent: dict[str, object] = {}
+
+    async def capturing_set_keyframe_native(**kwargs: object) -> dict[str, object]:
+        sent.update(kwargs)
+        return await _FakeBridge.set_keyframe_native(fake, **kwargs)
+
+    fake.set_keyframe_native = capturing_set_keyframe_native  # type: ignore[method-assign]
+    monkeypatch.setattr(animation_pkg, "bridge", fake)
+
+    await set_animation_keyframe(
+        clip_path="Assets/A.anim",
+        target_path="Rebecca",
+        type_name="Transform",
+        property_name="m_LocalPosition",
+        time=0.5,
+        value=[1.0, 2.0, 3.0],
+        operation_id="op-12345",
+    )
+
+    assert sent["operation_id"] == "op-12345"
 
 
 @pytest.mark.anyio

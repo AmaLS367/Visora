@@ -151,7 +151,33 @@ namespace Visora.Editor.Tests
         {
             var path = AnimationBackupService.IdempotencyPath("op-123_UUID-456");
             Assert.That(path, Does.EndWith("op-123_UUID-456.json"));
-            Assert.That(path, Does.StartWith(System.IO.Path.Combine("Library", "Visora", "Idempotency")));
+            Assert.That(path, Does.Contain(System.IO.Path.Combine("Library", "Visora", "Idempotency")));
+        }
+
+        [Test]
+        public void ResolveChannels_NewRotationPropertyUsesWellKnownTable()
+        {
+            var clip = new AnimationClip();
+            try
+            {
+                var channels = AnimationAuthoringService.ResolveChannels(
+                    clip, "", typeof(Transform), "m_LocalRotation", null, out bool curveExisted);
+
+                Assert.That(curveExisted, Is.False);
+                Assert.That(channels, Is.EqualTo(new[] { "m_LocalRotation.x", "m_LocalRotation.y", "m_LocalRotation.z", "m_LocalRotation.w" }));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(clip);
+            }
+        }
+
+        [Test]
+        public void FindKeyIndexNearTime_RespectsCustomTightTolerance()
+        {
+            var curve = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(1f, 1f));
+            Assert.That(AnimationAuthoringService.FindKeyIndexNearTime(curve, 0.010f, 30f), Is.EqualTo(0));
+            Assert.That(AnimationAuthoringService.FindKeyIndexNearTime(curve, 0.010f, 30f, 0.001f), Is.EqualTo(-1));
         }
     }
 }

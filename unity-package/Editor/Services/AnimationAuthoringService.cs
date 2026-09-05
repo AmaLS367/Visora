@@ -24,6 +24,7 @@ namespace Visora.Editor.Services
             ["m_LocalPosition"] = new[] { "x", "y", "z" },
             ["m_LocalScale"] = new[] { "x", "y", "z" },
             ["localEulerAnglesRaw"] = new[] { "x", "y", "z" },
+            ["m_LocalRotation"] = new[] { "x", "y", "z", "w" },
         };
 
         public static Type ResolveComponentType(string typeName)
@@ -201,15 +202,6 @@ namespace Visora.Editor.Services
         // what Free mode records.
         private static void SetTangentValue(AnimationCurve curve, int keyIndex, bool left, float value)
         {
-            if (left)
-            {
-                AnimationUtility.SetKeyLeftTangentMode(curve, keyIndex, AnimationUtility.TangentMode.Free);
-            }
-            else
-            {
-                AnimationUtility.SetKeyRightTangentMode(curve, keyIndex, AnimationUtility.TangentMode.Free);
-            }
-
             var key = curve[keyIndex];
             if (left)
             {
@@ -219,15 +211,26 @@ namespace Visora.Editor.Services
             {
                 key.outTangent = value;
             }
-            curve.MoveKey(keyIndex, key);
+            int newIndex = curve.MoveKey(keyIndex, key);
+
+            if (left)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(curve, newIndex, AnimationUtility.TangentMode.Free);
+            }
+            else
+            {
+                AnimationUtility.SetKeyRightTangentMode(curve, newIndex, AnimationUtility.TangentMode.Free);
+            }
         }
 
         // Half a frame of tolerance, floored so a degenerate (zero or negative) frame rate cannot
         // divide by zero. Returns -1 rather than the closest key unconditionally: a caller outside
         // tolerance gets a clear "no key here" error instead of silently editing the wrong frame.
-        public static int FindKeyIndexNearTime(AnimationCurve curve, float time, float clipFrameRate)
+        // Half a frame of tolerance by default, floored so a degenerate (zero or negative) frame rate
+        // cannot divide by zero. customTolerance allows caller to specify a tighter threshold (e.g. for upserts).
+        public static int FindKeyIndexNearTime(AnimationCurve curve, float time, float clipFrameRate, float? customTolerance = null)
         {
-            float tolerance = Mathf.Max(0.5f / Mathf.Max(clipFrameRate, 1f), 0.0001f);
+            float tolerance = customTolerance ?? Mathf.Max(0.5f / Mathf.Max(clipFrameRate, 1f), 0.0001f);
             int bestIndex = -1;
             float bestDistance = float.MaxValue;
 
@@ -289,7 +292,39 @@ namespace Visora.Editor.Services
 
         private static GameObject FindLiveInstance(string targetPath)
         {
-            return string.IsNullOrEmpty(targetPath) ? null : GameObject.Find(targetPath);
+            if (string.IsNullOrEmpty(targetPath)) return null;
+
+            var go = GameObject.Find(targetPath);
+            if (go != null) return go;
+
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var roots = scene.GetRootGameObjects();
+
+            string[] parts = targetPath.Split('/');
+            foreach (var root in roots)
+            {
+                if (root.name == targetPath || root.name == parts[0])
+                {
+                    if (parts.Length == 1) return root;
+                    var sub = root.transform.Find(string.Join("/", parts.Skip(1)));
+                    if (sub != null) return sub.gameObject;
+                }
+
+                var directChild = root.transform.Find(targetPath);
+                if (directChild != null) return directChild.gameObject;
+            }
+
+            string terminalName = parts[parts.Length - 1];
+            var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+            foreach (var t in allTransforms)
+            {
+                if (t.name == terminalName && t.gameObject.scene == scene)
+                {
+                    return t.gameObject;
+                }
+            }
+
+            return null;
         }
 
         private static float[] ExpandValue(float[] value, int channelCount, string paramName)
@@ -318,7 +353,8 @@ namespace Visora.Editor.Services
 
         private static int UpsertKey(AnimationCurve curve, float time, float value, string tangentMode, float clipFrameRate)
         {
-            int existingIndex = FindKeyIndexNearTime(curve, time, clipFrameRate);
+            float upsertTolerance = Mathf.Min(0.001f, 0.5f / Mathf.Max(clipFrameRate, 1f));
+            int existingIndex = FindKeyIndexNearTime(curve, time, clipFrameRate, upsertTolerance);
             if (existingIndex < 0)
             {
                 int newIndex = curve.AddKey(new Keyframe(time, value));
@@ -437,6 +473,7 @@ namespace Visora.Editor.Services
                     AnimationUtility.SetEditorCurve(clip, binding, curve);
                 }
 
+                EditorUtility.SetDirty(clip);
                 Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;
@@ -566,6 +603,7 @@ namespace Visora.Editor.Services
                     AnimationUtility.SetEditorCurve(clip, bindings[i], curves[i]);
                 }
 
+                EditorUtility.SetDirty(clip);
                 Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;
@@ -699,10 +737,14 @@ namespace Visora.Editor.Services
                     AnimationUtility.SetEditorCurve(clip, bindings[i], curves[i]);
                 }
 
+                EditorUtility.SetDirty(clip);
                 Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;
                 result.channelsAffected.AddRange(channels);
+                result.time = time;
+                result.hasTime = true;
+                result.keysCleared.Add(time);
                 result.backupId = backupId;
                 result.undoGroupId = undoGroup;
                 AnimationBackupService.CacheSuccess(operationId, result);
@@ -760,7 +802,7 @@ namespace Visora.Editor.Services
 
             float tolerance = Mathf.Max(0.5f / Mathf.Max(clip.frameRate, 1f), 0.0001f);
             var curves = new AnimationCurve[channels.Length];
-            var rawTimes = new List<float>();
+            var allTimes = new List<(float time, int channel)>();
 
             for (int i = 0; i < channels.Length; i++)
             {
@@ -768,18 +810,36 @@ namespace Visora.Editor.Services
                 curves[i] = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
                 for (int k = 0; k < curves[i].length; k++)
                 {
-                    rawTimes.Add(curves[i][k].time);
+                    allTimes.Add((curves[i][k].time, i));
                 }
             }
 
-            rawTimes.Sort();
-            var unionedTimes = new List<float>();
-            foreach (float t in rawTimes)
+            allTimes.Sort((a, b) => a.time.CompareTo(b.time));
+
+            // Cluster times across channels without dropping distinct keys on the same channel
+            var clusters = new List<(float time, HashSet<int> channels)>();
+            foreach (var item in allTimes)
             {
-                if (unionedTimes.Count == 0 || Mathf.Abs(unionedTimes[unionedTimes.Count - 1] - t) > tolerance)
+                bool added = false;
+                for (int ci = 0; ci < clusters.Count; ci++)
                 {
-                    unionedTimes.Add(t);
+                    if (Mathf.Abs(clusters[ci].time - item.time) <= tolerance && !clusters[ci].channels.Contains(item.channel))
+                    {
+                        clusters[ci].channels.Add(item.channel);
+                        added = true;
+                        break;
+                    }
                 }
+                if (!added)
+                {
+                    clusters.Add((item.time, new HashSet<int> { item.channel }));
+                }
+            }
+            var unionedTimes = clusters.Select(c => c.time).OrderBy(t => t).ToList();
+            var claimedKeyIndices = new HashSet<int>[channels.Length];
+            for (int i = 0; i < channels.Length; i++)
+            {
+                claimedKeyIndices[i] = new HashSet<int>();
             }
 
             foreach (float t in unionedTimes)
@@ -795,8 +855,9 @@ namespace Visora.Editor.Services
                 {
                     int foundIdx = FindKeyIndexNearTime(curves[c], t, clip.frameRate);
 
-                    if (foundIdx >= 0)
+                    if (foundIdx >= 0 && !claimedKeyIndices[c].Contains(foundIdx))
                     {
+                        claimedKeyIndices[c].Add(foundIdx);
                         exact[c] = true;
                         var kf = curves[c][foundIdx];
                         vals[c] = kf.value;
@@ -854,19 +915,38 @@ namespace Visora.Editor.Services
 
         private static int SetHoldBoundary(AnimationCurve curve, float t, float value, float clipFrameRate, bool setStepRightTangent)
         {
-            int existing = FindKeyIndexNearTime(curve, t, clipFrameRate);
-            int index = existing >= 0
-                ? curve.MoveKey(existing, new Keyframe(t, value))
-                : curve.AddKey(new Keyframe(t, value));
-            if (setStepRightTangent)
+            float tolerance = Mathf.Min(0.001f, 0.5f / Mathf.Max(clipFrameRate, 1f));
+            int existing = FindKeyIndexNearTime(curve, t, clipFrameRate, tolerance);
+            if (existing >= 0)
             {
-                ApplyTangentMode(curve, index, "step");
+                var key = curve[existing];
+                key.time = t;
+                key.value = value;
+                int index = curve.MoveKey(existing, key);
+                if (setStepRightTangent)
+                {
+                    AnimationUtility.SetKeyRightTangentMode(curve, index, AnimationUtility.TangentMode.Constant);
+                }
+                else
+                {
+                    SetTangentValue(curve, index, left: true, value: 0f);
+                }
+                return index;
             }
-            else if (existing < 0)
+            else
             {
-                ApplyTangentMode(curve, index, "smooth");
+                int index = curve.AddKey(new Keyframe(t, value));
+                if (setStepRightTangent)
+                {
+                    ApplyTangentMode(curve, index, "step");
+                }
+                else
+                {
+                    ApplyTangentMode(curve, index, "smooth");
+                    SetTangentValue(curve, index, left: true, value: 0f);
+                }
+                return index;
             }
-            return index;
         }
 
         public static AnimationClipEditResult SetKeyframeHold(
@@ -974,6 +1054,7 @@ namespace Visora.Editor.Services
                     AnimationUtility.SetEditorCurve(clip, binding, curve);
                 }
 
+                EditorUtility.SetDirty(clip);
                 Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;
@@ -1085,6 +1166,7 @@ namespace Visora.Editor.Services
                 events.Sort((a, b) => a.time.CompareTo(b.time));
                 AnimationUtility.SetAnimationEvents(clip, events.ToArray());
 
+                EditorUtility.SetDirty(clip);
                 Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;
@@ -1169,9 +1251,10 @@ namespace Visora.Editor.Services
             try
             {
                 Undo.RecordObject(clip, "Visora: remove_animation_event");
-                var remaining = events.Except(toRemove).ToArray();
+                var remaining = events.Where(e => !toRemove.Contains(e)).ToArray();
                 AnimationUtility.SetAnimationEvents(clip, remaining);
 
+                EditorUtility.SetDirty(clip);
                 Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;

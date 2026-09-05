@@ -37,7 +37,10 @@ class _FakeBridge:
             ],
         }
 
-    async def restore_clip_native(self, clip_path: str, backup_id: str) -> dict[str, object]:
+    async def restore_clip_native(
+        self, clip_path: str, backup_id: str, operation_id: str | None = None
+    ) -> dict[str, object]:
+        del operation_id
         self.calls.append("restore_native")
         return {
             "success": True,
@@ -45,36 +48,6 @@ class _FakeBridge:
             "restoredFromBackupId": backup_id,
             "preRestoreBackupId": "Assets__A.anim/20260905-091500-restore_animation_clip.anim",
             "warnings": [],
-        }
-
-    async def execute_code(self, code: str) -> dict[str, object]:
-        self.calls.append("legacy")
-        if "ListBackups" in code:
-            return {
-                "success": True,
-                "result": {
-                    "success": True,
-                    "clipPath": "Assets/A.anim",
-                    "backups": [
-                        {
-                            "backupId": "b1",
-                            "clipPath": "Assets/A.anim",
-                            "createdAt": "2026-09-05T09:00:00Z",
-                            "operation": "set_animation_keyframe",
-                            "sizeBytes": 1024,
-                        }
-                    ],
-                },
-            }
-        return {
-            "success": True,
-            "result": {
-                "success": True,
-                "clipPath": "Assets/A.anim",
-                "restoredFromBackupId": "b1",
-                "preRestoreBackupId": "b2",
-                "warnings": [],
-            },
         }
 
 
@@ -106,6 +79,30 @@ async def test_restore_animation_clip_reports_pre_restore_backup(monkeypatch: py
 
 
 @pytest.mark.anyio
+async def test_restore_animation_clip_passes_operation_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeBridge()
+    captured_kwargs: dict[str, object] = {}
+
+    async def capturing_restore_clip_native(
+        clip_path: str, backup_id: str, operation_id: str | None = None
+    ) -> dict[str, object]:
+        captured_kwargs["operation_id"] = operation_id
+        return await _FakeBridge.restore_clip_native(fake, clip_path, backup_id, operation_id=operation_id)
+
+    fake.restore_clip_native = capturing_restore_clip_native  # type: ignore[method-assign]
+    monkeypatch.setattr(animation_pkg, "bridge", fake)
+
+    result = await restore_animation_clip(
+        clip_path="Assets/A.anim",
+        backup_id="Assets__A.anim/20260905-090000-set_animation_keyframe.anim",
+        operation_id="backup-op-99",
+    )
+
+    assert result.success is True
+    assert captured_kwargs["operation_id"] == "backup-op-99"
+
+
+@pytest.mark.anyio
 async def test_restore_animation_clip_refuses_play_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge(is_playing=True)
     monkeypatch.setattr(animation_pkg, "bridge", fake)
@@ -119,15 +116,15 @@ async def test_restore_animation_clip_refuses_play_mode(monkeypatch: pytest.Monk
 
 
 @pytest.mark.anyio
-async def test_backup_tools_legacy_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_backup_tools_unsupported_when_package_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeBridge(native_supported=False)
     monkeypatch.setattr(animation_pkg, "bridge", fake)
 
     list_res = await list_animation_backups(clip_path="Assets/A.anim")
-    assert list_res.success is True
-    assert len(list_res.backups) == 1
+    assert list_res.success is False
+    assert "requires the Visora Unity package" in (list_res.error or "")
 
     restore_res = await restore_animation_clip(clip_path="Assets/A.anim", backup_id="b1")
-    assert restore_res.success is True
-    assert restore_res.restored_from_backup_id == "b1"
-    assert restore_res.pre_restore_backup_id == "b2"
+    assert restore_res.success is False
+    assert "requires the Visora Unity package" in (restore_res.error or "")
+    assert fake.calls == []

@@ -1,23 +1,21 @@
-import uuid
 from typing import cast
 
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas import AnimationBackupInfo, ListAnimationBackupsResult, RestoreAnimationClipResult
-from backend.tools.animation.authoring_scripts import _list_backups_code, _restore_backup_code
-from backend.tools.animation.common import _bridge_supports, _require_edit_mode, _unwrap_legacy_result
+from backend.tools.animation.common import _bridge_supports, _require_edit_mode
+
+_UNSUPPORTED_ERROR = "animation_authoring requires the Visora Unity package installed in the Unity project."
 
 
 @mcp.tool()
 async def list_animation_backups(clip_path: str) -> ListAnimationBackupsResult:
     """Lists VisoraBackups/ snapshots for one clip, newest first."""
     try:
-        if await _bridge_supports("animation_authoring"):
-            payload = await animation_pkg.bridge.list_backups_native(clip_path)
-        else:
-            payload = _unwrap_legacy_result(
-                await animation_pkg.bridge.execute_code(_list_backups_code(clip_path=clip_path))
-            )
+        if not await _bridge_supports("animation_authoring"):
+            return ListAnimationBackupsResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
+        payload = await animation_pkg.bridge.list_backups_native(clip_path)
 
         backups = [
             AnimationBackupInfo(
@@ -41,7 +39,9 @@ async def list_animation_backups(clip_path: str) -> ListAnimationBackupsResult:
 
 
 @mcp.tool()
-async def restore_animation_clip(clip_path: str, backup_id: str) -> RestoreAnimationClipResult:
+async def restore_animation_clip(
+    clip_path: str, backup_id: str, operation_id: str | None = None
+) -> RestoreAnimationClipResult:
     """
     Restores a clip from a VisoraBackups/ snapshot returned by list_animation_backups. The
     state discarded by this call is itself backed up first, so a restore can be undone too.
@@ -51,14 +51,10 @@ async def restore_animation_clip(clip_path: str, backup_id: str) -> RestoreAnima
         if edit_mode_error is not None:
             return RestoreAnimationClipResult(success=False, error=edit_mode_error, clip_path=clip_path)
 
-        if await _bridge_supports("animation_authoring"):
-            payload = await animation_pkg.bridge.restore_clip_native(clip_path, backup_id)
-        else:
-            payload = _unwrap_legacy_result(
-                await animation_pkg.bridge.execute_code(
-                    _restore_backup_code(clip_path=clip_path, backup_id=backup_id, operation_id=str(uuid.uuid4()))
-                )
-            )
+        if not await _bridge_supports("animation_authoring"):
+            return RestoreAnimationClipResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
+        payload = await animation_pkg.bridge.restore_clip_native(clip_path, backup_id, operation_id=operation_id)
 
         warnings_raw = payload.get("warnings", [])
         warnings = [str(w) for w in warnings_raw] if isinstance(warnings_raw, list) else []

@@ -146,7 +146,7 @@ namespace Visora.Editor.Services
             {
                 throw new ArgumentException($"Invalid operationId '{operationId}'. Must contain only alphanumeric characters, underscores, or hyphens.", nameof(operationId));
             }
-            return Path.Combine("Library", "Visora", "Idempotency", Path.GetFileName(operationId) + ".json");
+            return Path.Combine(ProjectRoot, "Library", "Visora", "Idempotency", Path.GetFileName(operationId) + ".json");
         }
 
         public static bool TryGetCached<T>(string operationId, out T cached)
@@ -159,12 +159,46 @@ namespace Visora.Editor.Services
             return true;
         }
 
+        private static void PruneOldIdempotencyRecords(string directory)
+        {
+            try
+            {
+                if (!Directory.Exists(directory)) return;
+                var files = Directory.GetFiles(directory, "*.json")
+                    .Select(f => new FileInfo(f))
+                    .OrderByDescending(f => f.LastWriteTimeUtc)
+                    .ToList();
+
+                var cutoff = DateTime.UtcNow.AddHours(-24);
+                for (int i = 0; i < files.Count; i++)
+                {
+                    if (i >= 500 || files[i].LastWriteTimeUtc < cutoff)
+                    {
+                        try { files[i].Delete(); } catch { }
+                    }
+                }
+            }
+            catch
+            {
+                // Pruning failure must never break execution
+            }
+        }
+
         public static void CacheSuccess<T>(string operationId, T result)
         {
             if (string.IsNullOrEmpty(operationId) || !SafeOperationIdRegex.IsMatch(operationId)) return;
-            string path = IdempotencyPath(operationId);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, JsonUtility.ToJson(result));
+            try
+            {
+                string path = IdempotencyPath(operationId);
+                string dir = Path.GetDirectoryName(path);
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(path, JsonUtility.ToJson(result));
+                PruneOldIdempotencyRecords(dir);
+            }
+            catch
+            {
+                // Cache write failure must never fail the underlying edit
+            }
         }
 
         public static string WriteBackup(AnimationClip clip, string clipPath, string operation)
@@ -325,6 +359,9 @@ namespace Visora.Editor.Services
                 // import below has something exact to roll back to.
                 preRestoreBackupId = WriteBackup(clip, clipPath, "restore_animation_clip");
 
+                // Record Undo on the clip so Unity's Undo stack is aware of the replacement
+                Undo.RegisterCompleteObjectUndo(clip, "Visora: restore_animation_clip");
+
                 // Atomic swap: copy to a temp file beside the target, then File.Replace, which
                 // either fully succeeds or leaves the original file untouched. A bare
                 // File.Copy(overwrite: true) has no such guarantee if it fails partway through.
@@ -349,6 +386,7 @@ namespace Visora.Editor.Services
 
                 result.preRestoreBackupId = preRestoreBackupId;
                 result.restoredFromBackupId = backupId;
+                result.warnings.Add("AnimationClip restored from file backup. Unity Undo history prior to restore has been superseded.");
                 result.success = true;
                 CacheSuccess(operationId, result);
             }

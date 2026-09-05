@@ -1,4 +1,3 @@
-import uuid
 from typing import Any, cast
 
 import backend.tools.animation as animation_pkg
@@ -9,16 +8,9 @@ from backend.schemas import (
     AnimationKeyframeInfo,
     ListAnimationKeyframesResult,
 )
-from backend.tools.animation.authoring_scripts import (
-    _create_event_code,
-    _hold_keyframe_code,
-    _list_keyframes_code,
-    _move_keyframe_code,
-    _remove_event_code,
-    _remove_keyframe_code,
-    _set_keyframe_code,
-)
-from backend.tools.animation.common import _bridge_supports, _require_edit_mode, _unwrap_legacy_result
+from backend.tools.animation.common import _bridge_supports, _require_edit_mode
+
+_UNSUPPORTED_ERROR = "animation_authoring requires the Visora Unity package installed in the Unity project."
 
 
 def _normalize_values(value: float | list[float]) -> list[float]:
@@ -80,13 +72,10 @@ async def list_animation_keyframes(
     property, since move/remove address a key by time, not index.
     """
     try:
-        if await _authoring_supported():
-            payload = await animation_pkg.bridge.list_keyframes_native(clip_path, target_path, type_name, property_name)
-        else:
-            code = _list_keyframes_code(
-                clip_path=clip_path, target_path=target_path, type_name=type_name, property_name=property_name
-            )
-            payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
+        if not await _authoring_supported():
+            return ListAnimationKeyframesResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
+        payload = await animation_pkg.bridge.list_keyframes_native(clip_path, target_path, type_name, property_name)
 
         keyframes = [
             AnimationKeyframeInfo(
@@ -125,6 +114,7 @@ async def set_animation_keyframe(  # noqa: PLR0913
     tangent_mode: str | None = None,
     in_tangent: float | list[float] | None = None,
     out_tangent: float | list[float] | None = None,
+    operation_id: str | None = None,
 ) -> AnimationClipEditResult:
     """
     Upserts a keyframe on a logical property, creating the curve if it does not exist yet.
@@ -136,36 +126,25 @@ async def set_animation_keyframe(  # noqa: PLR0913
         if edit_mode_error is not None:
             return AnimationClipEditResult(success=False, error=edit_mode_error, clip_path=clip_path)
 
+        if not await _authoring_supported():
+            return AnimationClipEditResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
         values = _normalize_values(value)
         in_tangents = _normalize_values(in_tangent) if in_tangent is not None else None
         out_tangents = _normalize_values(out_tangent) if out_tangent is not None else None
 
-        if await _authoring_supported():
-            payload = await animation_pkg.bridge.set_keyframe_native(
-                clip_path=clip_path,
-                target_path=target_path,
-                type_name=type_name,
-                property_name=property_name,
-                time=time,
-                values=values,
-                tangent_mode=tangent_mode,
-                in_tangent=in_tangents,
-                out_tangent=out_tangents,
-            )
-        else:
-            code = _set_keyframe_code(
-                clip_path=clip_path,
-                target_path=target_path,
-                type_name=type_name,
-                property_name=property_name,
-                time=time,
-                values=values,
-                tangent_mode=tangent_mode,
-                in_tangent=in_tangents,
-                out_tangent=out_tangents,
-                operation_id=str(uuid.uuid4()),
-            )
-            payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
+        payload = await animation_pkg.bridge.set_keyframe_native(
+            clip_path=clip_path,
+            target_path=target_path,
+            type_name=type_name,
+            property_name=property_name,
+            time=time,
+            values=values,
+            tangent_mode=tangent_mode,
+            in_tangent=in_tangents,
+            out_tangent=out_tangents,
+            operation_id=operation_id,
+        )
 
         return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
@@ -175,7 +154,13 @@ async def set_animation_keyframe(  # noqa: PLR0913
 
 @mcp.tool()
 async def move_animation_keyframe(  # noqa: PLR0913
-    clip_path: str, target_path: str, type_name: str, property_name: str, from_time: float, to_time: float
+    clip_path: str,
+    target_path: str,
+    type_name: str,
+    property_name: str,
+    from_time: float,
+    to_time: float,
+    operation_id: str | None = None,
 ) -> AnimationClipEditResult:
     """Moves an existing keyframe to a new time, preserving its value and tangents."""
     try:
@@ -183,21 +168,18 @@ async def move_animation_keyframe(  # noqa: PLR0913
         if edit_mode_error is not None:
             return AnimationClipEditResult(success=False, error=edit_mode_error, clip_path=clip_path)
 
-        if await _authoring_supported():
-            payload = await animation_pkg.bridge.move_keyframe_native(
-                clip_path, target_path, type_name, property_name, from_time, to_time
-            )
-        else:
-            code = _move_keyframe_code(
-                clip_path=clip_path,
-                target_path=target_path,
-                type_name=type_name,
-                property_name=property_name,
-                from_time=from_time,
-                to_time=to_time,
-                operation_id=str(uuid.uuid4()),
-            )
-            payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
+        if not await _authoring_supported():
+            return AnimationClipEditResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
+        payload = await animation_pkg.bridge.move_keyframe_native(
+            clip_path=clip_path,
+            target_path=target_path,
+            type_name=type_name,
+            property_name=property_name,
+            from_time=from_time,
+            to_time=to_time,
+            operation_id=operation_id,
+        )
         return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during move_animation_keyframe for '%s': %s", clip_path, e)
@@ -205,8 +187,13 @@ async def move_animation_keyframe(  # noqa: PLR0913
 
 
 @mcp.tool()
-async def remove_animation_keyframe(
-    clip_path: str, target_path: str, type_name: str, property_name: str, time: float
+async def remove_animation_keyframe(  # noqa: PLR0913
+    clip_path: str,
+    target_path: str,
+    type_name: str,
+    property_name: str,
+    time: float,
+    operation_id: str | None = None,
 ) -> AnimationClipEditResult:
     """Removes the keyframe nearest `time` (within half a frame) across every resolved channel."""
     try:
@@ -214,20 +201,17 @@ async def remove_animation_keyframe(
         if edit_mode_error is not None:
             return AnimationClipEditResult(success=False, error=edit_mode_error, clip_path=clip_path)
 
-        if await _authoring_supported():
-            payload = await animation_pkg.bridge.remove_keyframe_native(
-                clip_path, target_path, type_name, property_name, time
-            )
-        else:
-            code = _remove_keyframe_code(
-                clip_path=clip_path,
-                target_path=target_path,
-                type_name=type_name,
-                property_name=property_name,
-                time=time,
-                operation_id=str(uuid.uuid4()),
-            )
-            payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
+        if not await _authoring_supported():
+            return AnimationClipEditResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
+        payload = await animation_pkg.bridge.remove_keyframe_native(
+            clip_path=clip_path,
+            target_path=target_path,
+            type_name=type_name,
+            property_name=property_name,
+            time=time,
+            operation_id=operation_id,
+        )
         return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during remove_animation_keyframe for '%s': %s", clip_path, e)
@@ -243,6 +227,7 @@ async def set_keyframe_hold(  # noqa: PLR0913
     time: float,
     hold_until: float,
     value: float | list[float] | None = None,
+    operation_id: str | None = None,
 ) -> AnimationClipEditResult:
     """
     Freezes a property's value across [time, hold_until]: clears any keys strictly between the
@@ -254,23 +239,20 @@ async def set_keyframe_hold(  # noqa: PLR0913
         if edit_mode_error is not None:
             return AnimationClipEditResult(success=False, error=edit_mode_error, clip_path=clip_path)
 
+        if not await _authoring_supported():
+            return AnimationClipEditResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
         values = _normalize_values(value) if value is not None else None
-        if await _authoring_supported():
-            payload = await animation_pkg.bridge.hold_keyframe_native(
-                clip_path, target_path, type_name, property_name, time, hold_until, values
-            )
-        else:
-            code = _hold_keyframe_code(
-                clip_path=clip_path,
-                target_path=target_path,
-                type_name=type_name,
-                property_name=property_name,
-                time=time,
-                hold_until=hold_until,
-                value=values,
-                operation_id=str(uuid.uuid4()),
-            )
-            payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
+        payload = await animation_pkg.bridge.hold_keyframe_native(
+            clip_path=clip_path,
+            target_path=target_path,
+            type_name=type_name,
+            property_name=property_name,
+            time=time,
+            hold_until=hold_until,
+            value=values,
+            operation_id=operation_id,
+        )
         return _clip_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during set_keyframe_hold for '%s': %s", clip_path, e)
@@ -285,6 +267,7 @@ async def create_animation_event(  # noqa: PLR0913
     string_param: str = "",
     float_param: float = 0.0,
     int_param: int = 0,
+    operation_id: str | None = None,
 ) -> AnimationEventEditResult:
     """
     Adds an AnimationEvent. Camera recoil, hit flashes, and hit-stop are authored this way, at
@@ -295,21 +278,18 @@ async def create_animation_event(  # noqa: PLR0913
         if edit_mode_error is not None:
             return AnimationEventEditResult(success=False, error=edit_mode_error, clip_path=clip_path)
 
-        if await _authoring_supported():
-            payload = await animation_pkg.bridge.create_event_native(
-                clip_path, time, function_name, string_param, float_param, int_param
-            )
-        else:
-            code = _create_event_code(
-                clip_path=clip_path,
-                time=time,
-                function_name=function_name,
-                string_param=string_param,
-                float_param=float_param,
-                int_param=int_param,
-                operation_id=str(uuid.uuid4()),
-            )
-            payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
+        if not await _authoring_supported():
+            return AnimationEventEditResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
+        payload = await animation_pkg.bridge.create_event_native(
+            clip_path=clip_path,
+            time=time,
+            function_name=function_name,
+            string_param=string_param,
+            float_param=float_param,
+            int_param=int_param,
+            operation_id=operation_id,
+        )
         return _event_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during create_animation_event for '%s': %s", clip_path, e)
@@ -318,7 +298,7 @@ async def create_animation_event(  # noqa: PLR0913
 
 @mcp.tool()
 async def remove_animation_event(
-    clip_path: str, time: float, function_name: str | None = None
+    clip_path: str, time: float, function_name: str | None = None, operation_id: str | None = None
 ) -> AnimationEventEditResult:
     """Removes every AnimationEvent near `time`, optionally filtered to one function name."""
     try:
@@ -326,13 +306,12 @@ async def remove_animation_event(
         if edit_mode_error is not None:
             return AnimationEventEditResult(success=False, error=edit_mode_error, clip_path=clip_path)
 
-        if await _authoring_supported():
-            payload = await animation_pkg.bridge.remove_event_native(clip_path, time, function_name)
-        else:
-            code = _remove_event_code(
-                clip_path=clip_path, time=time, function_name=function_name, operation_id=str(uuid.uuid4())
-            )
-            payload = _unwrap_legacy_result(await animation_pkg.bridge.execute_code(code))
+        if not await _authoring_supported():
+            return AnimationEventEditResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
+
+        payload = await animation_pkg.bridge.remove_event_native(
+            clip_path=clip_path, time=time, function_name=function_name, operation_id=operation_id
+        )
         return _event_edit_result(payload, default_clip_path=clip_path)
     except Exception as e:
         animation_pkg.logger.error("Error during remove_animation_event for '%s': %s", clip_path, e)

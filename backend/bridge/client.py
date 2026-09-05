@@ -665,6 +665,7 @@ class UnityBridge:
         tangent_mode: str | None,
         in_tangent: list[float] | None,
         out_tangent: list[float] | None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         """Upserts a keyframe across every resolved channel via /api/visora/animation/keyframes/set."""
         response = await self._request(
@@ -680,13 +681,20 @@ class UnityBridge:
                 "tangentMode": tangent_mode,
                 "inTangent": in_tangent,
                 "outTangent": out_tangent,
-                "operationId": str(uuid.uuid4()),
+                "operationId": operation_id or str(uuid.uuid4()),
             },
         )
         return _decode_json(response)
 
     async def move_keyframe_native(  # noqa: PLR0913
-        self, clip_path: str, target_path: str, type_name: str, property_name: str, from_time: float, to_time: float
+        self,
+        clip_path: str,
+        target_path: str,
+        type_name: str,
+        property_name: str,
+        from_time: float,
+        to_time: float,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         """Moves an existing keyframe via /api/visora/animation/keyframes/move."""
         response = await self._request(
@@ -699,13 +707,19 @@ class UnityBridge:
                 "propertyName": property_name,
                 "fromTime": from_time,
                 "toTime": to_time,
-                "operationId": str(uuid.uuid4()),
+                "operationId": operation_id or str(uuid.uuid4()),
             },
         )
         return _decode_json(response)
 
-    async def remove_keyframe_native(
-        self, clip_path: str, target_path: str, type_name: str, property_name: str, time: float
+    async def remove_keyframe_native(  # noqa: PLR0913
+        self,
+        clip_path: str,
+        target_path: str,
+        type_name: str,
+        property_name: str,
+        time: float,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         """Removes an existing keyframe via /api/visora/animation/keyframes/remove."""
         response = await self._request(
@@ -717,7 +731,7 @@ class UnityBridge:
                 "typeName": type_name,
                 "propertyName": property_name,
                 "time": time,
-                "operationId": str(uuid.uuid4()),
+                "operationId": operation_id or str(uuid.uuid4()),
             },
         )
         return _decode_json(response)
@@ -731,6 +745,7 @@ class UnityBridge:
         time: float,
         hold_until: float,
         value: list[float] | None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         """Flattens a range via /api/visora/animation/keyframes/hold."""
         response = await self._request(
@@ -745,13 +760,20 @@ class UnityBridge:
                 "holdUntil": hold_until,
                 "value": value,
                 "hasValue": value is not None,
-                "operationId": str(uuid.uuid4()),
+                "operationId": operation_id or str(uuid.uuid4()),
             },
         )
         return _decode_json(response)
 
     async def create_event_native(  # noqa: PLR0913
-        self, clip_path: str, time: float, function_name: str, string_param: str, float_param: float, int_param: int
+        self,
+        clip_path: str,
+        time: float,
+        function_name: str,
+        string_param: str,
+        float_param: float,
+        int_param: int,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         """Adds an AnimationEvent via /api/visora/animation/events/create."""
         response = await self._request(
@@ -764,17 +786,24 @@ class UnityBridge:
                 "stringParam": string_param,
                 "floatParam": float_param,
                 "intParam": int_param,
-                "operationId": str(uuid.uuid4()),
+                "operationId": operation_id or str(uuid.uuid4()),
             },
         )
         return _decode_json(response)
 
-    async def remove_event_native(self, clip_path: str, time: float, function_name: str | None) -> dict[str, Any]:
+    async def remove_event_native(
+        self, clip_path: str, time: float, function_name: str | None, operation_id: str | None = None
+    ) -> dict[str, Any]:
         """Removes matching AnimationEvents via /api/visora/animation/events/remove."""
         response = await self._request(
             "POST",
             "/api/visora/animation/events/remove",
-            json={"clipPath": clip_path, "time": time, "functionName": function_name, "operationId": str(uuid.uuid4())},
+            json={
+                "clipPath": clip_path,
+                "time": time,
+                "functionName": function_name,
+                "operationId": operation_id or str(uuid.uuid4()),
+            },
         )
         return _decode_json(response)
 
@@ -783,12 +812,18 @@ class UnityBridge:
         response = await self._request("POST", "/api/visora/animation/backups/list", json={"clipPath": clip_path})
         return _decode_json(response)
 
-    async def restore_clip_native(self, clip_path: str, backup_id: str) -> dict[str, Any]:
+    async def restore_clip_native(
+        self, clip_path: str, backup_id: str, operation_id: str | None = None
+    ) -> dict[str, Any]:
         """Restores a backup via /api/visora/animation/backups/restore."""
         response = await self._request(
             "POST",
             "/api/visora/animation/backups/restore",
-            json={"clipPath": clip_path, "backupId": backup_id, "operationId": str(uuid.uuid4())},
+            json={
+                "clipPath": clip_path,
+                "backupId": backup_id,
+                "operationId": operation_id or str(uuid.uuid4()),
+            },
         )
         return _decode_json(response)
 
