@@ -14,9 +14,12 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | Tool | Parameters | Result |
 | --- | --- | --- |
 | `analyze_animation_curves` | `clip_path`* | `ClipInspectorResult` |
+| `analyze_contact_constraints` | `target_object_path`*, `clip_path`*, `effectors`, `ground_mode`, `ground_plane_y`, `velocity_threshold`, `height_tolerance` | `ContactAnalysisResult` |
+| `bake_contact_constraints` | `clip_path`*, `target_object_path`*, `output_clip_path`, `effectors`, `ground_plane_y`, `fix_foot_sliding`, `fix_penetration`, `operation_id` | `BakeContactConstraintsResult` |
 | `check_ticket_status` | `ticket_id`* | `QueueStatusResult` |
 | `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
 | `compare_screenshots` | `before_image_base64`*, `after_image_base64`*, `threshold` | `VisualComparisonResult` |
+| `configure_humanoid_avatar` | `asset_path`*, `bone_mapping_overrides`, `source_avatar_path` | `HumanoidConfigurationResult` |
 | `create_animation_event` | `clip_path`*, `time`*, `function_name`*, `string_param`, `float_param`, `int_param`, `operation_id` | `AnimationEventEditResult` |
 | `diagnose_camera_framing` | `subject_path`*, `camera_name` | `CameraFramingDiagnosticsResult` |
 | `download_and_import_asset` | `url`, `asset_id`, `target_folder`, `file_name`, `extract_archive`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
@@ -36,6 +39,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `move_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `from_time`*, `to_time`*, `operation_id` | `AnimationClipEditResult` |
 | `playmode_management` | `play`*, `wait_for_idle`, `timeout_seconds` | `PlayModeManagementResult` |
 | `preview_animation` | `target_object_path`*, `clip_path`*, `camera_name`, `start_time`, `end_time`, `fps`, `width`, `height`, `auto_frame`, `max_key_frames`, `include_video_base64`, `include_clip_diagnostics` | `AnimationPreviewResult` |
+| `preview_humanoid_retarget` | `target_object_path`*, `clip_path`*, `camera_name`, `width`, `height`, `fps`, `auto_frame` | `HumanoidRetargetPreviewResult` |
 | `project_world_points` | `points`*, `camera_name` | `ProjectWorldPointsResult` |
 | `remove_animation_event` | `clip_path`*, `time`*, `function_name`, `operation_id` | `AnimationEventEditResult` |
 | `remove_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `operation_id` | `AnimationClipEditResult` |
@@ -50,6 +54,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `set_keyframe_hold` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `hold_until`*, `value`, `operation_id` | `AnimationClipEditResult` |
 | `skeleton_mapper` | `root_transform_path`* | `SkeletonMapperResult` |
 | `skinned_mesh_diagnostics` | `mesh_renderer_path`* | `SkinnedMeshDiagnosticsResult` |
+| `validate_humanoid_avatar` | `target_path`, `asset_path` | `HumanoidValidationResult` |
 | `wait_for_editor_idle` | `timeout_seconds`, `poll_interval_seconds` | `WaitForEditorIdleResult` |
 | `wait_for_ticket` | `ticket_id`*, `timeout`, `poll_interval` | `QueueStatusResult` |
 | `web_search_assets` | `query`*, `limit` | `SearchAssetsResult` |

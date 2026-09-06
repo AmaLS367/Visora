@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Humanoid retargeting and contact constraints MCP tools:** 5 typed MCP tools for character setup, retargeting validation, and contact dynamics:
+  - `validate_humanoid_avatar` for diagnosing avatar validity, required bone hierarchy (15 required bones), T-pose/A-pose orientation, and scale anomalies.
+  - `configure_humanoid_avatar` for configuring imported character models via `ModelImporter` (`create_new` or `copy_from_other`).
+  - `preview_humanoid_retarget` for testing animation compatibility on humanoid rigs, detecting unmapped bones, root motion drift, and posture distortions.
+  - `analyze_contact_constraints` for stepped Edit Mode contact analysis, detecting foot sliding, ground penetration, and effector phase transitions.
+  - `bake_contact_constraints` for 3D Two-Bone analytical IK baking to lock contacts and eliminate foot slipping, with automatic `.anim` cloning for read-only FBX assets, pre-mutation snapshots under `VisoraBackups/`, and Undo support.
+  - Native package capabilities: `/api/visora/humanoid/*` endpoints with `humanoid_avatar_diagnostics`, `humanoid_avatar_configuration`, and `humanoid_contact_constraints` feature detection.
 - **AnimationClip and event authoring MCP tools:** 9 typed MCP tools for non-destructive animation clip editing:
   - `list_animation_keyframes`, `set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, and `set_keyframe_hold` for multi-channel curve authoring, tangent modes, and step-tangent hold ranges.
   - `create_animation_event` and `remove_animation_event` for authoring synchronized timeline markers and events (e.g., hit-stop, camera recoil, sound triggers).

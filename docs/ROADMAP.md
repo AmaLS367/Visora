@@ -25,8 +25,9 @@
 * **Delivered:** Added 9 MCP tools across keyframe manipulation (`list_animation_keyframes`, `set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, `set_keyframe_hold`), event authoring (`create_animation_event`, `remove_animation_event`), and non-destructive backups (`list_animation_backups`, `restore_animation_clip`). Native Unity endpoints via `VisoraHttpRouter` (`animation_authoring` capability) provide typed C# execution, idempotency, and full Undo integration. Automatic pre-mutation snapshots safeguard clip edits under `VisoraBackups/`, with Undo grouping and Edit Mode enforcement.
 
 ### 4. 🦿 Humanoid Retargeting and Contact Constraints
-* **Status:** 🔜 Planned
+* **Status:** ✅ Completed
 * **Scope:** Add a workflow to validate/configure imported models as Humanoid, report Avatar creation blockers precisely, and preview compatible mocap retargeting. Add contact-oriented IK/baking primitives for feet and hands, with explicit diagnostics when a rig cannot support the requested constraint.
+* **Delivered:** Added 5 MCP tools across humanoid avatar validation (`validate_humanoid_avatar`), ModelImporter configuration (`configure_humanoid_avatar`), mocap retarget preview (`preview_humanoid_retarget`), contact analysis (`analyze_contact_constraints`), and 3D Two-Bone IK baking (`bake_contact_constraints`). Native Unity endpoints via `VisoraHttpRouter` (`humanoid_avatar_diagnostics`, `humanoid_avatar_configuration`, `humanoid_contact_constraints`) provide single-trip execution, precise AvatarBlocker diagnostics, support for standalone and embedded read-only FBX clips, and non-destructive baking with pre-mutation backup in `VisoraBackups/` and full Undo support.
 
 ### 5. 🧭 Agent Skills for Animation Workflows
 * **Status:** 🔜 Planned

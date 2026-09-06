@@ -21,6 +21,15 @@ from backend.tools.animation.backups import (
     restore_animation_clip,
 )
 from backend.tools.animation.common import bridge, logger
+from backend.tools.animation.contact import (
+    analyze_contact_constraints,
+    bake_contact_constraints,
+)
+from backend.tools.animation.humanoid import (
+    configure_humanoid_avatar,
+    preview_humanoid_retarget,
+    validate_humanoid_avatar,
+)
 from backend.tools.animation.inspector import (
     analyze_animation_curves,
     clip_inspector,
@@ -40,9 +49,12 @@ __all__ = [
     "_sample_clip_code",
     "_skeleton_hierarchy_code",
     "analyze_animation_curves",
+    "analyze_contact_constraints",
     "analyze_sampled_pose",
+    "bake_contact_constraints",
     "bridge",
     "clip_inspector",
+    "configure_humanoid_avatar",
     "create_animation_event",
     "detect_dangerous_curves",
     "detect_duplicate_bones",
@@ -57,6 +69,7 @@ __all__ = [
     "match_bones_fuzzy",
     "move_animation_keyframe",
     "preview_animation",
+    "preview_humanoid_retarget",
     "remove_animation_event",
     "remove_animation_keyframe",
     "restore_animation_clip",
@@ -64,4 +77,5 @@ __all__ = [
     "set_animation_keyframe",
     "set_keyframe_hold",
     "skeleton_mapper",
+    "validate_humanoid_avatar",
 ]

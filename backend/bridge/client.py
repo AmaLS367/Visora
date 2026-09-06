@@ -890,6 +890,84 @@ class UnityBridge:
         response = await self._request("POST", "/api/visora/asset/instantiate", json=payload)
         return _decode_json(response)
 
+    async def validate_humanoid_avatar(
+        self,
+        target_path: str | None = None,
+        asset_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Direct native humanoid avatar validation via /api/visora/humanoid/validate."""
+        payload: dict[str, Any] = {}
+        if target_path:
+            payload["targetPath"] = target_path
+        if asset_path:
+            payload["assetPath"] = asset_path
+        response = await self._request("POST", "/api/visora/humanoid/validate", json=payload)
+        return _decode_json(response)
+
+    async def configure_humanoid_avatar(
+        self,
+        asset_path: str,
+        bone_mapping_overrides: dict[str, str] | None = None,
+        source_avatar_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Direct native humanoid avatar configuration via /api/visora/humanoid/configure."""
+        payload: dict[str, Any] = {"assetPath": asset_path}
+        if source_avatar_path:
+            payload["sourceAvatarPath"] = source_avatar_path
+        if bone_mapping_overrides:
+            payload["boneOverrideKeys"] = list(bone_mapping_overrides.keys())
+            payload["boneOverrideValues"] = list(bone_mapping_overrides.values())
+        response = await self._request("POST", "/api/visora/humanoid/configure", json=payload)
+        return _decode_json(response)
+
+    async def analyze_contact_constraints(  # noqa: PLR0913
+        self,
+        target_path: str,
+        clip_path: str,
+        effectors: list[str] | None = None,
+        ground_mode: str = "plane",
+        ground_y: float = 0.0,
+        vel_threshold: float = 0.05,
+        height_tol: float = 0.05,
+    ) -> dict[str, Any]:
+        """Direct native contact analysis via /api/visora/humanoid/contact/analyze."""
+        payload: dict[str, Any] = {
+            "targetPath": target_path,
+            "clipPath": clip_path,
+            "effectors": effectors or ["left_foot", "right_foot"],
+            "groundMode": ground_mode,
+            "groundY": ground_y,
+            "velThreshold": vel_threshold,
+            "heightTol": height_tol,
+        }
+        response = await self._request("POST", "/api/visora/humanoid/contact/analyze", json=payload)
+        return _decode_json(response)
+
+    async def bake_contact_constraints(  # noqa: PLR0913
+        self,
+        target_path: str,
+        clip_path: str,
+        output_clip_path: str | None = None,
+        effectors: list[str] | None = None,
+        ground_y: float = 0.0,
+        fix_sliding: bool = True,
+        fix_penetration: bool = True,
+        operation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Direct native contact IK baking via /api/visora/humanoid/contact/bake."""
+        payload: dict[str, Any] = {
+            "targetPath": target_path,
+            "clipPath": clip_path,
+            "outputClipPath": output_clip_path or "",
+            "effectors": effectors or ["left_foot", "right_foot"],
+            "groundY": ground_y,
+            "fixSliding": fix_sliding,
+            "fixPenetration": fix_penetration,
+            "operationId": operation_id or "",
+        }
+        response = await self._request("POST", "/api/visora/humanoid/contact/bake", json=payload)
+        return _decode_json(response)
+
     async def cancel_queue_ticket(self, ticket_id: str) -> dict[str, Any]:
         """
         Attempts to cancel a long-running ticket in the AnkleBreaker task queue.

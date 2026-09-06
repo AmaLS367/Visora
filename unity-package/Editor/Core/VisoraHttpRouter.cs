@@ -238,6 +238,47 @@ namespace Visora.Editor.Core
         public string operationId;
     }
 
+    [Serializable]
+    public class HumanoidValidateRequest
+    {
+        public string targetPath;
+        public string assetPath;
+    }
+
+    [Serializable]
+    public class HumanoidConfigureRequest
+    {
+        public string assetPath;
+        public string sourceAvatarPath;
+        public string[] boneOverrideKeys;
+        public string[] boneOverrideValues;
+    }
+
+    [Serializable]
+    public class ContactAnalyzeRequest
+    {
+        public string targetPath;
+        public string clipPath;
+        public string[] effectors;
+        public string groundMode = "plane";
+        public float groundY;
+        public float velThreshold = 0.05f;
+        public float heightTol = 0.05f;
+    }
+
+    [Serializable]
+    public class ContactBakeRequest
+    {
+        public string targetPath;
+        public string clipPath;
+        public string outputClipPath;
+        public string[] effectors;
+        public float groundY;
+        public bool fixSliding = true;
+        public bool fixPenetration = true;
+        public string operationId;
+    }
+
     public static class VisoraHttpRouter
     {
         public static async Task HandleRequestAsync(HttpListenerContext context)
@@ -319,7 +360,10 @@ namespace Visora.Editor.Core
                             "asset_management",
                             "asset_import",
                             "asset_inspection",
-                            "asset_instantiation"
+                            "asset_instantiation",
+                            "humanoid_avatar_diagnostics",
+                            "humanoid_avatar_configuration",
+                            "humanoid_contact_constraints"
                         }
                     });
                     responseJson = JsonUtility.ToJson(info);
@@ -677,6 +721,52 @@ namespace Visora.Editor.Core
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         AssetManagementService.InstantiateAsset(p.assetPath, p.parentPath, p.position, p.rotation, p.scale, p.name));
                     responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/humanoid/validate")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<HumanoidValidateRequest>(body) ?? new HumanoidValidateRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        HumanoidService.ValidateAvatar(p.targetPath, p.assetPath));
+                    responseJson = VisoraJson.Serialize(result);
+                }
+                else if (method == "POST" && path == "/api/visora/humanoid/configure")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<HumanoidConfigureRequest>(body) ?? new HumanoidConfigureRequest();
+                    Dictionary<string, string> overrides = null;
+                    if (p.boneOverrideKeys != null && p.boneOverrideValues != null &&
+                        p.boneOverrideKeys.Length == p.boneOverrideValues.Length)
+                    {
+                        overrides = new Dictionary<string, string>(StringComparer.Ordinal);
+                        for (int i = 0; i < p.boneOverrideKeys.Length; i++)
+                        {
+                            overrides[p.boneOverrideKeys[i]] = p.boneOverrideValues[i];
+                        }
+                    }
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        HumanoidService.ConfigureHumanoid(p.assetPath, overrides, p.sourceAvatarPath));
+                    responseJson = VisoraJson.Serialize(result);
+                }
+                else if (method == "POST" && path == "/api/visora/humanoid/contact/analyze")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<ContactAnalyzeRequest>(body) ?? new ContactAnalyzeRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        HumanoidContactService.AnalyzeContacts(
+                            p.targetPath, p.clipPath, p.effectors, p.groundMode,
+                            p.groundY, p.velThreshold, p.heightTol));
+                    responseJson = VisoraJson.Serialize(result);
+                }
+                else if (method == "POST" && path == "/api/visora/humanoid/contact/bake")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<ContactBakeRequest>(body) ?? new ContactBakeRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        HumanoidContactService.BakeContacts(
+                            p.targetPath, p.clipPath, p.outputClipPath, p.effectors,
+                            p.groundY, p.fixSliding, p.fixPenetration, p.operationId));
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else
                 {
