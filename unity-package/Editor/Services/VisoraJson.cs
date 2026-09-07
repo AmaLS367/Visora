@@ -24,9 +24,48 @@ namespace Visora.Editor.Services
             if (value is bool boolean) { builder.Append(boolean ? "true" : "false"); return; }
             if (value is char character) { AppendString(builder, character.ToString()); return; }
             if (value is Enum) { AppendString(builder, value.ToString()); return; }
-            if (value is IFormattable number)
+            if (value is sbyte || value is byte || value is short || value is ushort ||
+                value is int || value is uint || value is long || value is ulong ||
+                value is float || value is double || value is decimal)
             {
-                builder.Append(number.ToString(null, CultureInfo.InvariantCulture));
+                builder.Append(((IFormattable)value).ToString(null, CultureInfo.InvariantCulture));
+                return;
+            }
+            if (value is UnityEngine.Vector2 v2)
+            {
+                builder.Append('[').Append(v2.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(v2.y.ToString("R", CultureInfo.InvariantCulture)).Append(']');
+                return;
+            }
+            if (value is UnityEngine.Vector3 v3)
+            {
+                builder.Append('[').Append(v3.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(v3.y.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(v3.z.ToString("R", CultureInfo.InvariantCulture)).Append(']');
+                return;
+            }
+            if (value is UnityEngine.Vector4 v4)
+            {
+                builder.Append('[').Append(v4.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(v4.y.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(v4.z.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(v4.w.ToString("R", CultureInfo.InvariantCulture)).Append(']');
+                return;
+            }
+            if (value is UnityEngine.Quaternion q)
+            {
+                builder.Append('[').Append(q.x.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(q.y.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(q.z.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(q.w.ToString("R", CultureInfo.InvariantCulture)).Append(']');
+                return;
+            }
+            if (value is UnityEngine.Color c)
+            {
+                builder.Append('[').Append(c.r.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(c.g.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(c.b.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                       .Append(c.a.ToString("R", CultureInfo.InvariantCulture)).Append(']');
                 return;
             }
             if (value is IDictionary dictionary) { AppendDictionary(builder, dictionary); return; }
@@ -67,12 +106,31 @@ namespace Visora.Editor.Services
         {
             builder.Append('{');
             var first = true;
-            foreach (var field in value.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public))
+            var type = value.GetType();
+            foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (!first) builder.Append(',');
                 AppendString(builder, field.Name);
                 builder.Append(':');
                 Append(builder, field.GetValue(value));
+                first = false;
+            }
+            foreach (var prop in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            {
+                if (!prop.CanRead || prop.GetIndexParameters().Length > 0) continue;
+                if (!first) builder.Append(',');
+                AppendString(builder, prop.Name);
+                builder.Append(':');
+                object propValue;
+                try
+                {
+                    propValue = prop.GetValue(value, null);
+                }
+                catch
+                {
+                    propValue = null;
+                }
+                Append(builder, propValue);
                 first = false;
             }
             builder.Append('}');

@@ -146,6 +146,15 @@ namespace Visora.Editor.Services
 
             try
             {
+                var skinnedMeshes = UnityEngine.Object.FindObjectsByType<SkinnedMeshRenderer>(FindObjectsInactive.Exclude);
+                for (int i = 0; i < skinnedMeshes.Length; i++)
+                {
+                    if (skinnedMeshes[i] != null && skinnedMeshes[i].enabled)
+                    {
+                        skinnedMeshes[i].forceMatrixRecalculationPerRender = true;
+                    }
+                }
+
                 rt = RenderTexture.GetTemporary(width, height, 24, RenderTextureFormat.ARGB32);
                 cam.targetTexture = rt;
                 cam.Render();

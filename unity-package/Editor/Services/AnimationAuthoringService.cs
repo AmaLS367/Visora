@@ -406,6 +406,11 @@ namespace Visora.Editor.Services
                 return result;
             }
 
+            if (string.IsNullOrEmpty(tangentMode))
+            {
+                tangentMode = null;
+            }
+
             Type componentType;
             string[] validModes = { "smooth", "linear", "step", "ease_in", "ease_out", "ease_in_out" };
             if (tangentMode != null && Array.IndexOf(validModes, tangentMode) < 0)
@@ -432,8 +437,22 @@ namespace Visora.Editor.Services
                 var liveInstance = FindLiveInstance(targetPath);
                 channels = ResolveChannels(clip, targetPath, componentType, propertyName, liveInstance, out curveExisted);
                 values = ExpandValue(values, channels.Length, nameof(values));
-                if (inTangent != null) inTangent = ExpandValue(inTangent, channels.Length, nameof(inTangent));
-                if (outTangent != null) outTangent = ExpandValue(outTangent, channels.Length, nameof(outTangent));
+                if (inTangent != null && inTangent.Length > 0)
+                {
+                    inTangent = ExpandValue(inTangent, channels.Length, nameof(inTangent));
+                }
+                else
+                {
+                    inTangent = null;
+                }
+                if (outTangent != null && outTangent.Length > 0)
+                {
+                    outTangent = ExpandValue(outTangent, channels.Length, nameof(outTangent));
+                }
+                else
+                {
+                    outTangent = null;
+                }
             }
             catch (Exception ex)
             {

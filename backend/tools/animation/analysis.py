@@ -347,6 +347,176 @@ def match_bones_fuzzy(
     return matches[:limit]
 
 
+HUMANOID_BONE_ALIASES: dict[str, list[str]] = {
+    "Hips": ["hips", "hip", "pelvis", "root_joint", "_rootjoint"],
+    "Spine": ["spine", "spine_01", "spine1"],
+    "Chest": ["chest", "upperchest", "spine_02", "spine2"],
+    "UpperChest": ["upperchest", "upper_chest", "chest"],
+    "Neck": ["neck"],
+    "Head": ["head"],
+    "LeftUpperArm": [
+        "leftupperarm",
+        "left arm",
+        "left_arm",
+        "arm_l",
+        "upperarm_l",
+        "l_upperarm",
+        "l_arm",
+        "bip01 l upperarm",
+        "bip_l_upperarm",
+    ],
+    "LeftLowerArm": [
+        "leftlowerarm",
+        "left forearm",
+        "left_forearm",
+        "left elbow",
+        "left_elbow",
+        "forearm_l",
+        "lowerarm_l",
+        "elbow_l",
+        "l_forearm",
+        "l_elbow",
+        "bip01 l forearm",
+    ],
+    "LeftHand": [
+        "lefthand",
+        "left hand",
+        "left_hand",
+        "left wrist",
+        "left_wrist",
+        "hand_l",
+        "wrist_l",
+        "l_hand",
+        "l_wrist",
+        "bip01 l hand",
+    ],
+    "RightUpperArm": [
+        "rightupperarm",
+        "right arm",
+        "right_arm",
+        "arm_r",
+        "upperarm_r",
+        "r_upperarm",
+        "r_arm",
+        "bip01 r upperarm",
+        "bip_r_upperarm",
+    ],
+    "RightLowerArm": [
+        "rightlowerarm",
+        "right forearm",
+        "right_forearm",
+        "right elbow",
+        "right_elbow",
+        "forearm_r",
+        "lowerarm_r",
+        "elbow_r",
+        "r_forearm",
+        "r_elbow",
+        "bip01 r forearm",
+    ],
+    "RightHand": [
+        "righthand",
+        "right hand",
+        "right_hand",
+        "right wrist",
+        "right_wrist",
+        "hand_r",
+        "wrist_r",
+        "r_hand",
+        "r_wrist",
+        "bip01 r hand",
+    ],
+    "LeftUpperLeg": [
+        "leftupperleg",
+        "left leg",
+        "left_leg",
+        "left thigh",
+        "left_thigh",
+        "thigh_l",
+        "upperleg_l",
+        "leg_l",
+        "l_thigh",
+        "l_leg",
+        "bip01 l thigh",
+    ],
+    "LeftLowerLeg": [
+        "leftlowerleg",
+        "left calf",
+        "left_calf",
+        "left knee",
+        "left_knee",
+        "left shin",
+        "left_shin",
+        "calf_l",
+        "lowerleg_l",
+        "knee_l",
+        "shin_l",
+        "l_calf",
+        "l_knee",
+        "bip01 l calf",
+    ],
+    "LeftFoot": [
+        "leftfoot",
+        "left foot",
+        "left_foot",
+        "left ankle",
+        "left_ankle",
+        "foot_l",
+        "ankle_l",
+        "l_foot",
+        "l_ankle",
+        "bip01 l foot",
+    ],
+    "RightUpperLeg": [
+        "rightupperleg",
+        "right leg",
+        "right_leg",
+        "right thigh",
+        "right_thigh",
+        "thigh_r",
+        "upperleg_r",
+        "leg_r",
+        "r_thigh",
+        "r_leg",
+        "bip01 r thigh",
+    ],
+    "RightLowerLeg": [
+        "rightlowerleg",
+        "right calf",
+        "right_calf",
+        "right knee",
+        "right_knee",
+        "right shin",
+        "right_shin",
+        "calf_r",
+        "lowerleg_r",
+        "knee_r",
+        "shin_r",
+        "r_calf",
+        "r_knee",
+        "bip01 r calf",
+    ],
+    "RightFoot": [
+        "rightfoot",
+        "right foot",
+        "right_foot",
+        "right ankle",
+        "right_ankle",
+        "foot_r",
+        "ankle_r",
+        "r_foot",
+        "r_ankle",
+        "bip01 r foot",
+    ],
+}
+
+_BONE_NUMERIC_SUFFIX_RE = re.compile(r"(_\d+|\.\d+)$")
+
+
+def _normalize_bone_name(name: str) -> str:
+    return _BONE_NUMERIC_SUFFIX_RE.sub("", name).strip().lower()
+
+
 def map_humanoid_bones(
     bones: list[BoneNode],
     required_names: list[str],
@@ -370,12 +540,30 @@ def map_humanoid_bones(
         missing_bones = [name for name in required_names if name not in mappings]
         return len(missing_bones) == 0, "avatar", mappings, missing_bones
 
+    normalized_bones = [(_normalize_bone_name(b.name), b) for b in bones]
     mappings = {}
     missing_bones = []
+    used_paths: set[str] = set()
+
     for required_name in required_names:
-        candidates = match_bones_fuzzy(required_name, bones, limit=1)
-        if candidates and candidates[0].score >= HUMANOID_MATCH_THRESHOLD:
-            mappings[required_name] = candidates[0].path
+        matched_path: str | None = None
+        aliases = HUMANOID_BONE_ALIASES.get(required_name, [required_name.lower()])
+        for alias in aliases:
+            for norm_name, b in normalized_bones:
+                if b.path not in used_paths and norm_name == alias:
+                    matched_path = b.path
+                    break
+            if matched_path:
+                break
+
+        if not matched_path:
+            candidates = match_bones_fuzzy(required_name, [b for b in bones if b.path not in used_paths], limit=1)
+            if candidates and candidates[0].score >= HUMANOID_MATCH_THRESHOLD:
+                matched_path = candidates[0].path
+
+        if matched_path:
+            mappings[required_name] = matched_path
+            used_paths.add(matched_path)
         else:
             missing_bones.append(required_name)
 
