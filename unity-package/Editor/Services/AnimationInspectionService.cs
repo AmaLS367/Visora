@@ -98,12 +98,14 @@ namespace Visora.Editor.Services
                 float minVal = float.MaxValue;
                 float maxVal = float.MinValue;
 
-                if (curve != null && curve.keys.Length > 0)
+                if (curve != null && curve.length > 0)
                 {
-                    foreach (var k in curve.keys)
+                    var keys = curve.keys;
+                    for (int k = 0; k < keys.Length; k++)
                     {
-                        if (k.value < minVal) minVal = k.value;
-                        if (k.value > maxVal) maxVal = k.value;
+                        float val = keys[k].value;
+                        if (val < minVal) minVal = val;
+                        if (val > maxVal) maxVal = val;
                     }
                 }
                 else

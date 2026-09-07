@@ -102,22 +102,56 @@ namespace Visora.Editor.Services
             builder.Append(']');
         }
 
+        private struct TypeMetadata
+        {
+            public FieldInfo[] Fields;
+            public PropertyInfo[] Properties;
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, TypeMetadata> TypeCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<Type, TypeMetadata>();
+
+        private static TypeMetadata GetTypeMetadata(Type type)
+        {
+            if (TypeCache.TryGetValue(type, out var meta))
+            {
+                return meta;
+            }
+
+            var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public);
+            var allProps = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+            var readableProps = new List<PropertyInfo>(allProps.Length);
+            for (int i = 0; i < allProps.Length; i++)
+            {
+                var p = allProps[i];
+                if (p.CanRead && p.GetIndexParameters().Length == 0)
+                {
+                    readableProps.Add(p);
+                }
+            }
+
+            meta = new TypeMetadata { Fields = fields, Properties = readableProps.ToArray() };
+            TypeCache.TryAdd(type, meta);
+            return meta;
+        }
+
         private static void AppendObject(StringBuilder builder, object value)
         {
             builder.Append('{');
             var first = true;
-            var type = value.GetType();
-            foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
+            var meta = GetTypeMetadata(value.GetType());
+            for (int i = 0; i < meta.Fields.Length; i++)
             {
+                var field = meta.Fields[i];
                 if (!first) builder.Append(',');
                 AppendString(builder, field.Name);
                 builder.Append(':');
                 Append(builder, field.GetValue(value));
                 first = false;
             }
-            foreach (var prop in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            for (int i = 0; i < meta.Properties.Length; i++)
             {
-                if (!prop.CanRead || prop.GetIndexParameters().Length > 0) continue;
+                var prop = meta.Properties[i];
                 if (!first) builder.Append(',');
                 AppendString(builder, prop.Name);
                 builder.Append(':');

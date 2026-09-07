@@ -1,4 +1,5 @@
 import difflib
+import heapq
 import math
 import re
 from typing import Any
@@ -332,16 +333,17 @@ def match_bones_fuzzy(
 
     if not exact_only and len(matches) < limit:
         remaining = [b for b in bones if b.path not in matched_paths]
-        scored = sorted(
-            ((difflib.SequenceMatcher(a=query_lower, b=b.name.lower()).ratio(), b) for b in remaining),
-            key=lambda pair: pair[0],
-            reverse=True,
-        )
-        for score, b in scored:
-            if len(matches) >= limit:
-                break
-            if score <= 0.0:
-                continue
+        needed = limit - len(matches)
+        matcher = difflib.SequenceMatcher(b=query_lower)
+        scored: list[tuple[float, BoneNode]] = []
+        for b in remaining:
+            matcher.set_seq1(b.name.lower())
+            score = matcher.ratio()
+            if score > 0.0:
+                scored.append((score, b))
+
+        top_matches = heapq.nlargest(needed, scored, key=lambda pair: pair[0])
+        for score, b in top_matches:
             matches.append(BoneMatch(path=b.path, name=b.name, match_type="fuzzy", score=round(score, 4)))
 
     return matches[:limit]
@@ -540,7 +542,10 @@ def map_humanoid_bones(
         missing_bones = [name for name in required_names if name not in mappings]
         return len(missing_bones) == 0, "avatar", mappings, missing_bones
 
-    normalized_bones = [(_normalize_bone_name(b.name), b) for b in bones]
+    bones_by_norm: dict[str, list[BoneNode]] = {}
+    for b in bones:
+        bones_by_norm.setdefault(_normalize_bone_name(b.name), []).append(b)
+
     mappings = {}
     missing_bones = []
     used_paths: set[str] = set()
@@ -549,17 +554,19 @@ def map_humanoid_bones(
         matched_path: str | None = None
         aliases = HUMANOID_BONE_ALIASES.get(required_name, [required_name.lower()])
         for alias in aliases:
-            for norm_name, b in normalized_bones:
-                if b.path not in used_paths and norm_name == alias:
-                    matched_path = b.path
+            candidates = bones_by_norm.get(alias)
+            if candidates:
+                for b in candidates:
+                    if b.path not in used_paths:
+                        matched_path = b.path
+                        break
+                if matched_path:
                     break
-            if matched_path:
-                break
 
         if not matched_path:
-            candidates = match_bones_fuzzy(required_name, [b for b in bones if b.path not in used_paths], limit=1)
-            if candidates and candidates[0].score >= HUMANOID_MATCH_THRESHOLD:
-                matched_path = candidates[0].path
+            fuzzy_matches = match_bones_fuzzy(required_name, [b for b in bones if b.path not in used_paths], limit=1)
+            if fuzzy_matches and fuzzy_matches[0].score >= HUMANOID_MATCH_THRESHOLD:
+                matched_path = fuzzy_matches[0].path
 
         if matched_path:
             mappings[required_name] = matched_path

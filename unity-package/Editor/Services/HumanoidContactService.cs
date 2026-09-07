@@ -86,7 +86,7 @@ namespace Visora.Editor.Services
 
     public static class HumanoidContactService
     {
-        private static LimbChain ResolveLimbChain(GameObject rootGo, Animator animator, string effector)
+        private static LimbChain ResolveLimbChain(GameObject rootGo, Animator animator, string effector, Transform[] cachedTransforms = null)
         {
             var chain = new LimbChain { effector = effector };
             Transform r = null, m = null, e = null;
@@ -101,9 +101,10 @@ namespace Visora.Editor.Services
                     m = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
                     e = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
                 }
-                if (r == null) r = FindTransformFuzzy(rootGo, "LeftUpperLeg", "thigh_l", "upperleg_l", "leftupleg");
-                if (m == null) m = FindTransformFuzzy(rootGo, "LeftLowerLeg", "calf_l", "lowerleg_l", "knee_l", "leftleg");
-                if (e == null) e = FindTransformFuzzy(rootGo, "LeftFoot", "foot_l", "ankle_l", "leftfoot");
+                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
+                if (r == null) r = FindTransformFuzzy(cachedTransforms, "LeftUpperLeg", "thigh_l", "upperleg_l", "leftupleg");
+                if (m == null) m = FindTransformFuzzy(cachedTransforms, "LeftLowerLeg", "calf_l", "lowerleg_l", "knee_l", "leftleg");
+                if (e == null) e = FindTransformFuzzy(cachedTransforms, "LeftFoot", "foot_l", "ankle_l", "leftfoot");
             }
             else if (effector == "right_foot")
             {
@@ -113,9 +114,10 @@ namespace Visora.Editor.Services
                     m = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
                     e = animator.GetBoneTransform(HumanBodyBones.RightFoot);
                 }
-                if (r == null) r = FindTransformFuzzy(rootGo, "RightUpperLeg", "thigh_r", "upperleg_r", "rightupleg");
-                if (m == null) m = FindTransformFuzzy(rootGo, "RightLowerLeg", "calf_r", "lowerleg_r", "knee_r", "rightleg");
-                if (e == null) e = FindTransformFuzzy(rootGo, "RightFoot", "foot_r", "ankle_r", "rightfoot");
+                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
+                if (r == null) r = FindTransformFuzzy(cachedTransforms, "RightUpperLeg", "thigh_r", "upperleg_r", "rightupleg");
+                if (m == null) m = FindTransformFuzzy(cachedTransforms, "RightLowerLeg", "calf_r", "lowerleg_r", "knee_r", "rightleg");
+                if (e == null) e = FindTransformFuzzy(cachedTransforms, "RightFoot", "foot_r", "ankle_r", "rightfoot");
             }
             else if (effector == "left_hand")
             {
@@ -125,9 +127,10 @@ namespace Visora.Editor.Services
                     m = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
                     e = animator.GetBoneTransform(HumanBodyBones.LeftHand);
                 }
-                if (r == null) r = FindTransformFuzzy(rootGo, "LeftUpperArm", "upperarm_l", "arm_l", "leftarm");
-                if (m == null) m = FindTransformFuzzy(rootGo, "LeftLowerArm", "forearm_l", "lowerarm_l", "elbow_l", "leftforearm");
-                if (e == null) e = FindTransformFuzzy(rootGo, "LeftHand", "hand_l", "wrist_l", "lefthand");
+                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
+                if (r == null) r = FindTransformFuzzy(cachedTransforms, "LeftUpperArm", "upperarm_l", "arm_l", "leftarm");
+                if (m == null) m = FindTransformFuzzy(cachedTransforms, "LeftLowerArm", "forearm_l", "lowerarm_l", "elbow_l", "leftforearm");
+                if (e == null) e = FindTransformFuzzy(cachedTransforms, "LeftHand", "hand_l", "wrist_l", "lefthand");
             }
             else if (effector == "right_hand")
             {
@@ -137,9 +140,10 @@ namespace Visora.Editor.Services
                     m = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
                     e = animator.GetBoneTransform(HumanBodyBones.RightHand);
                 }
-                if (r == null) r = FindTransformFuzzy(rootGo, "RightUpperArm", "upperarm_r", "arm_r", "rightarm");
-                if (m == null) m = FindTransformFuzzy(rootGo, "RightLowerArm", "forearm_r", "lowerarm_r", "elbow_r", "rightforearm");
-                if (e == null) e = FindTransformFuzzy(rootGo, "RightHand", "hand_r", "wrist_r", "righthand");
+                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
+                if (r == null) r = FindTransformFuzzy(cachedTransforms, "RightUpperArm", "upperarm_r", "arm_r", "rightarm");
+                if (m == null) m = FindTransformFuzzy(cachedTransforms, "RightLowerArm", "forearm_r", "lowerarm_r", "elbow_r", "rightforearm");
+                if (e == null) e = FindTransformFuzzy(cachedTransforms, "RightHand", "hand_r", "wrist_r", "righthand");
             }
             else
             {
@@ -172,16 +176,16 @@ namespace Visora.Editor.Services
             return chain;
         }
 
-        private static Transform FindTransformFuzzy(GameObject root, params string[] searchNames)
+        private static Transform FindTransformFuzzy(Transform[] transforms, params string[] searchNames)
         {
-            var transforms = root.GetComponentsInChildren<Transform>(true);
+            if (transforms == null) return null;
             foreach (var s in searchNames)
             {
-                foreach (var t in transforms)
+                for (int i = 0; i < transforms.Length; i++)
                 {
-                    if (t.name.Contains(s, StringComparison.OrdinalIgnoreCase))
+                    if (transforms[i] != null && transforms[i].name.Contains(s, StringComparison.OrdinalIgnoreCase))
                     {
-                        return t;
+                        return transforms[i];
                     }
                 }
             }
@@ -227,9 +231,10 @@ namespace Visora.Editor.Services
             var animator = target.GetComponentInChildren<Animator>(true);
             var activeChains = new List<LimbChain>();
 
+            var targetTransforms = target.GetComponentsInChildren<Transform>(true);
             foreach (var eff in effectors)
             {
-                var chain = ResolveLimbChain(target, animator, eff);
+                var chain = ResolveLimbChain(target, animator, eff, targetTransforms);
                 var diag = new NativeContactEffectorDiagnostic
                 {
                     effector = eff,
@@ -495,9 +500,10 @@ namespace Visora.Editor.Services
 
             var animator = target.GetComponentInChildren<Animator>(true);
             var activeChains = new List<LimbChain>();
+            var targetTransforms = target.GetComponentsInChildren<Transform>(true);
             foreach (var eff in effectors)
             {
-                var chain = ResolveLimbChain(target, animator, eff);
+                var chain = ResolveLimbChain(target, animator, eff, targetTransforms);
                 if (string.IsNullOrEmpty(chain.blocker)) activeChains.Add(chain);
             }
 

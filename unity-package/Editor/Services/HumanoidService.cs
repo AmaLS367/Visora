@@ -469,34 +469,39 @@ namespace Visora.Editor.Services
             return null;
         }
 
+        private static readonly Dictionary<string, string[]> BoneSearchPatterns = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["Hips"] = new[] { "hip", "pelvis", "root" },
+            ["Spine"] = new[] { "spine_01", "spine1", "spine" },
+            ["Chest"] = new[] { "chest", "spine_02", "spine2" },
+            ["UpperChest"] = new[] { "upperchest", "spine_03", "spine3" },
+            ["Neck"] = new[] { "neck" },
+            ["Head"] = new[] { "head" },
+            ["LeftUpperLeg"] = new[] { "thigh_l", "upperleg_l", "leg_l", "leftupleg", "leftleg" },
+            ["LeftLowerLeg"] = new[] { "calf_l", "lowerleg_l", "knee_l", "shin_l", "leftleg" },
+            ["LeftFoot"] = new[] { "foot_l", "ankle_l", "leftfoot" },
+            ["LeftToes"] = new[] { "toe_l", "ball_l", "lefttoebase" },
+            ["RightUpperLeg"] = new[] { "thigh_r", "upperleg_r", "leg_r", "rightupleg", "rightleg" },
+            ["RightLowerLeg"] = new[] { "calf_r", "lowerleg_r", "knee_r", "shin_r", "rightleg" },
+            ["RightFoot"] = new[] { "foot_r", "ankle_r", "rightfoot" },
+            ["RightToes"] = new[] { "toe_r", "ball_r", "righttoebase" },
+            ["LeftShoulder"] = new[] { "clavicle_l", "shoulder_l", "leftshoulder" },
+            ["LeftUpperArm"] = new[] { "upperarm_l", "arm_l", "leftarm", "leftshoulder" },
+            ["LeftLowerArm"] = new[] { "forearm_l", "lowerarm_l", "elbow_l", "leftforearm" },
+            ["LeftHand"] = new[] { "hand_l", "wrist_l", "lefthand" },
+            ["RightShoulder"] = new[] { "clavicle_r", "shoulder_r", "rightshoulder" },
+            ["RightUpperArm"] = new[] { "upperarm_r", "arm_r", "rightarm", "rightshoulder" },
+            ["RightLowerArm"] = new[] { "forearm_r", "lowerarm_r", "elbow_r", "rightforearm" },
+            ["RightHand"] = new[] { "hand_r", "wrist_r", "righthand" },
+        };
+
         private static string[] GetBoneSearchPatterns(string humanBoneName)
         {
-            switch (humanBoneName)
+            if (BoneSearchPatterns.TryGetValue(humanBoneName, out var patterns))
             {
-                case "Hips": return new[] { "hip", "pelvis", "root" };
-                case "Spine": return new[] { "spine_01", "spine1", "spine" };
-                case "Chest": return new[] { "chest", "spine_02", "spine2" };
-                case "UpperChest": return new[] { "upperchest", "spine_03", "spine3" };
-                case "Neck": return new[] { "neck" };
-                case "Head": return new[] { "head" };
-                case "LeftUpperLeg": return new[] { "thigh_l", "upperleg_l", "leg_l", "leftupleg", "leftleg" };
-                case "LeftLowerLeg": return new[] { "calf_l", "lowerleg_l", "knee_l", "shin_l", "leftleg" };
-                case "LeftFoot": return new[] { "foot_l", "ankle_l", "leftfoot" };
-                case "LeftToes": return new[] { "toe_l", "ball_l", "lefttoebase" };
-                case "RightUpperLeg": return new[] { "thigh_r", "upperleg_r", "leg_r", "rightupleg", "rightleg" };
-                case "RightLowerLeg": return new[] { "calf_r", "lowerleg_r", "knee_r", "shin_r", "rightleg" };
-                case "RightFoot": return new[] { "foot_r", "ankle_r", "rightfoot" };
-                case "RightToes": return new[] { "toe_r", "ball_r", "righttoebase" };
-                case "LeftShoulder": return new[] { "clavicle_l", "shoulder_l", "leftshoulder" };
-                case "LeftUpperArm": return new[] { "upperarm_l", "arm_l", "leftarm", "leftshoulder" };
-                case "LeftLowerArm": return new[] { "forearm_l", "lowerarm_l", "elbow_l", "leftforearm" };
-                case "LeftHand": return new[] { "hand_l", "wrist_l", "lefthand" };
-                case "RightShoulder": return new[] { "clavicle_r", "shoulder_r", "rightshoulder" };
-                case "RightUpperArm": return new[] { "upperarm_r", "arm_r", "rightarm", "rightshoulder" };
-                case "RightLowerArm": return new[] { "forearm_r", "lowerarm_r", "elbow_r", "rightforearm" };
-                case "RightHand": return new[] { "hand_r", "wrist_r", "righthand" };
-                default: return new[] { humanBoneName };
+                return patterns;
             }
+            return new[] { humanBoneName };
         }
 
         public static NativeHumanoidConfigurationResult ConfigureHumanoid(

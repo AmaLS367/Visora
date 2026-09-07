@@ -27,6 +27,9 @@ namespace Visora.Editor.Services
             ["m_LocalRotation"] = new[] { "x", "y", "z", "w" },
         };
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Type> ComponentTypeCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, Type>(StringComparer.Ordinal);
+
         public static Type ResolveComponentType(string typeName)
         {
             if (string.IsNullOrEmpty(typeName))
@@ -44,12 +47,18 @@ namespace Visora.Editor.Services
                 return typeof(GameObject);
             }
 
+            if (ComponentTypeCache.TryGetValue(typeName, out var cached))
+            {
+                return cached;
+            }
+
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 var candidate = assembly.GetType("UnityEngine." + typeName)
                     ?? assembly.GetType(typeName);
                 if (candidate != null && (typeof(Component).IsAssignableFrom(candidate) || candidate == typeof(GameObject)))
                 {
+                    ComponentTypeCache.TryAdd(typeName, candidate);
                     return candidate;
                 }
             }
@@ -230,17 +239,52 @@ namespace Visora.Editor.Services
         // cannot divide by zero. customTolerance allows caller to specify a tighter threshold (e.g. for upserts).
         public static int FindKeyIndexNearTime(AnimationCurve curve, float time, float clipFrameRate, float? customTolerance = null)
         {
+            int len = curve.length;
+            if (len == 0) return -1;
+
             float tolerance = customTolerance ?? Mathf.Max(0.5f / Mathf.Max(clipFrameRate, 1f), 0.0001f);
+
+            int low = 0;
+            int high = len - 1;
+
+            while (low <= high)
+            {
+                int mid = low + ((high - low) / 2);
+                float midTime = curve[mid].time;
+                if (midTime < time)
+                {
+                    low = mid + 1;
+                }
+                else if (midTime > time)
+                {
+                    high = mid - 1;
+                }
+                else
+                {
+                    return mid;
+                }
+            }
+
             int bestIndex = -1;
             float bestDistance = float.MaxValue;
 
-            for (int i = 0; i < curve.length; i++)
+            if (high >= 0 && high < len)
             {
-                float distance = Mathf.Abs(curve[i].time - time);
-                if (distance < bestDistance)
+                float dist = Mathf.Abs(curve[high].time - time);
+                if (dist < bestDistance)
                 {
-                    bestDistance = distance;
-                    bestIndex = i;
+                    bestDistance = dist;
+                    bestIndex = high;
+                }
+            }
+
+            if (low >= 0 && low < len)
+            {
+                float dist = Mathf.Abs(curve[low].time - time);
+                if (dist < bestDistance)
+                {
+                    bestDistance = dist;
+                    bestIndex = low;
                 }
             }
 
@@ -315,12 +359,15 @@ namespace Visora.Editor.Services
             }
 
             string terminalName = parts[parts.Length - 1];
-            var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
-            foreach (var t in allTransforms)
+            foreach (var root in roots)
             {
-                if (t.name == terminalName && t.gameObject.scene == scene)
+                var transforms = root.GetComponentsInChildren<Transform>(true);
+                for (int i = 0; i < transforms.Length; i++)
                 {
-                    return t.gameObject;
+                    if (transforms[i].name == terminalName)
+                    {
+                        return transforms[i].gameObject;
+                    }
                 }
             }
 
@@ -837,10 +884,16 @@ namespace Visora.Editor.Services
 
             // Cluster times across channels without dropping distinct keys on the same channel
             var clusters = new List<(float time, HashSet<int> channels)>();
+            int startClusterIdx = 0;
             foreach (var item in allTimes)
             {
+                while (startClusterIdx < clusters.Count && item.time - clusters[startClusterIdx].time > tolerance)
+                {
+                    startClusterIdx++;
+                }
+
                 bool added = false;
-                for (int ci = 0; ci < clusters.Count; ci++)
+                for (int ci = startClusterIdx; ci < clusters.Count; ci++)
                 {
                     if (Mathf.Abs(clusters[ci].time - item.time) <= tolerance && !clusters[ci].channels.Contains(item.channel))
                     {

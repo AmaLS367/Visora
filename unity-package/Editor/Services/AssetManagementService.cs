@@ -205,6 +205,10 @@ namespace Visora.Editor.Services
                     };
                 }
 
+                var seenMaterials = new HashSet<string>();
+                var seenClips = new HashSet<string>();
+                var seenTextures = new HashSet<string>();
+
                 if (mainAsset is GameObject go)
                 {
                     var renderers = go.GetComponentsInChildren<Renderer>(true);
@@ -225,7 +229,7 @@ namespace Visora.Editor.Services
 
                         foreach (var mat in r.sharedMaterials)
                         {
-                            if (mat != null && !result.materials.Contains(mat.name))
+                            if (mat != null && seenMaterials.Add(mat.name))
                             {
                                 result.materials.Add(mat.name);
                             }
@@ -242,15 +246,15 @@ namespace Visora.Editor.Services
                 var allSubAssets = AssetDatabase.LoadAllAssetsAtPath(normalizedPath);
                 foreach (var sub in allSubAssets)
                 {
-                    if (sub is AnimationClip clip && !result.animation_clips.Contains(clip.name))
+                    if (sub is AnimationClip clip && seenClips.Add(clip.name))
                     {
                         result.animation_clips.Add(clip.name);
                     }
-                    else if (sub is Material m && !result.materials.Contains(m.name))
+                    else if (sub is Material m && seenMaterials.Add(m.name))
                     {
                         result.materials.Add(m.name);
                     }
-                    else if (sub is Texture t && !result.textures.Contains(t.name))
+                    else if (sub is Texture t && seenTextures.Add(t.name))
                     {
                         result.textures.Add(t.name);
                     }
@@ -332,13 +336,13 @@ namespace Visora.Editor.Services
                     }
                 }
 
-                string fullPath = instance.name;
-                var curr = instance.transform.parent;
-                while (curr != null)
+                var pathSegments = new List<string>();
+                for (var curr = instance.transform; curr != null; curr = curr.parent)
                 {
-                    fullPath = curr.name + "/" + fullPath;
-                    curr = curr.parent;
+                    pathSegments.Add(curr.name);
                 }
+                pathSegments.Reverse();
+                string fullPath = string.Join("/", pathSegments);
 
                 result.success = true;
                 result.game_object_name = instance.name;

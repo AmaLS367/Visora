@@ -197,33 +197,24 @@ def compare_images_data(
     norm_threshold = _normalize_threshold(threshold)
     width, height = before.size
     total_pixels = width * height
-    changed_pixels = 0
-    delta_sum = 0
-    max_delta = 0
-    min_x = width
-    min_y = height
-    max_x = -1
-    max_y = -1
 
-    before_pixels = list(before.get_flattened_data())
-    after_pixels = list(after.get_flattened_data())
-    for index, (before_pixel_raw, after_pixel_raw) in enumerate(zip(before_pixels, after_pixels, strict=True)):
-        before_pixel = cast(tuple[int, int, int], before_pixel_raw)
-        after_pixel = cast(tuple[int, int, int], after_pixel_raw)
-        x = index % width
-        y = index // width
-        deltas = [abs(before_pixel[channel] - after_pixel[channel]) for channel in range(3)]
-        pixel_max_delta = max(deltas)
-        max_delta = max(max_delta, pixel_max_delta)
-        delta_sum += sum(deltas)
-        if pixel_max_delta > norm_threshold:
-            changed_pixels += 1
-            min_x = min(min_x, x)
-            min_y = min(min_y, y)
-            max_x = max(max_x, x)
-            max_y = max(max_y, y)
+    arr_before = np.asarray(before, dtype=np.int16)
+    arr_after = np.asarray(after, dtype=np.int16)
 
-    changed_bounds = [min_x, min_y, max_x, max_y] if changed_pixels else None
+    diff = np.abs(arr_before - arr_after)
+    pixel_max_delta = np.max(diff, axis=-1)
+    max_delta = int(np.max(pixel_max_delta)) if total_pixels else 0
+    delta_sum = int(np.sum(diff)) if total_pixels else 0
+
+    changed_mask = pixel_max_delta > norm_threshold
+    changed_pixels = int(np.count_nonzero(changed_mask))
+
+    if changed_pixels:
+        ys, xs = np.where(changed_mask)
+        changed_bounds = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
+    else:
+        changed_bounds = None
+
     return VisualComparisonResult(
         success=True,
         same_dimensions=True,

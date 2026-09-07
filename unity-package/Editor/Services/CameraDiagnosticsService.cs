@@ -95,7 +95,12 @@ namespace Visora.Editor.Services
         private static string HierarchyPath(Transform transform)
         {
             var names = new List<string>();
-            while (transform != null) { names.Insert(0, transform.name); transform = transform.parent; }
+            while (transform != null)
+            {
+                names.Add(transform.name);
+                transform = transform.parent;
+            }
+            names.Reverse();
             return string.Join("/", names);
         }
     }
