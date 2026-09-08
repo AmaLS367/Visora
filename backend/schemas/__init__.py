@@ -38,6 +38,10 @@ from backend.schemas.bridge import (
     EditorStateInfo,
     PortScanResult,
 )
+from backend.schemas.gaze import (
+    CharacterGazeResult,
+    GazeJointRotation,
+)
 from backend.schemas.humanoid import (
     AvatarBlocker,
     BakeContactConstraintsResult,
@@ -49,6 +53,10 @@ from backend.schemas.humanoid import (
     HumanoidRetargetPreviewResult,
     HumanoidValidationResult,
     TPoseAssessment,
+)
+from backend.schemas.ik import (
+    TwoBoneIKSolveResult,
+    ViewportEffectorPlacementResult,
 )
 from backend.schemas.mesh import (
     BoneBindingInfo,
@@ -106,6 +114,7 @@ __all__ = [
     "BoundsInfo",
     "BridgeStatusResult",
     "CameraFramingDiagnosticsResult",
+    "CharacterGazeResult",
     "ClipInspectorResult",
     "ContactAnalysisResult",
     "ContactAnomaly",
@@ -119,6 +128,7 @@ __all__ = [
     "EditorStateResult",
     "EffectorContactPhase",
     "FrameMotionMetrics",
+    "GazeJointRotation",
     "HelperBoneWarning",
     "HumanoidConfigurationResult",
     "HumanoidRetargetPreviewResult",
@@ -150,10 +160,12 @@ __all__ = [
     "SubMeshInfo",
     "TPoseAssessment",
     "TransformPose",
+    "TwoBoneIKSolveResult",
     "VideoFrame",
     "VideoFrameSequence",
     "VideoFramesResult",
     "VideoMp4Result",
+    "ViewportEffectorPlacementResult",
     "VisualCapture",
     "VisualComparisonResult",
     "VisualInspectionResult",

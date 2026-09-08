@@ -9,6 +9,8 @@ EXPECTED_SKILLS = [
     "visora-animation-workflow",
     "visora-camera-action-workflow",
     "visora-rig-retarget-workflow",
+    "visora-contact-ik-workflow",
+    "visora-gaze-and-acting-workflow",
 ]
 
 
@@ -83,3 +85,23 @@ def test_rig_retarget_workflow_skill_acceptance() -> None:
     assert "preview_humanoid_retarget" in content
     assert "generic / no-avatar fallback" in lower
     assert "never force humanoid mode" in lower
+
+
+def test_contact_ik_workflow_skill_acceptance() -> None:
+    content = (SKILLS_DIR / "visora-contact-ik-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    lower = content.lower()
+    assert "never infer ik or contact success from a static screenshot" in lower
+    assert "solve_two_bone_ik" in content
+    assert "place_effector_in_viewport" in content
+    assert "reach_distance" in content
+    assert "preview_animation" in content
+
+
+def test_gaze_acting_workflow_skill_acceptance() -> None:
+    content = (SKILLS_DIR / "visora-gaze-and-acting-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    lower = content.lower()
+    assert "never turn only the head bone" in lower
+    assert "never infer natural acting from a static screenshot" in lower
+    assert "solve_character_gaze" in content
+    assert "chest_weight" in content
+    assert "was_clamped" in content

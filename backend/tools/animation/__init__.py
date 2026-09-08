@@ -25,10 +25,15 @@ from backend.tools.animation.contact import (
     analyze_contact_constraints,
     bake_contact_constraints,
 )
+from backend.tools.animation.gaze import solve_character_gaze
 from backend.tools.animation.humanoid import (
     configure_humanoid_avatar,
     preview_humanoid_retarget,
     validate_humanoid_avatar,
+)
+from backend.tools.animation.ik import (
+    place_effector_in_viewport,
+    solve_two_bone_ik,
 )
 from backend.tools.animation.inspector import (
     analyze_animation_curves,
@@ -68,6 +73,7 @@ __all__ = [
     "map_humanoid_bones",
     "match_bones_fuzzy",
     "move_animation_keyframe",
+    "place_effector_in_viewport",
     "preview_animation",
     "preview_humanoid_retarget",
     "remove_animation_event",
@@ -77,5 +83,7 @@ __all__ = [
     "set_animation_keyframe",
     "set_keyframe_hold",
     "skeleton_mapper",
+    "solve_character_gaze",
+    "solve_two_bone_ik",
     "validate_humanoid_avatar",
 ]

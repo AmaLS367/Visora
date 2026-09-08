@@ -279,6 +279,65 @@ namespace Visora.Editor.Core
         public string operationId;
     }
 
+    [Serializable]
+    public class TwoBoneIKRequest
+    {
+        public string targetPath;
+        public string effector;
+        public string rootBone;
+        public string midBone;
+        public string endBone;
+        public float[] targetPosition;
+        public float[] targetRotation;
+        public float[] poleVector;
+        public string space = "world";
+        public string cameraName = "Main Camera";
+        public float weight = 1.0f;
+        public bool applyToScene;
+        public string bakeToClip;
+        public float sampleTime;
+        public bool hasSampleTime;
+    }
+
+    [Serializable]
+    public class ViewportPlacementRequest
+    {
+        public string cameraName = "Main Camera";
+        public string targetPath;
+        public string effector;
+        public string rootBone;
+        public string midBone;
+        public string endBone;
+        public float viewportX = 0.5f;
+        public float viewportY = 0.5f;
+        public float cameraDepth = 0.25f;
+        public string alignMode = "face_camera";
+        public float[] customRotation;
+        public float[] poleVector;
+        public float weight = 1.0f;
+        public bool applyToScene;
+        public string bakeToClip;
+        public float sampleTime;
+        public bool hasSampleTime;
+    }
+
+    [Serializable]
+    public class CharacterGazeRequest
+    {
+        public string targetPath;
+        public float[] targetLookAtPosition;
+        public string targetTransformPath;
+        public float chestWeight = 0.15f;
+        public float neckWeight = 0.35f;
+        public float headWeight = 0.50f;
+        public float eyesWeight;
+        public float[] upVector;
+        public bool applyToScene;
+        public string bakeToClip;
+        public float sampleTime;
+        public bool hasSampleTime;
+    }
+
     public static class VisoraHttpRouter
     {
         public static async Task HandleRequestAsync(HttpListenerContext context)
@@ -363,7 +422,10 @@ namespace Visora.Editor.Core
                             "asset_instantiation",
                             "humanoid_avatar_diagnostics",
                             "humanoid_avatar_configuration",
-                            "humanoid_contact_constraints"
+                            "humanoid_contact_constraints",
+                            "inverse_kinematics",
+                            "character_gaze",
+                            "viewport_placement"
                         }
                     });
                     responseJson = JsonUtility.ToJson(info);
@@ -767,6 +829,42 @@ namespace Visora.Editor.Core
                             p.targetPath, p.clipPath, p.outputClipPath, p.effectors,
                             p.groundY, p.fixSliding, p.fixPenetration, p.operationId));
                     responseJson = VisoraJson.Serialize(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/ik/two-bone")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<TwoBoneIKRequest>(body) ?? new TwoBoneIKRequest();
+                    float? st = p.hasSampleTime ? (float?)p.sampleTime : null;
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        InverseKinematicsService.SolveTwoBoneIK(
+                            p.targetPath, p.effector, p.rootBone, p.midBone, p.endBone,
+                            p.targetPosition, p.targetRotation, p.poleVector,
+                            p.space, p.cameraName, p.weight, p.applyToScene, p.bakeToClip, st));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/viewport-placement")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<ViewportPlacementRequest>(body) ?? new ViewportPlacementRequest();
+                    float? st = p.hasSampleTime ? (float?)p.sampleTime : null;
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        InverseKinematicsService.PlaceEffectorInViewport(
+                            p.cameraName, p.targetPath, p.effector, p.rootBone, p.midBone, p.endBone,
+                            p.viewportX, p.viewportY, p.cameraDepth, p.alignMode,
+                            p.customRotation, p.poleVector, p.weight, p.applyToScene, p.bakeToClip, st));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/gaze/solve")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<CharacterGazeRequest>(body) ?? new CharacterGazeRequest();
+                    float? st = p.hasSampleTime ? (float?)p.sampleTime : null;
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        GazeService.SolveCharacterGaze(
+                            p.targetPath, p.targetLookAtPosition, p.targetTransformPath,
+                            p.chestWeight, p.neckWeight, p.headWeight, p.eyesWeight,
+                            p.upVector, p.applyToScene, p.bakeToClip, st));
+                    responseJson = JsonUtility.ToJson(result);
                 }
                 else
                 {

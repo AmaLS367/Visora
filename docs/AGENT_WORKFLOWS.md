@@ -37,6 +37,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `list_animation_keyframes` | `clip_path`*, `target_path`*, `type_name`*, `property_name`* | `ListAnimationKeyframesResult` |
 | `list_scene_cameras` | — | `ListSceneCamerasResult` |
 | `move_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `from_time`*, `to_time`*, `operation_id` | `AnimationClipEditResult` |
+| `place_effector_in_viewport` | `target_object_path`*, `viewport_x`, `viewport_y`, `camera_depth`, `camera_name`, `effector`, `root_bone`, `mid_bone`, `end_bone`, `align_mode`, `custom_rotation`, `pole_vector`, `weight`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `ViewportEffectorPlacementResult` |
 | `playmode_management` | `play`*, `wait_for_idle`, `timeout_seconds` | `PlayModeManagementResult` |
 | `preview_animation` | `target_object_path`*, `clip_path`*, `camera_name`, `start_time`, `end_time`, `fps`, `width`, `height`, `auto_frame`, `max_key_frames`, `include_video_base64`, `include_clip_diagnostics` | `AnimationPreviewResult` |
 | `preview_humanoid_retarget` | `target_object_path`*, `clip_path`*, `camera_name`, `width`, `height`, `fps`, `auto_frame` | `HumanoidRetargetPreviewResult` |
@@ -54,6 +55,8 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `set_keyframe_hold` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `hold_until`*, `value`, `operation_id` | `AnimationClipEditResult` |
 | `skeleton_mapper` | `root_transform_path`* | `SkeletonMapperResult` |
 | `skinned_mesh_diagnostics` | `mesh_renderer_path`* | `SkinnedMeshDiagnosticsResult` |
+| `solve_character_gaze` | `target_object_path`*, `target_look_at_position`, `target_transform_path`, `chest_weight`, `neck_weight`, `head_weight`, `eyes_weight`, `up_vector`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `CharacterGazeResult` |
+| `solve_two_bone_ik` | `target_object_path`*, `target_position`*, `effector`, `root_bone`, `mid_bone`, `end_bone`, `target_rotation`, `pole_vector`, `space`, `camera_name`, `weight`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `TwoBoneIKSolveResult` |
 | `validate_humanoid_avatar` | `target_path`, `asset_path` | `HumanoidValidationResult` |
 | `wait_for_editor_idle` | `timeout_seconds`, `poll_interval_seconds` | `WaitForEditorIdleResult` |
 | `wait_for_ticket` | `ticket_id`*, `timeout`, `poll_interval` | `QueueStatusResult` |

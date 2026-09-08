@@ -968,6 +968,118 @@ class UnityBridge:
         response = await self._request("POST", "/api/visora/humanoid/contact/bake", json=payload)
         return _decode_json(response)
 
+    async def solve_two_bone_ik_native(  # noqa: PLR0913
+        self,
+        target_path: str,
+        target_position: list[float],
+        effector: str | None = None,
+        root_bone: str | None = None,
+        mid_bone: str | None = None,
+        end_bone: str | None = None,
+        target_rotation: list[float] | None = None,
+        pole_vector: list[float] | None = None,
+        space: str = "world",
+        camera_name: str = "Main Camera",
+        weight: float = 1.0,
+        apply_to_scene: bool = False,
+        bake_to_clip: str | None = None,
+        sample_time: float | None = None,
+    ) -> dict[str, Any]:
+        """Direct native Two-Bone IK solve via /api/visora/animation/ik/two-bone."""
+        payload: dict[str, Any] = {
+            "targetPath": target_path,
+            "targetPosition": target_position,
+            "effector": effector or "",
+            "rootBone": root_bone or "",
+            "midBone": mid_bone or "",
+            "endBone": end_bone or "",
+            "targetRotation": target_rotation or [],
+            "poleVector": pole_vector or [],
+            "space": space,
+            "cameraName": camera_name,
+            "weight": weight,
+            "applyToScene": apply_to_scene,
+            "bakeToClip": bake_to_clip or "",
+            "sampleTime": sample_time if sample_time is not None else 0.0,
+            "hasSampleTime": sample_time is not None,
+        }
+        response = await self._request("POST", "/api/visora/animation/ik/two-bone", json=payload)
+        return _decode_json(response)
+
+    async def place_effector_in_viewport_native(  # noqa: PLR0913
+        self,
+        target_path: str,
+        viewport_x: float,
+        viewport_y: float,
+        camera_depth: float,
+        camera_name: str = "Main Camera",
+        effector: str | None = None,
+        root_bone: str | None = None,
+        mid_bone: str | None = None,
+        end_bone: str | None = None,
+        align_mode: str = "face_camera",
+        custom_rotation: list[float] | None = None,
+        pole_vector: list[float] | None = None,
+        weight: float = 1.0,
+        apply_to_scene: bool = False,
+        bake_to_clip: str | None = None,
+        sample_time: float | None = None,
+    ) -> dict[str, Any]:
+        """Direct native viewport effector placement via /api/visora/animation/viewport-placement."""
+        payload: dict[str, Any] = {
+            "targetPath": target_path,
+            "viewportX": viewport_x,
+            "viewportY": viewport_y,
+            "cameraDepth": camera_depth,
+            "cameraName": camera_name,
+            "effector": effector or "",
+            "rootBone": root_bone or "",
+            "midBone": mid_bone or "",
+            "endBone": end_bone or "",
+            "alignMode": align_mode,
+            "customRotation": custom_rotation or [],
+            "poleVector": pole_vector or [],
+            "weight": weight,
+            "applyToScene": apply_to_scene,
+            "bakeToClip": bake_to_clip or "",
+            "sampleTime": sample_time if sample_time is not None else 0.0,
+            "hasSampleTime": sample_time is not None,
+        }
+        response = await self._request("POST", "/api/visora/animation/viewport-placement", json=payload)
+        return _decode_json(response)
+
+    async def solve_character_gaze_native(  # noqa: PLR0913
+        self,
+        target_path: str,
+        target_look_at_position: list[float] | None = None,
+        target_transform_path: str | None = None,
+        chest_weight: float = 0.15,
+        neck_weight: float = 0.35,
+        head_weight: float = 0.50,
+        eyes_weight: float = 0.0,
+        up_vector: list[float] | None = None,
+        apply_to_scene: bool = False,
+        bake_to_clip: str | None = None,
+        sample_time: float | None = None,
+    ) -> dict[str, Any]:
+        """Direct native character gaze solving via /api/visora/animation/gaze/solve."""
+        payload: dict[str, Any] = {
+            "targetPath": target_path,
+            "targetLookAtPosition": target_look_at_position or [],
+            "targetTransformPath": target_transform_path or "",
+            "chestWeight": chest_weight,
+            "neckWeight": neck_weight,
+            "headWeight": head_weight,
+            "eyesWeight": eyes_weight,
+            "upVector": up_vector or [],
+            "applyToScene": apply_to_scene,
+            "bakeToClip": bake_to_clip or "",
+            "sampleTime": sample_time if sample_time is not None else 0.0,
+            "hasSampleTime": sample_time is not None,
+        }
+        response = await self._request("POST", "/api/visora/animation/gaze/solve", json=payload)
+        return _decode_json(response)
+
     async def cancel_queue_ticket(self, ticket_id: str) -> dict[str, Any]:
         """
         Attempts to cancel a long-running ticket in the AnkleBreaker task queue.
