@@ -78,6 +78,9 @@ Call `get_bridge_status` to identify the selected port and flavor. For a busy ed
 cp -r skills/visora-asset-workflow <your-unity-project>/.claude/skills/
 ```
 
-- `visora-asset-workflow`: asset search/download/import - Sketchfab's broken search, `web_search_assets` as the workaround, supported file formats, glTF's missing-importer trap, and verifying an import actually produced a real asset.
+- `visora-asset-workflow`: asset search/download/import — Sketchfab's broken search, `web_search_assets` as the workaround, supported file formats, glTF's missing-importer trap, and verifying an import actually produced a real asset.
+- `visora-animation-workflow`: animation authoring & review — rig/Avatar preflight, fast Edit Mode preview loop (`preview_animation`), motion metrics over static screenshots, contact constraint analysis, keyframe hold authoring, and final-quality capture criteria.
+- `visora-camera-action-workflow`: action & combat beats — single authoritative impact timestamp ($T_{\text{impact}}$), synchronized hit-stop/pose freeze, directional camera recoil and viewport projection verification, and forbidding unsynchronized procedural screen shake as the default.
+- `visora-rig-retarget-workflow`: character rig & retargeting — imported skeleton inspection, Humanoid Avatar eligibility preflight and blocker diagnosis, mocap retarget verification across time, foot sliding IK baking, and explicit Generic / non-Humanoid fallback paths.
 
-Every MCP client also receives a short, always-on version of the sharpest of these gotchas automatically through the server's own `instructions` (`backend/app.py`) - no copying required for that part. The skill is for the fuller detail on demand.
+Every MCP client also receives a short, always-on version of the sharpest of these gotchas automatically through the server's own `instructions` (`backend/app.py`) - no copying required for that part. The skills are for the fuller detail on demand.

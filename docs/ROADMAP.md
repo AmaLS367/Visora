@@ -30,12 +30,12 @@
 * **Delivered:** Added 5 MCP tools across humanoid avatar validation (`validate_humanoid_avatar`), ModelImporter configuration (`configure_humanoid_avatar`), mocap retarget preview (`preview_humanoid_retarget`), contact analysis (`analyze_contact_constraints`), and 3D Two-Bone IK baking (`bake_contact_constraints`). Native Unity endpoints via `VisoraHttpRouter` (`humanoid_avatar_diagnostics`, `humanoid_avatar_configuration`, `humanoid_contact_constraints`) provide single-trip execution, precise AvatarBlocker diagnostics, support for standalone and embedded read-only FBX clips, and non-destructive baking with pre-mutation backup in `VisoraBackups/` and full Undo support.
 
 ### 5. 🧭 Agent Skills for Animation Workflows
-* **Status:** 🔜 Planned
+* **Status:** ✅ Completed
 * **Scope:** Ship reusable Visora skills that prescribe tool selection and verification order rather than leaving agents to improvise editor scripts:
   * `visora-animation-workflow` — rig/Avatar preflight, low-resolution preview iterations, timing and distance checks, and final-quality capture criteria.
   * `visora-camera-action-workflow` — a single impact timestamp; synchronized pose, camera recoil, flash, and hit-stop; no unsynchronized procedural shake as the default.
   * `visora-rig-retarget-workflow` — imported-rig inspection, Humanoid eligibility, mocap retarget fallback paths, and explicit no-Avatar guidance.
-* **Acceptance:** Skills must direct agents to report concrete bridge/Unity failures, never infer successful visual verification from a static screenshot, and use the smallest safe preview before final rendering.
+* **Delivered:** Added three first-class skills under `skills/` (`visora-animation-workflow`, `visora-camera-action-workflow`, `visora-rig-retarget-workflow`) with YAML frontmatter and prescriptive step-by-step sequences. Enforced acceptance rules across all skills: direct reporting of concrete bridge/Unity errors, strictly forbidding inferring success from static screenshots, enforcing the smallest safe preview (Edit Mode `preview_animation`) before final capture, anchoring combat beats to a single authoritative impact timestamp $T_{\text{impact}}$ without unsynchronized procedural shake, and providing explicit Generic rig fallback paths when Humanoid Avatar blockers occur. Updated `backend/app.py` instructions and documentation (`SETUP_GUIDE.md`, `AGENT_WORKFLOWS.md`), backed by automated skill integrity tests in `tests/unit/test_skills.py`.
 
 ### 6. 🧾 Reproducible Preview Artifacts
 * **Status:** 🔜 Planned

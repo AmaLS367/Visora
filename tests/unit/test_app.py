@@ -11,3 +11,15 @@ def test_mcp_server_has_asset_workflow_instructions() -> None:
     assert "web_search_assets" in mcp.instructions
     assert "gltf" in mcp.instructions.lower()
     assert "inspect_imported_asset" in mcp.instructions
+
+
+def test_mcp_server_has_animation_workflow_instructions() -> None:
+    """Regression test: MCP instructions must surface key animation, camera, and retargeting
+    rules (preview_animation, static screenshot trap, impact timestamp, humanoid validation)
+    so all connecting clients receive them without per-project setup.
+    """
+    assert mcp.instructions
+    assert "preview_animation" in mcp.instructions
+    assert "static screenshot" in mcp.instructions.lower()
+    assert "impact timestamp" in mcp.instructions.lower()
+    assert "validate_humanoid_avatar" in mcp.instructions
