@@ -1116,6 +1116,106 @@ class UnityBridge:
         response = await self._request("POST", "/api/visora/animation/qa/discontinuities", json=payload)
         return _decode_json(response)
 
+    async def execute_animation_transaction_native(
+        self,
+        operations: list[dict[str, Any]],
+        transaction_id: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """Direct native animation transaction execution via /api/visora/animation/transaction/execute."""
+        payload: dict[str, Any] = {
+            "transactionId": transaction_id or "",
+            "description": description or "",
+            "operations": operations,
+        }
+        response = await self._request("POST", "/api/visora/animation/transaction/execute", json=payload)
+        return _decode_json(response)
+
+    async def bake_effector_contact_native(  # noqa: PLR0913
+        self,
+        clip_path: str,
+        target_object_path: str,
+        effector: str,
+        target_type: str = "world_point",
+        target_position: list[float] | None = None,
+        scene_object_path: str | None = None,
+        camera_name: str | None = None,
+        viewport_coordinates: list[float] | None = None,
+        viewport_depth: float = 0.5,
+        time_range: list[float] | None = None,
+        blend_in_seconds: float = 0.1,
+        blend_out_seconds: float = 0.1,
+        pole_vector: list[float] | None = None,
+        target_rotation: list[float] | None = None,
+    ) -> dict[str, Any]:
+        """Direct native generalized effector contact baking via /api/visora/animation/contact/bake-effector."""
+        payload: dict[str, Any] = {
+            "clipPath": clip_path,
+            "targetObjectPath": target_object_path,
+            "effector": effector,
+            "targetType": target_type,
+            "targetPosition": target_position or [],
+            "sceneObjectPath": scene_object_path or "",
+            "cameraName": camera_name or "",
+            "viewportCoordinates": viewport_coordinates or [0.5, 0.5],
+            "viewportDepth": viewport_depth,
+            "timeRange": time_range or [0.0, 1.0],
+            "blendInSeconds": blend_in_seconds,
+            "blendOutSeconds": blend_out_seconds,
+            "poleVector": pole_vector or [],
+            "targetRotation": target_rotation or [],
+        }
+        response = await self._request("POST", "/api/visora/animation/contact/bake-effector", json=payload)
+        return _decode_json(response)
+
+    async def solve_camera_subject_contact_native(  # noqa: PLR0913
+        self,
+        character_path: str,
+        character_clip_path: str,
+        camera_name: str,
+        camera_clip_path: str | None = None,
+        effector: str = "right_foot",
+        impact_time: float = 0.5,
+        contact_duration: float = 0.2,
+        lens_viewport: list[float] | None = None,
+        lens_distance_meters: float = 0.3,
+        hit_stop_duration: float = 0.08,
+        camera_recoil_impulse: list[float] | None = None,
+    ) -> dict[str, Any]:
+        """Direct native camera-subject contact solving via /api/visora/animation/action/camera-subject-contact."""
+        payload: dict[str, Any] = {
+            "characterPath": character_path,
+            "characterClipPath": character_clip_path,
+            "cameraName": camera_name,
+            "cameraClipPath": camera_clip_path or "",
+            "effector": effector,
+            "impactTime": impact_time,
+            "contactDuration": contact_duration,
+            "lensViewport": lens_viewport or [0.5, 0.5],
+            "lensDistanceMeters": lens_distance_meters,
+            "hitStopDuration": hit_stop_duration,
+            "cameraRecoilImpulse": camera_recoil_impulse or [0.0, -0.15, -0.4],
+        }
+        response = await self._request("POST", "/api/visora/animation/action/camera-subject-contact", json=payload)
+        return _decode_json(response)
+
+    async def analyze_self_intersections_native(
+        self,
+        target_object_path: str,
+        clip_path: str,
+        sample_fps: int = 30,
+        tolerance_meters: float = 0.02,
+    ) -> dict[str, Any]:
+        """Direct native self-intersection analysis via /api/visora/animation/intersections/analyze."""
+        payload: dict[str, Any] = {
+            "targetObjectPath": target_object_path,
+            "clipPath": clip_path,
+            "sampleFps": sample_fps,
+            "toleranceMeters": tolerance_meters,
+        }
+        response = await self._request("POST", "/api/visora/animation/intersections/analyze", json=payload)
+        return _decode_json(response)
+
     async def cancel_queue_ticket(self, ticket_id: str) -> dict[str, Any]:
         """
         Attempts to cancel a long-running ticket in the AnkleBreaker task queue.

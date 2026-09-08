@@ -55,7 +55,7 @@ namespace Visora.Editor.Services
 
     public static class InverseKinematicsService
     {
-        private static Transform FindTransformFuzzy(Transform[] transforms, params string[] patterns)
+        public static Transform FindTransformFuzzy(Transform[] transforms, params string[] patterns)
         {
             if (transforms == null) return null;
             for (int p = 0; p < patterns.Length; p++)
@@ -71,7 +71,7 @@ namespace Visora.Editor.Services
             return null;
         }
 
-        private static bool ResolveLimbTransforms(
+        public static bool ResolveLimbTransforms(
             GameObject rootGo,
             string effector,
             string rootBone,

@@ -20,11 +20,13 @@ from backend.tools.animation.backups import (
     list_animation_backups,
     restore_animation_clip,
 )
+from backend.tools.animation.camera_action import solve_camera_subject_contact
 from backend.tools.animation.common import bridge, logger
 from backend.tools.animation.contact import (
     analyze_contact_constraints,
     bake_contact_constraints,
 )
+from backend.tools.animation.contact_bake import bake_effector_contact
 from backend.tools.animation.gaze import solve_character_gaze
 from backend.tools.animation.humanoid import (
     configure_humanoid_avatar,
@@ -40,6 +42,7 @@ from backend.tools.animation.inspector import (
     clip_inspector,
     inspect_animation_clip,
 )
+from backend.tools.animation.intersections import analyze_self_intersections
 from backend.tools.animation.preview import preview_animation
 from backend.tools.animation.qa import (
     analyze_joint_motion,
@@ -53,6 +56,7 @@ from backend.tools.animation.scripts import (
     _skeleton_hierarchy_code,
 )
 from backend.tools.animation.skeleton import find_bones, skeleton_mapper
+from backend.tools.animation.transaction import edit_animation_transaction
 
 __all__ = [
     "_inspect_clip_code",
@@ -62,7 +66,9 @@ __all__ = [
     "analyze_contact_constraints",
     "analyze_joint_motion",
     "analyze_sampled_pose",
+    "analyze_self_intersections",
     "bake_contact_constraints",
+    "bake_effector_contact",
     "bridge",
     "clip_inspector",
     "compare_animation_previews",
@@ -73,6 +79,7 @@ __all__ = [
     "detect_duplicate_bones",
     "detect_helper_bones",
     "detect_mmd_bone_chains",
+    "edit_animation_transaction",
     "find_bones",
     "inspect_animation_clip",
     "list_animation_backups",
@@ -91,6 +98,7 @@ __all__ = [
     "set_animation_keyframe",
     "set_keyframe_hold",
     "skeleton_mapper",
+    "solve_camera_subject_contact",
     "solve_character_gaze",
     "solve_two_bone_ik",
     "validate_humanoid_avatar",

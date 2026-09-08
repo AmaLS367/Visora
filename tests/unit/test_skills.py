@@ -13,6 +13,9 @@ EXPECTED_SKILLS = [
     "visora-gaze-and-acting-workflow",
     "visora-animation-qa-workflow",
     "visora-motion-polish-workflow",
+    "visora-camera-contact-workflow",
+    "visora-sequence-authoring-workflow",
+    "visora-lookdev-workflow",
 ]
 
 
@@ -127,3 +130,30 @@ def test_motion_polish_workflow_skill_acceptance() -> None:
     assert "never infer animation polish from a static screenshot" in lower
     assert "analyze_joint_motion" in content
     assert "set_keyframe_hold" in content
+
+
+def test_camera_contact_workflow_skill_acceptance() -> None:
+    content = (SKILLS_DIR / "visora-camera-contact-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    lower = content.lower()
+    assert "authoritative timestamp" in lower
+    assert "never add unsynchronized procedural camera shake" in lower
+    assert "solve_camera_subject_contact" in content
+    assert "place_effector_in_viewport" in content
+
+
+def test_sequence_authoring_workflow_skill_acceptance() -> None:
+    content = (SKILLS_DIR / "visora-sequence-authoring-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    lower = content.lower()
+    assert "edit_animation_transaction" in lower
+    assert "never execute disconnected single-keyframe writes" in lower
+    assert "edit_animation_transaction" in content
+    assert "preview_animation" in content
+
+
+def test_lookdev_workflow_skill_acceptance() -> None:
+    content = (SKILLS_DIR / "visora-lookdev-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    lower = content.lower()
+    assert "silhouette contrast" in lower
+    assert "never leave scenes in unlit" in lower
+    assert "diagnose_camera_framing" in content
+    assert "capture_camera_screenshot" in content

@@ -16,7 +16,9 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `analyze_animation_curves` | `clip_path`* | `ClipInspectorResult` |
 | `analyze_contact_constraints` | `target_object_path`*, `clip_path`*, `effectors`, `ground_mode`, `ground_plane_y`, `velocity_threshold`, `height_tolerance` | `ContactAnalysisResult` |
 | `analyze_joint_motion` | `clip_path`*, `target_object_path`*, `bones`, `sample_fps`, `jerk_threshold`, `angular_jerk_threshold` | `JointMotionAnalysisResult` |
+| `analyze_self_intersections` | `target_object_path`*, `clip_path`*, `sample_fps`, `tolerance_meters` | `SelfIntersectionResult` |
 | `bake_contact_constraints` | `clip_path`*, `target_object_path`*, `output_clip_path`, `effectors`, `ground_plane_y`, `fix_foot_sliding`, `fix_penetration`, `operation_id` | `BakeContactConstraintsResult` |
+| `bake_effector_contact` | `clip_path`*, `target_object_path`*, `effector`*, `target_type`, `target_position`, `scene_object_path`, `camera_name`, `viewport_coordinates`, `viewport_depth`, `time_range`, `blend_in_seconds`, `blend_out_seconds`, `pole_vector`, `target_rotation` | `BakeEffectorContactResult` |
 | `check_ticket_status` | `ticket_id`* | `QueueStatusResult` |
 | `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
 | `compare_animation_previews` | `baseline_preview_id`*, `comparison_preview_id`*, `baseline_slide_distance`, `comparison_slide_distance`, `baseline_peak_jerk`, `comparison_peak_jerk`, `baseline_peak_speed`, `comparison_peak_speed`, `baseline_camera_distance`, `comparison_camera_distance`, `keyframes_diff_count` | `AnimationComparisonResult` |
@@ -26,6 +28,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `detect_curve_discontinuities` | `clip_path`*, `filter_curves`, `auto_fix` | `CurveDiscontinuityResult` |
 | `diagnose_camera_framing` | `subject_path`*, `camera_name` | `CameraFramingDiagnosticsResult` |
 | `download_and_import_asset` | `url`, `asset_id`, `target_folder`, `file_name`, `extract_archive`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
+| `edit_animation_transaction` | `operations`*, `transaction_id`, `description` | `AnimationTransactionResult` |
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |
 | `get_bridge_status` | `scan_all_ports` | `BridgeStatusResult` |
 | `get_editor_state` | `include_scene_details` | `EditorStateResult` |
@@ -58,6 +61,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `set_keyframe_hold` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `hold_until`*, `value`, `operation_id` | `AnimationClipEditResult` |
 | `skeleton_mapper` | `root_transform_path`* | `SkeletonMapperResult` |
 | `skinned_mesh_diagnostics` | `mesh_renderer_path`* | `SkinnedMeshDiagnosticsResult` |
+| `solve_camera_subject_contact` | `character_path`*, `character_clip_path`*, `camera_name`*, `camera_clip_path`, `effector`, `impact_time`, `contact_duration`, `lens_viewport`, `lens_distance_meters`, `hit_stop_duration`, `camera_recoil_impulse` | `CameraSubjectContactResult` |
 | `solve_character_gaze` | `target_object_path`*, `target_look_at_position`, `target_transform_path`, `chest_weight`, `neck_weight`, `head_weight`, `eyes_weight`, `up_vector`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `CharacterGazeResult` |
 | `solve_two_bone_ik` | `target_object_path`*, `target_position`*, `effector`, `root_bone`, `mid_bone`, `end_bone`, `target_rotation`, `pole_vector`, `space`, `camera_name`, `weight`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `TwoBoneIKSolveResult` |
 | `validate_humanoid_avatar` | `target_path`, `asset_path` | `HumanoidValidationResult` |

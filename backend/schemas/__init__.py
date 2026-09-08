@@ -38,6 +38,8 @@ from backend.schemas.bridge import (
     EditorStateInfo,
     PortScanResult,
 )
+from backend.schemas.camera_action import CameraSubjectContactResult
+from backend.schemas.contact_bake import BakeEffectorContactResult
 from backend.schemas.gaze import (
     CharacterGazeResult,
     GazeJointRotation,
@@ -57,6 +59,10 @@ from backend.schemas.humanoid import (
 from backend.schemas.ik import (
     TwoBoneIKSolveResult,
     ViewportEffectorPlacementResult,
+)
+from backend.schemas.intersections import (
+    BodyPenetrationEvent,
+    SelfIntersectionResult,
 )
 from backend.schemas.mesh import (
     BoneBindingInfo,
@@ -83,6 +89,10 @@ from backend.schemas.scene import (
     SafeTransactionResult,
     SaveSceneResult,
     WaitForEditorIdleResult,
+)
+from backend.schemas.transaction import (
+    AnimationTransactionOperationModel,
+    AnimationTransactionResult,
 )
 from backend.schemas.vision import (
     CameraFramingDiagnosticsResult,
@@ -112,10 +122,14 @@ __all__ = [
     "AnimationPreviewKeyFrame",
     "AnimationPreviewMotionSummary",
     "AnimationPreviewResult",
+    "AnimationTransactionOperationModel",
+    "AnimationTransactionResult",
     "AssetSearchResultItem",
     "AvatarBlocker",
     "BakeContactConstraintsResult",
+    "BakeEffectorContactResult",
     "BaseToolResult",
+    "BodyPenetrationEvent",
     "BoneBindingInfo",
     "BoneMatch",
     "BoneMotionSummary",
@@ -124,6 +138,7 @@ __all__ = [
     "BoundsInfo",
     "BridgeStatusResult",
     "CameraFramingDiagnosticsResult",
+    "CameraSubjectContactResult",
     "CharacterGazeResult",
     "ClipInspectorResult",
     "ContactAnalysisResult",
@@ -169,6 +184,7 @@ __all__ = [
     "ScreenPoint",
     "ScreenshotResult",
     "SearchAssetsResult",
+    "SelfIntersectionResult",
     "SkeletonMapperResult",
     "SkinnedMeshDiagnosticsResult",
     "SubMeshInfo",
