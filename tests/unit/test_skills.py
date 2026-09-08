@@ -11,6 +11,8 @@ EXPECTED_SKILLS = [
     "visora-rig-retarget-workflow",
     "visora-contact-ik-workflow",
     "visora-gaze-and-acting-workflow",
+    "visora-animation-qa-workflow",
+    "visora-motion-polish-workflow",
 ]
 
 
@@ -105,3 +107,23 @@ def test_gaze_acting_workflow_skill_acceptance() -> None:
     assert "solve_character_gaze" in content
     assert "chest_weight" in content
     assert "was_clamped" in content
+
+
+def test_animation_qa_workflow_skill_acceptance() -> None:
+    content = (SKILLS_DIR / "visora-animation-qa-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    lower = content.lower()
+    assert "never commit an animation without running temporal qa" in lower
+    assert "treat quaternion sign flips as critical defects" in lower
+    assert "detect_curve_discontinuities" in content
+    assert "analyze_joint_motion" in content
+    assert "compare_animation_previews" in content
+
+
+def test_motion_polish_workflow_skill_acceptance() -> None:
+    content = (SKILLS_DIR / "visora-motion-polish-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    lower = content.lower()
+    assert "motion travels in continuous arcs" in lower
+    assert "every energetic action requires anticipation" in lower
+    assert "never infer animation polish from a static screenshot" in lower
+    assert "analyze_joint_motion" in content
+    assert "set_keyframe_hold" in content

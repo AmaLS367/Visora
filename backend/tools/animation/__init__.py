@@ -41,6 +41,11 @@ from backend.tools.animation.inspector import (
     inspect_animation_clip,
 )
 from backend.tools.animation.preview import preview_animation
+from backend.tools.animation.qa import (
+    analyze_joint_motion,
+    compare_animation_previews,
+    detect_curve_discontinuities,
+)
 from backend.tools.animation.sampling import sample_animation_clip
 from backend.tools.animation.scripts import (
     _inspect_clip_code,
@@ -55,12 +60,15 @@ __all__ = [
     "_skeleton_hierarchy_code",
     "analyze_animation_curves",
     "analyze_contact_constraints",
+    "analyze_joint_motion",
     "analyze_sampled_pose",
     "bake_contact_constraints",
     "bridge",
     "clip_inspector",
+    "compare_animation_previews",
     "configure_humanoid_avatar",
     "create_animation_event",
+    "detect_curve_discontinuities",
     "detect_dangerous_curves",
     "detect_duplicate_bones",
     "detect_helper_bones",

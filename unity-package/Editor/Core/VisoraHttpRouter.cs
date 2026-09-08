@@ -338,6 +338,25 @@ namespace Visora.Editor.Core
         public bool hasSampleTime;
     }
 
+    [Serializable]
+    public class MotionQARequest
+    {
+        public string clipPath;
+        public string targetPath;
+        public string[] bones;
+        public int sampleFps = 60;
+        public float jerkThreshold = 120f;
+        public float angularJerkThreshold = 4000f;
+    }
+
+    [Serializable]
+    public class CurveDiscontinuityRequest
+    {
+        public string clipPath;
+        public string[] filterCurves;
+        public bool autoFix;
+    }
+
     public static class VisoraHttpRouter
     {
         public static async Task HandleRequestAsync(HttpListenerContext context)
@@ -425,7 +444,9 @@ namespace Visora.Editor.Core
                             "humanoid_contact_constraints",
                             "inverse_kinematics",
                             "character_gaze",
-                            "viewport_placement"
+                            "viewport_placement",
+                            "animation_motion_qa",
+                            "curve_discontinuity_detection"
                         }
                     });
                     responseJson = JsonUtility.ToJson(info);
@@ -864,6 +885,25 @@ namespace Visora.Editor.Core
                             p.targetPath, p.targetLookAtPosition, p.targetTransformPath,
                             p.chestWeight, p.neckWeight, p.headWeight, p.eyesWeight,
                             p.upVector, p.applyToScene, p.bakeToClip, st));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/qa/motion")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<MotionQARequest>(body) ?? new MotionQARequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationMotionQAService.AnalyzeJointMotion(
+                            p.clipPath, p.targetPath, p.bones, p.sampleFps,
+                            p.jerkThreshold, p.angularJerkThreshold));
+                    responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/animation/qa/discontinuities")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<CurveDiscontinuityRequest>(body) ?? new CurveDiscontinuityRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        AnimationMotionQAService.DetectCurveDiscontinuities(
+                            p.clipPath, p.filterCurves, p.autoFix));
                     responseJson = JsonUtility.ToJson(result);
                 }
                 else

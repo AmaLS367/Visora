@@ -15,12 +15,15 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | --- | --- | --- |
 | `analyze_animation_curves` | `clip_path`* | `ClipInspectorResult` |
 | `analyze_contact_constraints` | `target_object_path`*, `clip_path`*, `effectors`, `ground_mode`, `ground_plane_y`, `velocity_threshold`, `height_tolerance` | `ContactAnalysisResult` |
+| `analyze_joint_motion` | `clip_path`*, `target_object_path`*, `bones`, `sample_fps`, `jerk_threshold`, `angular_jerk_threshold` | `JointMotionAnalysisResult` |
 | `bake_contact_constraints` | `clip_path`*, `target_object_path`*, `output_clip_path`, `effectors`, `ground_plane_y`, `fix_foot_sliding`, `fix_penetration`, `operation_id` | `BakeContactConstraintsResult` |
 | `check_ticket_status` | `ticket_id`* | `QueueStatusResult` |
 | `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
+| `compare_animation_previews` | `baseline_preview_id`*, `comparison_preview_id`*, `baseline_slide_distance`, `comparison_slide_distance`, `baseline_peak_jerk`, `comparison_peak_jerk`, `baseline_peak_speed`, `comparison_peak_speed`, `baseline_camera_distance`, `comparison_camera_distance`, `keyframes_diff_count` | `AnimationComparisonResult` |
 | `compare_screenshots` | `before_image_base64`*, `after_image_base64`*, `threshold` | `VisualComparisonResult` |
 | `configure_humanoid_avatar` | `asset_path`*, `bone_mapping_overrides`, `source_avatar_path` | `HumanoidConfigurationResult` |
 | `create_animation_event` | `clip_path`*, `time`*, `function_name`*, `string_param`, `float_param`, `int_param`, `operation_id` | `AnimationEventEditResult` |
+| `detect_curve_discontinuities` | `clip_path`*, `filter_curves`, `auto_fix` | `CurveDiscontinuityResult` |
 | `diagnose_camera_framing` | `subject_path`*, `camera_name` | `CameraFramingDiagnosticsResult` |
 | `download_and_import_asset` | `url`, `asset_id`, `target_folder`, `file_name`, `extract_archive`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |

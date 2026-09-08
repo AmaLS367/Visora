@@ -1080,6 +1080,42 @@ class UnityBridge:
         response = await self._request("POST", "/api/visora/animation/gaze/solve", json=payload)
         return _decode_json(response)
 
+    async def analyze_joint_motion_native(  # noqa: PLR0913
+        self,
+        clip_path: str,
+        target_path: str,
+        bones: list[str] | None = None,
+        sample_fps: int = 60,
+        jerk_threshold: float = 120.0,
+        angular_jerk_threshold: float = 4000.0,
+    ) -> dict[str, Any]:
+        """Direct native motion derivative analysis via /api/visora/animation/qa/motion."""
+        payload: dict[str, Any] = {
+            "clipPath": clip_path,
+            "targetPath": target_path,
+            "bones": bones or [],
+            "sampleFps": sample_fps,
+            "jerkThreshold": jerk_threshold,
+            "angularJerkThreshold": angular_jerk_threshold,
+        }
+        response = await self._request("POST", "/api/visora/animation/qa/motion", json=payload)
+        return _decode_json(response)
+
+    async def detect_curve_discontinuities_native(
+        self,
+        clip_path: str,
+        filter_curves: list[str] | None = None,
+        auto_fix: bool = False,
+    ) -> dict[str, Any]:
+        """Direct native curve discontinuity scanning via /api/visora/animation/qa/discontinuities."""
+        payload: dict[str, Any] = {
+            "clipPath": clip_path,
+            "filterCurves": filter_curves or [],
+            "autoFix": auto_fix,
+        }
+        response = await self._request("POST", "/api/visora/animation/qa/discontinuities", json=payload)
+        return _decode_json(response)
+
     async def cancel_queue_ticket(self, ticket_id: str) -> dict[str, Any]:
         """
         Attempts to cancel a long-running ticket in the AnkleBreaker task queue.
