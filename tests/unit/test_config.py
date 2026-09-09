@@ -30,6 +30,7 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_mode == "legacy"
     assert settings.unity_bridge_execution_timeout_seconds == 60.0
     assert settings.compact_tool_definitions is True
+    assert settings.compact_tool_results is True
     assert settings.diagnostic_max_bindings == 25
     assert settings.diagnostic_max_transforms == 25
     assert settings.diagnostic_max_bones == 30

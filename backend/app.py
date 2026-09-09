@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver import Context
+from mcp.types import CallToolResult, InputRequiredResult, TextContent
 from mcp.types import Tool as MCPTool
 
 from backend.config import get_settings
@@ -67,8 +70,30 @@ def _compact_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+def _strip_none_values(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: _strip_none_values(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_none_values(v) for v in obj]
+    return obj
+
+
+def _compact_json_text(text: str) -> str:
+    stripped = text.strip()
+    if not (stripped.startswith("{") and stripped.endswith("}")) and not (
+        stripped.startswith("[") and stripped.endswith("]")
+    ):
+        return text
+    try:
+        parsed = json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return text
+    cleaned = _strip_none_values(parsed)
+    return json.dumps(cleaned, separators=(",", ":"), ensure_ascii=False)
+
+
 class VisoraMCPServer(MCPServer):
-    """MCP server wrapper that compacts tool definitions to minimize LLM context window overhead."""
+    """MCP server wrapper that compacts tool definitions and results to minimize LLM context window overhead."""
 
     async def list_tools(self) -> list[MCPTool]:
         tools = await super().list_tools()
@@ -82,6 +107,24 @@ class VisoraMCPServer(MCPServer):
             if tool.input_schema:
                 tool.input_schema = _compact_json_schema(tool.input_schema)
         return tools
+
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        context: Context[Any, Any] | None = None,
+    ) -> CallToolResult | InputRequiredResult:
+        result = await super().call_tool(name, arguments, context)
+        settings = get_settings()
+        if not settings.compact_tool_results:
+            return result
+
+        if isinstance(result, CallToolResult):
+            result.structured_content = None
+            for block in result.content:
+                if isinstance(block, TextContent) and block.text:
+                    block.text = _compact_json_text(block.text)
+        return result
 
 
 mcp = VisoraMCPServer("Visora", instructions=INSTRUCTIONS)
