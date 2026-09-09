@@ -1159,7 +1159,8 @@ class UnityBridge:
             "cameraName": camera_name or "",
             "viewportCoordinates": viewport_coordinates or [0.5, 0.5],
             "viewportDepth": viewport_depth,
-            "timeRange": time_range or [0.0, 1.0],
+            # Empty list => C# falls back to the whole clip; never silently truncate to [0, 1].
+            "timeRange": time_range if time_range is not None else [],
             "blendInSeconds": blend_in_seconds,
             "blendOutSeconds": blend_out_seconds,
             "poleVector": pole_vector or [],

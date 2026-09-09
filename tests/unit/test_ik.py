@@ -147,6 +147,17 @@ async def test_solve_two_bone_ik_success(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.mark.anyio
+async def test_solve_two_bone_ik_requires_sample_time_for_bake() -> None:
+    result = await solve_two_bone_ik(
+        target_object_path="Hero",
+        target_position=[0.0, 0.0, 0.5],
+        bake_to_clip="Assets/Run.anim",
+    )
+    assert not result.success
+    assert "sample_time is required" in (result.error or "")
+
+
+@pytest.mark.anyio
 async def test_place_effector_in_viewport_validation_fails_on_zero_depth() -> None:
     result = await place_effector_in_viewport(
         target_object_path="Hero",

@@ -29,7 +29,7 @@ def _parse_gaze_joints(raw_list: list[Any]) -> list[GazeJointRotation]:
 
 
 @mcp.tool()
-async def solve_character_gaze(  # noqa: PLR0913
+async def solve_character_gaze(  # noqa: PLR0911, PLR0913
     target_object_path: str,
     target_look_at_position: list[float] | None = None,
     target_transform_path: str | None = None,
@@ -68,6 +68,13 @@ async def solve_character_gaze(  # noqa: PLR0913
         return CharacterGazeResult(
             success=False,
             error="Either target_look_at_position or target_transform_path must be provided.",
+            target_object_path=target_object_path,
+        )
+
+    if bake_to_clip and sample_time is None:
+        return CharacterGazeResult(
+            success=False,
+            error="sample_time is required when bake_to_clip is set",
             target_object_path=target_object_path,
         )
 

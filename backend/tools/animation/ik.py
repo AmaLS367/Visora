@@ -13,7 +13,7 @@ _CAPABILITY_VIEWPORT = "viewport_placement"
 
 
 @mcp.tool()
-async def solve_two_bone_ik(  # noqa: PLR0913
+async def solve_two_bone_ik(  # noqa: PLR0911, PLR0913
     target_object_path: str,
     target_position: list[float],
     effector: Literal["left_foot", "right_foot", "left_hand", "right_hand"] | None = None,
@@ -59,6 +59,13 @@ async def solve_two_bone_ik(  # noqa: PLR0913
         return TwoBoneIKSolveResult(
             success=False,
             error="target_position must contain at least 3 coordinates [x, y, z]",
+            target_object_path=target_object_path,
+        )
+
+    if bake_to_clip and sample_time is None:
+        return TwoBoneIKSolveResult(
+            success=False,
+            error="sample_time is required when bake_to_clip is set",
             target_object_path=target_object_path,
         )
 

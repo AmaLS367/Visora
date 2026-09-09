@@ -23,7 +23,10 @@ class AnimationTransactionOperationModel(BaseModel):
     duration: float = Field(default=0.0, description="Duration in seconds for hold operation")
     value: float = Field(default=0.0, description="Single float value for keyframe/hold")
     values: list[float] | None = Field(default=None, description="Multi-channel float values for keyframe/hold")
-    tangent_mode: str = Field(default="smooth", description="Tangent mode: smooth, linear, constant, free")
+    tangent_mode: str = Field(
+        default="smooth",
+        description="Tangent mode: smooth, linear, step, ease_in, ease_out, ease_in_out",
+    )
     function_name: str = Field(default="", description="Animation event callback function name")
     int_parameter: int = Field(default=0, description="Integer parameter for animation event")
     float_parameter: float = Field(default=0.0, description="Float parameter for animation event")
