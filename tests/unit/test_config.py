@@ -32,11 +32,11 @@ def test_default_settings() -> None:
     assert settings.compact_tool_definitions is True
     assert settings.compact_tool_results is True
     assert settings.vision_inline_max_dimension == 1280
-    assert settings.diagnostic_max_bindings == 25
-    assert settings.diagnostic_max_transforms == 25
-    assert settings.diagnostic_max_bones == 30
-    assert settings.diagnostic_max_bone_bindings == 30
-    assert settings.diagnostic_max_hierarchy_nodes == 50
+    assert settings.diagnostic_max_bindings == 12
+    assert settings.diagnostic_max_transforms == 12
+    assert settings.diagnostic_max_bones == 16
+    assert settings.diagnostic_max_bone_bindings == 16
+    assert settings.diagnostic_max_hierarchy_nodes == 24
     assert settings.log_level == "INFO"
     assert settings.sketchfab_api_token == ""
     assert settings.poly_pizza_api_key == ""

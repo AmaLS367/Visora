@@ -55,13 +55,13 @@ async def test_inspect_animation_clip_truncation_and_filtering(monkeypatch: pyte
 
     monkeypatch.setattr(animation, "bridge", FakeBridge([unity_response]))
 
-    # Default max_bindings=25
+    # Default max_bindings=12
     res = await animation.inspect_animation_clip("Assets/BigClip.anim")
     assert res.success is True
     assert res.curves_count == 60
-    assert len(res.bindings) == 25
+    assert len(res.bindings) == 12
     assert "truncation_note" in res.summary_metrics
-    assert "Showing 25 of 60 bindings" in res.summary_metrics["truncation_note"]
+    assert "Showing 12 of 60 bindings" in res.summary_metrics["truncation_note"]
 
     # Filter by path "Spine"
     monkeypatch.setattr(animation, "bridge", FakeBridge([unity_response]))
@@ -102,11 +102,11 @@ async def test_sample_animation_clip_truncation_and_priority(monkeypatch: pytest
 
     monkeypatch.setattr(animation, "bridge", FakeBridge([unity_response]))
 
-    # Default max_transforms is 25
+    # Default max_transforms is 12
     res = await animation.sample_animation_clip("Player", "Assets/Test.anim")
     assert res.success is True
-    assert len(res.sampled_transforms) == 25
-    assert any("Showing 25 of 50 transforms" in w for w in res.warnings)
+    assert len(res.sampled_transforms) == 12
+    assert any("Showing 12 of 50 transforms" in w for w in res.warnings)
     # The anomalous bone (Bone_45) must be prioritized and included
     assert "Root/Bone_45" in res.sampled_transforms
     assert len(res.anomalies_detected) > 0
@@ -141,12 +141,12 @@ async def test_skeleton_mapper_truncation(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(animation, "bridge", FakeBridge([unity_response]))
 
-    # Default max_bones is 30
+    # Default max_bones is 16
     res = await animation.skeleton_mapper("Root")
     assert res.success is True
     assert res.bone_count == 60
-    assert len(res.bones) == 30
-    assert any("Showing 30 of 60 bones" in w for w in res.warnings)
+    assert len(res.bones) == 16
+    assert any("Showing 16 of 60 bones" in w for w in res.warnings)
 
 
 @pytest.mark.anyio
@@ -188,16 +188,16 @@ async def test_skinned_mesh_diagnostics_truncation(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(mesh, "bridge", FakeBridge([unity_response]))
 
-    # Default max_bone_bindings is 30
+    # Default max_bone_bindings is 16
     res = await mesh.skinned_mesh_diagnostics("Hero")
     assert res.success is True
     assert res.bone_count == 50
-    assert len(res.bone_bindings) == 30
+    assert len(res.bone_bindings) == 16
     assert res.has_broken_bones is True
     # The 2 null bones must be prioritized in bone_bindings
     null_bindings = [b for b in res.bone_bindings if b.is_null]
     assert len(null_bindings) == 2
-    assert any("Showing 30 of 50 bone bindings" in w for w in res.warnings)
+    assert any("Showing 16 of 50 bone bindings" in w for w in res.warnings)
 
 
 @pytest.mark.anyio
@@ -217,8 +217,8 @@ async def test_inspect_imported_asset_truncation(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(asset.operations, "bridge", FakeBridge([unity_response]))
 
-    # Default max_hierarchy_nodes is 50
+    # Default max_hierarchy_nodes is 24
     res = await asset.inspect_imported_asset("Assets/Model.glb")
     assert res.success is True
-    assert len(res.hierarchy_tree) == 50
-    assert any("Showing 50 of 80 nodes in hierarchy_tree" in w for w in res.warnings)
+    assert len(res.hierarchy_tree) == 24
+    assert any("Showing 24 of 80 nodes in hierarchy_tree" in w for w in res.warnings)
