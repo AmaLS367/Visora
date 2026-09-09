@@ -27,8 +27,7 @@ TOOL_FUNCTIONS = [
     vision.camera.list_scene_cameras,
     vision.camera.project_world_points,
     vision.camera.diagnose_camera_framing,
-    vision.video.get_video_frames,
-    vision.video.get_video_mp4,
+    vision.video.capture_video,
     # Animation & Skeleton
     animation.inspector.inspect_animation_clip,
     animation.sampling.sample_animation_clip,
@@ -280,15 +279,16 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.success is False
     assert res.error is not None
 
-    # 17. get_video_frames
-    raw_res = await vision.video.get_video_frames(duration_seconds=0.1)
+    # 17. capture_video (frames)
+    raw_res = await vision.video.capture_video(output="frames", duration_seconds=0.1)
     res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert isinstance(res, BaseToolResult)
     assert res.success is False
     assert res.error is not None
 
-    # 19. get_video_mp4
-    res = await vision.video.get_video_mp4(duration_seconds=0.1)
+    # 18. capture_video (mp4)
+    raw_res = await vision.video.capture_video(output="mp4", duration_seconds=0.1)
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert isinstance(res, BaseToolResult)
     assert res.success is False
     assert res.error is not None
@@ -381,14 +381,15 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     assert res.success is False
     assert res.error is not None
 
-    # 12. get_video_frames with error
-    raw_res = await vision.video.get_video_frames(duration_seconds=0.1)
+    # 12. capture_video (frames) with error
+    raw_res = await vision.video.capture_video(output="frames", duration_seconds=0.1)
     res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert res.success is False
     assert res.error is not None
 
-    # 13. get_video_mp4 with error
-    res = await vision.video.get_video_mp4(duration_seconds=0.1)
+    # 13. capture_video (mp4) with error
+    raw_res = await vision.video.capture_video(output="mp4", duration_seconds=0.1)
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert res.success is False
     assert res.error is not None
 

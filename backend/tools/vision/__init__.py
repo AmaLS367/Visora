@@ -38,8 +38,7 @@ from backend.tools.vision.scripts import (
 )
 from backend.tools.vision.video import (
     _capture_video_frame,
-    get_video_frames,
-    get_video_mp4,
+    capture_video,
 )
 
 __all__ = [
@@ -64,11 +63,10 @@ __all__ = [
     "_sleep",
     "_validate_video_request",
     "bridge",
+    "capture_video",
     "compare_images_data",
     "compare_screenshots",
     "diagnose_camera_framing",
-    "get_video_frames",
-    "get_video_mp4",
     "inspect_scene_visual",
     "list_scene_cameras",
     "logger",

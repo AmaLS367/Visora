@@ -168,35 +168,33 @@ class VideoFrameSequence(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Sequence-level warnings")
 
 
-class VideoFramesResult(BaseToolResult):
-    """Result schema for sampled camera frame sequences."""
+class VideoCaptureResult(BaseToolResult):
+    """Result schema for camera video capture (sampled frames contact sheet or MP4 export)."""
 
+    output_format: str = Field(..., description="Capture output format: 'frames' or 'mp4'")
+    artifact_path: str | None = Field(
+        default=None, description="Local artifact path for the exported video or contact sheet file"
+    )
     contact_sheet_path: str | None = Field(
         default=None, description="Absolute local path to tiled contact sheet PNG artifact"
     )
     sequences: list[VideoFrameSequence] = Field(default_factory=list, description="Captured camera frame sequences")
-    warnings: list[str] = Field(default_factory=list, description="Workflow-level warnings")
-    recommended_interpretation: str = Field(..., description="Text guidance for how agents should inspect frames")
-
-
-class VideoMp4Result(BaseToolResult):
-    """Result schema for MP4 video export from sampled camera frames."""
-
-    video_base64: str | None = Field(default=None, description="Base64 encoded MP4 bytes")
-    artifact_path: str | None = Field(default=None, description="Local artifact path for the MP4 file")
-    format: str = Field(default="mp4", description="Video container format")
-    camera_name: str = Field(..., description="Camera used for the video")
-    mode: str = Field(..., description="Capture mode")
-    duration_seconds: float = Field(..., description="Requested capture duration")
-    fps: int = Field(..., description="Requested video frame rate")
+    camera_name: str | None = Field(default=None, description="Camera used for the capture")
+    mode: str | None = Field(default=None, description="Capture mode")
+    duration_seconds: float | None = Field(default=None, description="Requested capture duration")
+    fps: int | None = Field(default=None, description="Requested frame rate")
     actual_fps: float | None = Field(
         default=None,
-        description="Frame rate the capture achieved and the MP4 is encoded at, so playback runs at real speed",
+        description="Frame rate achieved during capture and encoding",
     )
-    timing_source: str = Field(
-        default="python_wallclock",
+    timing_source: str | None = Field(
+        default=None,
         description="How frame timing was produced",
     )
-    width: int = Field(..., description="Video width in pixels")
-    height: int = Field(..., description="Video height in pixels")
-    warnings: list[str] = Field(default_factory=list, description="Video export warnings")
+    width: int | None = Field(default=None, description="Video width in pixels")
+    height: int | None = Field(default=None, description="Video height in pixels")
+    video_base64: str | None = Field(default=None, description="Base64 encoded MP4 bytes if requested")
+    warnings: list[str] = Field(default_factory=list, description="Workflow or video export warnings")
+    recommended_interpretation: str | None = Field(
+        default=None, description="Text guidance for how agents should inspect captured frames"
+    )

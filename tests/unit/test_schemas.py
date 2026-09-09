@@ -53,10 +53,9 @@ from backend.schemas.vision import (
     SceneCameraInfo,
     ScreenPoint,
     ScreenshotResult,
+    VideoCaptureResult,
     VideoFrame,
     VideoFrameSequence,
-    VideoFramesResult,
-    VideoMp4Result,
     VisualCapture,
     VisualComparisonResult,
     VisualInspectionResult,
@@ -281,7 +280,7 @@ def test_vision_schemas_serialization() -> None:
     )
     assert framing_res.framing_status == "centered"
 
-    # VideoFrame, FrameMotionMetrics, VideoFrameSequence, VideoFramesResult, VideoMp4Result
+    # VideoFrame, FrameMotionMetrics, VideoFrameSequence, VideoCaptureResult
     vf = VideoFrame(
         frame_index=0,
         timestamp_seconds=0.0,
@@ -306,16 +305,19 @@ def test_vision_schemas_serialization() -> None:
         frames=[vf],
         motion_metrics=[metric],
     )
-    v_res = VideoFramesResult(
+    v_res = VideoCaptureResult(
         success=True,
+        output_format="frames",
         sequences=[seq],
         recommended_interpretation="Check motion consistency",
     )
+    assert v_res.output_format == "frames"
     assert len(v_res.sequences) == 1
     assert v_res.sequences[0].fps == 30
 
-    mp4_res = VideoMp4Result(
+    mp4_res = VideoCaptureResult(
         success=True,
+        output_format="mp4",
         camera_name="Main",
         mode="game_camera",
         duration_seconds=1.0,
@@ -325,7 +327,7 @@ def test_vision_schemas_serialization() -> None:
         artifact_path="/tmp/video.mp4",
         video_base64="xyz",
     )
-    assert mp4_res.format == "mp4"
+    assert mp4_res.output_format == "mp4"
 
 
 def test_animation_schemas_serialization() -> None:

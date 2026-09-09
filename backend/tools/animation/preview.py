@@ -152,7 +152,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         )
     if bool(editor_state.get("isPlaying", False)):
         return _failed_preview(
-            error='preview_animation requires Edit Mode; use get_video_mp4(mode="game_camera") to record a running game.',
+            error='preview_animation requires Edit Mode; use capture_video(output="mp4", mode="game_camera") to record a running game.',
             target_object_path=target_object_path,
             clip_path=clip_path,
             camera_name=camera_name,

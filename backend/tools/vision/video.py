@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.mcpserver import Image
 
@@ -11,10 +11,9 @@ import backend.tools.vision as vision_pkg
 from backend.app import mcp
 from backend.schemas import (
     FrameMotionMetrics,
+    VideoCaptureResult,
     VideoFrame,
     VideoFrameSequence,
-    VideoFramesResult,
-    VideoMp4Result,
 )
 from backend.tools.vision.image_utils import (
     _create_contact_sheet,
@@ -618,10 +617,9 @@ async def _capture_frame_sequences(  # noqa: PLR0913
     """
     Shared capture core owning validation, Play Mode lifecycle, and frame timing.
 
-    Both public video tools run through here with their own fps ceiling. get_video_frames caps fps
-    because it returns every frame as base64 in the payload; MP4 export has no such payload cost and
-    so allows a higher rate. Routing one tool through the other reapplied the wrong ceiling and made
-    get_video_mp4 fail on its own default fps.
+    Both output modes ("frames" and "mp4") run through here with their own fps ceiling.
+    "frames" caps fps at 12 because it samples frames for contact sheet inspection;
+    "mp4" export has no such payload cost and allows up to 30 fps.
     """
     validation_error = _validate_video_request(duration_seconds, fps, width, height, max_fps=max_fps)
     if validation_error is not None:
@@ -719,61 +717,13 @@ async def _capture_frame_sequences(  # noqa: PLR0913
             await _restore_edit_mode(outcome.warnings)
 
 
-@mcp.tool()
-async def get_video_frames(  # noqa: PLR0913
-    camera_names: list[str] | None = None,
-    subject_path: str | None = None,
-    mode: str = "diagnostic_lit",
-    clip_path: str | None = None,
-    target_object_path: str | None = None,
-    duration_seconds: float = 2.0,
-    fps: int = 6,
-    width: int = 1280,
-    height: int = 720,
-    enter_play_mode: bool = True,
-    include_motion_metrics: bool = True,
-) -> tuple[VideoFramesResult, Image] | VideoFramesResult:
-    """
-    Captures sampled camera frames for agents that reason over frame sequences instead of raw video.
-
-    Args:
-        camera_names: Optional list of Unity camera names to sample from. Defaults to ["Main Camera"].
-        subject_path: Optional hierarchy path to the subject GameObject to frame.
-        mode: Capture mode. "diagnostic_lit" renders a neutral temporary rig, "game_camera" records a
-            scene camera in Play Mode, and "authored_clip" samples an AnimationClip at exact
-            timestamps in Edit Mode - deterministic at any fps, but showing only what the clip drives.
-        clip_path: AnimationClip asset path or name. Required for mode "authored_clip".
-        target_object_path: Scene path of the GameObject the clip is applied to. Required for
-            mode "authored_clip".
-        duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
-        fps: Sampling frame rate (1 to 12).
-        width: Frame width in pixels. Defaults to 1280.
-        height: Frame height in pixels. Defaults to 720.
-        enter_play_mode: If True, temporarily enters Play Mode during capture.
-        include_motion_metrics: If True, computes delta motion metrics between adjacent frames.
-
-    Returns:
-        A tuple of (VideoFramesResult, Image) with captured frame metadata and a contact sheet image for vision,
-        or a VideoFramesResult on failure.
-    """
-    outcome = await _capture_frame_sequences(
-        camera_names=camera_names or ["Main Camera"],
-        subject_path=subject_path,
-        mode=mode,
-        clip_path=clip_path,
-        target_object_path=target_object_path,
-        duration_seconds=duration_seconds,
-        fps=fps,
-        width=width,
-        height=height,
-        enter_play_mode=enter_play_mode,
-        include_motion_metrics=include_motion_metrics,
-        max_fps=12,
-    )
-
+def _build_frames_capture_result(
+    outcome: _CaptureOutcome,
+) -> tuple[VideoCaptureResult, Image] | VideoCaptureResult:
     if not outcome.sequences and outcome.error is not None:
-        return VideoFramesResult(
+        return VideoCaptureResult(
             success=False,
+            output_format="frames",
             error=outcome.error,
             warnings=outcome.warnings,
             recommended_interpretation="No frames were captured because the request could not start.",
@@ -790,10 +740,12 @@ async def get_video_frames(  # noqa: PLR0913
         sheet = _create_contact_sheet(frame_imgs, labels, cols=4)
         contact_sheet_path = _save_image_artifact(sheet, prefix="video_frames_sheet", subfolder="frames")
 
-    result = VideoFramesResult(
+    result = VideoCaptureResult(
         success=outcome.success,
+        output_format="frames",
         error=outcome.error,
         contact_sheet_path=str(contact_sheet_path) if contact_sheet_path else None,
+        artifact_path=str(contact_sheet_path) if contact_sheet_path else None,
         sequences=outcome.sequences,
         warnings=[
             "Use sampled frames and motion_metrics for temporal reasoning when the model cannot inspect MP4 directly.",
@@ -810,63 +762,20 @@ async def get_video_frames(  # noqa: PLR0913
     return result
 
 
-@mcp.tool()
-async def get_video_mp4(  # noqa: PLR0913
-    camera_name: str = "Main Camera",
-    subject_path: str | None = None,
-    mode: str = "diagnostic_lit",
-    clip_path: str | None = None,
-    target_object_path: str | None = None,
-    duration_seconds: float = 2.0,
-    fps: int = 24,
-    width: int = 1280,
-    height: int = 720,
-    enter_play_mode: bool = True,
-    include_video_base64: bool = False,
-) -> VideoMp4Result:
-    """
-    Captures a short camera video and returns MP4 bytes for video-capable models.
-
-    Args:
-        camera_name: Name of the Unity camera used for video recording. Defaults to "Main Camera".
-        subject_path: Optional hierarchy path to the subject GameObject to frame.
-        mode: Capture mode. "diagnostic_lit" renders a neutral temporary rig, "game_camera" records a
-            scene camera in Play Mode, and "authored_clip" samples an AnimationClip at exact
-            timestamps in Edit Mode - the only mode that hits a high fps exactly.
-        clip_path: AnimationClip asset path or name. Required for mode "authored_clip".
-        target_object_path: Scene path of the GameObject the clip is applied to. Required for
-            mode "authored_clip".
-        duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
-        fps: Recording frame rate (1 to 30). Defaults to 24.
-        width: Video width in pixels. Defaults to 1280.
-        height: Video height in pixels. Defaults to 720.
-        enter_play_mode: If True, temporarily enters Play Mode during capture. Visora polls the bridge
-            to ensure domain reload completes before frames are captured. Ignored by "authored_clip",
-            which samples in Edit Mode and needs no domain reload.
-        include_video_base64: If True, includes base64-encoded MP4 bytes in the text response (default False).
-
-    Returns:
-        A VideoMp4Result containing saved artifact path and video metadata.
-        The MP4 is encoded at the frame rate actually achieved, so playback runs at real speed.
-    """
-    outcome = await _capture_frame_sequences(
-        camera_names=[camera_name],
-        subject_path=subject_path,
-        mode=mode,
-        clip_path=clip_path,
-        target_object_path=target_object_path,
-        duration_seconds=duration_seconds,
-        fps=fps,
-        width=width,
-        height=height,
-        enter_play_mode=enter_play_mode,
-        include_motion_metrics=False,
-        max_fps=30,
-    )
-
+def _build_mp4_capture_result(  # noqa: PLR0913
+    outcome: _CaptureOutcome,
+    camera_name: str,
+    mode: str,
+    duration_seconds: float,
+    fps: int,
+    width: int,
+    height: int,
+    include_video_base64: bool,
+) -> VideoCaptureResult:
     if not outcome.success or not outcome.sequences or not outcome.sequences[0].frames:
-        return VideoMp4Result(
+        return VideoCaptureResult(
             success=False,
+            output_format="mp4",
             error=outcome.error or "no frames available for MP4 export",
             camera_name=camera_name,
             mode=mode,
@@ -887,8 +796,9 @@ async def get_video_mp4(  # noqa: PLR0913
         )
     except Exception as exc:
         vision_pkg.logger.exception("MP4 export failed")
-        return VideoMp4Result(
+        return VideoCaptureResult(
             success=False,
+            output_format="mp4",
             error=str(exc),
             camera_name=camera_name,
             mode=mode,
@@ -899,11 +809,11 @@ async def get_video_mp4(  # noqa: PLR0913
             warnings=warnings,
         )
 
-    return VideoMp4Result(
+    return VideoCaptureResult(
         success=True,
+        output_format="mp4",
         video_base64=base64.b64encode(video_bytes).decode("ascii") if include_video_base64 else None,
         artifact_path=str(artifact_path),
-        format="mp4",
         camera_name=camera_name,
         mode=mode,
         duration_seconds=duration_seconds,
@@ -916,9 +826,98 @@ async def get_video_mp4(  # noqa: PLR0913
     )
 
 
+@mcp.tool()
+async def capture_video(  # noqa: PLR0913
+    output: Literal["frames", "mp4"] = "frames",
+    camera_names: list[str] | None = None,
+    subject_path: str | None = None,
+    mode: str = "diagnostic_lit",
+    clip_path: str | None = None,
+    target_object_path: str | None = None,
+    duration_seconds: float = 2.0,
+    fps: int | None = None,
+    width: int = 1280,
+    height: int = 720,
+    enter_play_mode: bool = True,
+    include_motion_metrics: bool = True,
+    include_video_base64: bool = False,
+) -> tuple[VideoCaptureResult, Image] | VideoCaptureResult:
+    """Captures camera motion as either sampled frames contact sheet or an MP4 video.
+
+    Args:
+        output: Capture output format: "frames" for sampled PNG contact sheet (default),
+            or "mp4" for encoded MP4 video artifact.
+        camera_names: Optional list of Unity camera names to sample from. Defaults to ["Main Camera"].
+            In "mp4" mode, the first camera is used for video encoding.
+        subject_path: Optional hierarchy path to the subject GameObject to frame.
+        mode: Capture mode. "diagnostic_lit" renders a neutral temporary rig, "game_camera" records a
+            scene camera in Play Mode, and "authored_clip" samples an AnimationClip at exact
+            timestamps in Edit Mode - deterministic at any fps, but showing only what the clip drives.
+        clip_path: AnimationClip asset path or name. Required for mode "authored_clip".
+        target_object_path: Scene path of the GameObject the clip is applied to. Required for
+            mode "authored_clip".
+        duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
+        fps: Sampling or recording frame rate. Defaults to 6 for "frames" (1 to 12), and 24 for "mp4" (1 to 30).
+        width: Frame width in pixels. Defaults to 1280.
+        height: Frame height in pixels. Defaults to 720.
+        enter_play_mode: If True, temporarily enters Play Mode during capture. Ignored by "authored_clip".
+        include_motion_metrics: If True, computes delta motion metrics between adjacent frames (used in "frames" mode).
+        include_video_base64: If True, includes base64-encoded MP4 bytes in the text response (used in "mp4" mode).
+
+    Returns:
+        For output="frames": A tuple of (VideoCaptureResult, Image) with captured frame metadata and contact sheet,
+        or a VideoCaptureResult on failure.
+        For output="mp4": A VideoCaptureResult containing artifact path and video metadata.
+    """
+    if output not in ("frames", "mp4"):
+        return VideoCaptureResult(
+            success=False,
+            output_format=output,
+            error=f"output must be 'frames' or 'mp4', got {output!r}",
+        )
+
+    resolved_fps = fps if fps is not None else (6 if output == "frames" else 24)
+    max_fps = 12 if output == "frames" else 30
+    target_cameras = camera_names or ["Main Camera"]
+
+    if output == "mp4":
+        target_cameras = [target_cameras[0]]
+        calc_motion_metrics = False
+    else:
+        calc_motion_metrics = include_motion_metrics
+
+    outcome = await _capture_frame_sequences(
+        camera_names=target_cameras,
+        subject_path=subject_path,
+        mode=mode,
+        clip_path=clip_path,
+        target_object_path=target_object_path,
+        duration_seconds=duration_seconds,
+        fps=resolved_fps,
+        width=width,
+        height=height,
+        enter_play_mode=enter_play_mode,
+        include_motion_metrics=calc_motion_metrics,
+        max_fps=max_fps,
+    )
+
+    if output == "frames":
+        return _build_frames_capture_result(outcome)
+
+    return _build_mp4_capture_result(
+        outcome=outcome,
+        camera_name=target_cameras[0],
+        mode=mode,
+        duration_seconds=duration_seconds,
+        fps=resolved_fps,
+        width=width,
+        height=height,
+        include_video_base64=include_video_base64,
+    )
+
+
 __all__ = [
     "_capture_frame_sequences",
     "_capture_video_frame",
-    "get_video_frames",
-    "get_video_mp4",
+    "capture_video",
 ]

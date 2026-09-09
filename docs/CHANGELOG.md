@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed single-op keyframe and event authoring tools (`set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, `set_keyframe_hold`, `create_animation_event`, `remove_animation_event`) in favor of atomic `edit_animation_transaction`.
   - Merged polling wrapper `wait_for_editor_idle` into `get_editor_state(wait=True)`.
   - Merged polling wrapper `wait_for_ticket` into `check_ticket_status(wait=True)`.
+  - Merged `get_video_frames` and `get_video_mp4` into a unified `capture_video` tool with `output: Literal["frames", "mp4"]`.
 
 ### Fixed
 
