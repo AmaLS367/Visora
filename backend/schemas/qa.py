@@ -16,11 +16,11 @@ class MotionAnomaly(BaseModel):
         ...,
         description="Name of the affected bone or transform",
     )
-    anomaly_type: Literal["jerk_spike", "angular_jerk_spike", "velocity_snap", "arc_kink"] = Field(
+    anomaly_type: Literal["jerk_spike", "angular_jerk_spike", "velocity_snap", "arc_kink", "unknown"] = Field(
         ...,
-        description="Classification of the anomaly",
+        description="Classification of the anomaly ('unknown' if Unity reported a type this client does not model)",
     )
-    severity: Literal["critical", "warning"] = Field(
+    severity: Literal["critical", "warning", "unknown"] = Field(
         ...,
         description="'critical' indicates severe popping or snapping; 'warning' indicates mild jitter",
     )
@@ -131,11 +131,11 @@ class CurveDiscontinuityItem(BaseModel):
         ...,
         description="Timestamp (seconds) of the offending keyframe interval",
     )
-    issue_type: Literal["quaternion_flip", "euler_wrap", "tangent_spike"] = Field(
+    issue_type: Literal["quaternion_flip", "euler_wrap", "tangent_spike", "unknown"] = Field(
         ...,
-        description="Classification of the curve discontinuity",
+        description="Classification of the curve discontinuity ('unknown' if Unity reported an unmodelled type)",
     )
-    severity: Literal["critical", "warning"] = Field(
+    severity: Literal["critical", "warning", "unknown"] = Field(
         ...,
         description="'critical' causes 360° flips or camera snaps; 'warning' causes overshoots",
     )

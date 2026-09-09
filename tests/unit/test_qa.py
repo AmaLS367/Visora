@@ -139,6 +139,40 @@ async def test_analyze_joint_motion_success(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.anyio
+async def test_analyze_joint_motion_coerces_unknown_enum(monkeypatch: pytest.MonkeyPatch) -> None:
+    bridge = _FakeQABridge(
+        motion_response={
+            "success": True,
+            "clipPath": "Assets/Kick.anim",
+            "targetObjectPath": "Characters/Hero",
+            "overallSmoothnessScore": 0.9,
+            "anomalies": [
+                {
+                    "timestamp": 0.2,
+                    "boneName": "Hips",
+                    "anomalyType": "velocity_reversal",
+                    "severity": "info",
+                    "metricValue": 1.0,
+                    "threshold": 0.5,
+                    "description": "x",
+                    "recommendation": "y",
+                }
+            ],
+            "perBoneSummary": [],
+            "recommendations": [],
+            "warnings": [],
+        }
+    )
+    monkeypatch.setattr(animation_pkg, "bridge", bridge)
+
+    result = await analyze_joint_motion(clip_path="Assets/Kick.anim", target_object_path="Characters/Hero")
+    assert result.success
+    assert result.anomalies[0].anomaly_type == "unknown"
+    assert result.anomalies[0].severity == "unknown"
+    assert any("velocity_reversal" in w for w in result.warnings)
+
+
+@pytest.mark.anyio
 async def test_detect_curve_discontinuities_rejects_play_mode_on_fix(monkeypatch: pytest.MonkeyPatch) -> None:
     bridge = _FakeQABridge(is_playing=True)
     monkeypatch.setattr(animation_pkg, "bridge", bridge)
@@ -201,3 +235,13 @@ async def test_compare_animation_previews_flags_regression() -> None:
     assert result.success
     assert len(result.regression_warnings) >= 1
     assert "Regression" in result.regression_warnings[0]
+
+
+@pytest.mark.anyio
+async def test_compare_animation_previews_requires_baseline_metrics() -> None:
+    result = await compare_animation_previews(
+        baseline_preview_id="prev-1",
+        comparison_preview_id="prev-2",
+    )
+    assert result.success is False
+    assert "baseline" in (result.error or "").lower()

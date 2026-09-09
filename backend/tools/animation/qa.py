@@ -10,13 +10,23 @@ from backend.schemas import (
     JointMotionAnalysisResult,
     MotionAnomaly,
 )
-from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger
+from backend.tools.animation.common import (
+    _bridge_supports,
+    _require_edit_mode,
+    coerce_literal,
+    logger,
+    warns,
+)
 
 _CAPABILITY_MOTION_QA = "animation_motion_qa"
 _CAPABILITY_CURVE_DISCONTINUITY = "curve_discontinuity_detection"
 
+_ANOMALY_TYPES = {"jerk_spike", "angular_jerk_spike", "velocity_snap", "arc_kink"}
+_SEVERITY = {"critical", "warning"}
+_DISCONTINUITY_TYPES = {"quaternion_flip", "euler_wrap", "tangent_spike"}
 
-def _parse_anomalies(raw_list: list[Any]) -> list[MotionAnomaly]:
+
+def _parse_motion_anomalies(raw_list: list[Any], warnings: list[str]) -> list[MotionAnomaly]:
     anomalies: list[MotionAnomaly] = []
     for item in raw_list:
         if isinstance(item, dict):
@@ -24,8 +34,10 @@ def _parse_anomalies(raw_list: list[Any]) -> list[MotionAnomaly]:
                 MotionAnomaly(
                     timestamp=float(item.get("timestamp", 0.0)),
                     bone_name=str(item.get("boneName", "")),
-                    anomaly_type=item.get("anomalyType", "jerk_spike"),
-                    severity=item.get("severity", "warning"),
+                    anomaly_type=coerce_literal(
+                        item.get("anomalyType"), _ANOMALY_TYPES, warnings, field="anomaly_type"
+                    ),
+                    severity=coerce_literal(item.get("severity"), _SEVERITY, warnings, field="severity"),
                     metric_value=float(item.get("metricValue", 0.0)),
                     threshold=float(item.get("threshold", 0.0)),
                     description=str(item.get("description", "")),
@@ -52,7 +64,7 @@ def _parse_bone_summaries(raw_list: list[Any]) -> list[BoneMotionSummary]:
     return summaries
 
 
-def _parse_discontinuity_items(raw_list: list[Any]) -> list[CurveDiscontinuityItem]:
+def _parse_discontinuity_items(raw_list: list[Any], warnings: list[str]) -> list[CurveDiscontinuityItem]:
     items: list[CurveDiscontinuityItem] = []
     for item in raw_list:
         if isinstance(item, dict):
@@ -61,8 +73,10 @@ def _parse_discontinuity_items(raw_list: list[Any]) -> list[CurveDiscontinuityIt
                     curve_path=str(item.get("curvePath", "")),
                     property_name=str(item.get("propertyName", "")),
                     timestamp=float(item.get("timestamp", 0.0)),
-                    issue_type=item.get("issueType", "quaternion_flip"),
-                    severity=item.get("severity", "critical"),
+                    issue_type=coerce_literal(
+                        item.get("issueType"), _DISCONTINUITY_TYPES, warnings, field="issue_type"
+                    ),
+                    severity=coerce_literal(item.get("severity"), _SEVERITY, warnings, field="severity"),
                     current_value=float(item.get("currentValue", 0.0)),
                     description=str(item.get("description", "")),
                     suggested_fix=str(item.get("suggestedFix", "")),
@@ -121,10 +135,11 @@ async def analyze_joint_motion(  # noqa: PLR0913
                 error=str(resp.get("error", "Failed to analyze joint motion")),
                 clip_path=clip_path,
                 target_object_path=target_object_path,
-                warnings=[str(w) for w in resp.get("warnings", [])],
+                warnings=warns(resp),
             )
 
-        anomalies = _parse_anomalies(resp.get("anomalies", []))
+        result_warnings = warns(resp)
+        anomalies = _parse_motion_anomalies(resp.get("anomalies", []), result_warnings)
         summaries = _parse_bone_summaries(resp.get("perBoneSummary", []))
 
         return JointMotionAnalysisResult(
@@ -138,7 +153,7 @@ async def analyze_joint_motion(  # noqa: PLR0913
             anomalies=anomalies,
             per_bone_summary=summaries,
             recommendations=[str(r) for r in resp.get("recommendations", [])],
-            warnings=[str(w) for w in resp.get("warnings", [])],
+            warnings=result_warnings,
         )
     except Exception as exc:
         logger.exception("Error executing analyze_joint_motion")
@@ -198,10 +213,11 @@ async def detect_curve_discontinuities(
                 success=False,
                 error=str(resp.get("error", "Failed to detect curve discontinuities")),
                 clip_path=clip_path,
-                warnings=[str(w) for w in resp.get("warnings", [])],
+                warnings=warns(resp),
             )
 
-        items = _parse_discontinuity_items(resp.get("items", []))
+        result_warnings = warns(resp)
+        items = _parse_discontinuity_items(resp.get("items", []), result_warnings)
 
         return CurveDiscontinuityResult(
             success=True,
@@ -210,7 +226,7 @@ async def detect_curve_discontinuities(
             items=items,
             fix_applied=bool(resp.get("fixApplied", False)),
             backup_id=resp.get("backupId"),
-            warnings=[str(w) for w in resp.get("warnings", [])],
+            warnings=result_warnings,
         )
     except Exception as exc:
         logger.exception("Error executing detect_curve_discontinuities")
@@ -256,7 +272,28 @@ async def compare_animation_previews(  # noqa: PLR0913
 
     Returns:
         An AnimationComparisonResult summarizing percentage improvements and regression warnings.
+
+    Note:
+        `baseline_preview_id` / `comparison_preview_id` are labels echoed into the result for
+        traceability - the metrics themselves are supplied directly by the caller.
     """
+    if (
+        max(
+            abs(baseline_slide_distance),
+            abs(baseline_peak_jerk),
+            abs(baseline_peak_speed),
+            abs(baseline_camera_distance),
+        )
+        < 1e-4
+    ):
+        return AnimationComparisonResult(
+            success=False,
+            baseline_preview_id=baseline_preview_id,
+            comparison_preview_id=comparison_preview_id,
+            summary="No baseline metrics were provided to compare against.",
+            error="At least one baseline_* metric must be non-zero to compute a comparison.",
+        )
+
     slide_reduction = 0.0
     if baseline_slide_distance > 0.0001:
         slide_reduction = ((baseline_slide_distance - comparison_slide_distance) / baseline_slide_distance) * 100.0

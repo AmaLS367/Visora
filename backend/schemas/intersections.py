@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -12,7 +14,9 @@ class BodyPenetrationEvent(BaseModel):
     limb_a: str = Field(..., description="First colliding limb/segment")
     limb_b: str = Field(..., description="Second colliding limb/segment")
     penetration_depth_meters: float = Field(..., description="Depth of interpenetration (meters)")
-    severity: str = Field(..., description="Severity level: critical (> 5cm) or warning")
+    severity: Literal["critical", "warning", "unknown"] = Field(
+        ..., description="Severity level: critical (> 5cm), warning, or unknown"
+    )
     description: str = Field(..., description="Human-readable description of penetration")
 
 
