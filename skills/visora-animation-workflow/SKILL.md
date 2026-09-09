@@ -6,9 +6,8 @@ description: Use before authoring, modifying, sampling, or previewing Unity Anim
 ## Visora animation workflow
 
 Visora exposes high-level MCP tools for inspecting, sampling, modifying, and reviewing animations:
-`inspect_animation_clip`, `analyze_animation_curves`, `sample_animation_clip`, `preview_animation`,
-`list_animation_keyframes`, `set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`,
-`set_keyframe_hold`, `create_animation_event`, `remove_animation_event`, `list_animation_backups`,
+`inspect_animation_clip`, `sample_animation_clip`, `preview_animation`,
+`list_animation_keyframes`, `edit_animation_transaction`, `list_animation_backups`,
 `restore_animation_clip`, `analyze_contact_constraints`, and `bake_contact_constraints`.
 
 Every rule and sequence below is derived from live Unity testing to eliminate scene corruption,
@@ -43,7 +42,7 @@ Before modifying curves or sampling:
 - **Editor state:** Call `get_editor_state()` to confirm the editor is in Edit Mode and idle.
 - **Hierarchy & Rig:** Call `skeleton_mapper(root_transform_path=...)` or `find_bones` to verify the
   target GameObject has the necessary bone hierarchy and an `Animator` or `Animation` component.
-- **Clip diagnostics:** Call `inspect_animation_clip(clip_path=...)` or `analyze_animation_curves(clip_path=...)`.
+- **Clip diagnostics:** Call `inspect_animation_clip(clip_path=...)`.
   Examine:
   - `duration` and `frame_rate`;
   - `bindings`: check whether curves bind to `UnityEngine.Transform` (Generic rig) or
@@ -104,17 +103,14 @@ For character locomotion, combat, or ground interactions:
 
 When adjusting animation curves or timing:
 - **Inspect keys:** Call `list_animation_keyframes(clip_path=..., target_path=..., type_name=..., property_name=...)`.
-- **Modify timing:** Call `move_animation_keyframe` or `set_animation_keyframe` with `operation_id` for idempotency.
-- **Hold poses / Hit-stop:** To lock a pose during an impact without altering surrounding curves,
-  call `set_keyframe_hold(clip_path=..., target_path=..., type_name=..., property_name=..., time=start_t, hold_until=end_t)`.
-- **Author events:** Call `create_animation_event(clip_path=..., time=t, function_name=...)`.
+- **Modify timing, holds & events:** Call `edit_animation_transaction` with atomic operations (`set_keyframe`, `move_keyframe`, `set_keyframe_hold`, `create_event`).
 - **Verify backups:** Call `list_animation_backups(clip_path=...)` to confirm snapshots are retained.
 
 #### 5. Final-quality capture criteria
 
 Only advance to final recording when the low-resolution iterations pass motion, contact, and framing checks.
 - Set resolution and framerate to production values (e.g. `width=640`, `height=360`, `fps=24` or `fps=30`).
-- Call `preview_animation` or `get_video_mp4`:
+- Call `preview_animation` or `capture_video` (with `output="mp4"`):
   - Verify `actual_fps` matches the requested frame rate.
   - Confirm `timing_source` indicates dependable timing (e.g. `authored_clip` or Unity frame clock).
   - Check `rendered_camera_name` to ensure framing remained centered on the subject.

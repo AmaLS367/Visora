@@ -1,8 +1,6 @@
 from backend.schemas.animation import (
     AnimationBackupInfo,
     AnimationBindingCurve,
-    AnimationClipEditResult,
-    AnimationEventEditResult,
     AnimationEventInfo,
     AnimationKeyframeInfo,
     AnimationPreviewKeyFrame,
@@ -88,7 +86,6 @@ from backend.schemas.scene import (
     RestoreSceneResult,
     SafeTransactionResult,
     SaveSceneResult,
-    WaitForEditorIdleResult,
 )
 from backend.schemas.transaction import (
     AnimationTransactionOperationModel,
@@ -114,9 +111,7 @@ from backend.schemas.vision import (
 __all__ = [
     "AnimationBackupInfo",
     "AnimationBindingCurve",
-    "AnimationClipEditResult",
     "AnimationComparisonResult",
-    "AnimationEventEditResult",
     "AnimationEventInfo",
     "AnimationKeyframeInfo",
     "AnimationPreviewKeyFrame",
@@ -199,5 +194,4 @@ __all__ = [
     "VisualCapture",
     "VisualComparisonResult",
     "VisualInspectionResult",
-    "WaitForEditorIdleResult",
 ]

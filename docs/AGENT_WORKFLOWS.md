@@ -13,25 +13,22 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 <!-- GENERATED_TOOL_CATALOG_START -->
 | Tool | Parameters | Result |
 | --- | --- | --- |
-| `analyze_animation_curves` | `clip_path`*, `path_filter`, `max_bindings` | `ClipInspectorResult` |
 | `analyze_contact_constraints` | `target_object_path`*, `clip_path`*, `effectors`, `ground_mode`, `ground_plane_y`, `velocity_threshold`, `height_tolerance` | `ContactAnalysisResult` |
 | `analyze_joint_motion` | `clip_path`*, `target_object_path`*, `bones`, `sample_fps`, `jerk_threshold`, `angular_jerk_threshold` | `JointMotionAnalysisResult` |
 | `analyze_self_intersections` | `target_object_path`*, `clip_path`*, `sample_fps`, `tolerance_meters` | `SelfIntersectionResult` |
 | `bake_contact_constraints` | `clip_path`*, `target_object_path`*, `output_clip_path`, `effectors`, `ground_plane_y`, `fix_foot_sliding`, `fix_penetration`, `operation_id` | `BakeContactConstraintsResult` |
 | `bake_effector_contact` | `clip_path`*, `target_object_path`*, `effector`*, `target_type`, `target_position`, `scene_object_path`, `camera_name`, `viewport_coordinates`, `viewport_depth`, `time_range`, `blend_in_seconds`, `blend_out_seconds`, `pole_vector`, `target_rotation` | `BakeEffectorContactResult` |
-| `check_ticket_status` | `ticket_id`* | `QueueStatusResult` |
-| `clip_inspector` | `clip_path`*, `path_filter`, `max_bindings` | `ClipInspectorResult` |
+| `check_ticket_status` | `ticket_id`*, `wait`, `timeout_seconds`, `poll_interval_seconds` | `QueueStatusResult` |
 | `compare_animation_previews` | `baseline_preview_id`*, `comparison_preview_id`*, `baseline_slide_distance`, `comparison_slide_distance`, `baseline_peak_jerk`, `comparison_peak_jerk`, `baseline_peak_speed`, `comparison_peak_speed`, `baseline_camera_distance`, `comparison_camera_distance`, `keyframes_diff_count` | `AnimationComparisonResult` |
 | `compare_screenshots` | `before_image_path`*, `after_image_path`*, `threshold` | `BaseToolResult` |
 | `configure_humanoid_avatar` | `asset_path`*, `bone_mapping_overrides`, `source_avatar_path` | `HumanoidConfigurationResult` |
-| `create_animation_event` | `clip_path`*, `time`*, `function_name`*, `string_param`, `float_param`, `int_param`, `operation_id` | `AnimationEventEditResult` |
 | `detect_curve_discontinuities` | `clip_path`*, `filter_curves`, `auto_fix` | `CurveDiscontinuityResult` |
 | `diagnose_camera_framing` | `subject_path`*, `camera_name` | `CameraFramingDiagnosticsResult` |
 | `download_and_import_asset` | `url`, `asset_id`, `target_folder`, `file_name`, `extract_archive`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `DownloadAndImportAssetResult` |
 | `edit_animation_transaction` | `operations`*, `transaction_id`, `description` | `AnimationTransactionResult` |
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |
 | `get_bridge_status` | `scan_all_ports` | `BridgeStatusResult` |
-| `get_editor_state` | `include_scene_details` | `EditorStateResult` |
+| `get_editor_state` | `include_scene_details`, `wait`, `timeout_seconds`, `poll_interval_seconds` | `EditorStateResult` |
 | `get_video_frames` | `camera_names`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `BaseToolResult` |
 | `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_video_base64` | `VideoMp4Result` |
 | `import_local_asset` | `source_path`*, `target_folder`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
@@ -42,14 +39,11 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `list_animation_backups` | `clip_path`* | `ListAnimationBackupsResult` |
 | `list_animation_keyframes` | `clip_path`*, `target_path`*, `type_name`*, `property_name`* | `ListAnimationKeyframesResult` |
 | `list_scene_cameras` | — | `ListSceneCamerasResult` |
-| `move_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `from_time`*, `to_time`*, `operation_id` | `AnimationClipEditResult` |
 | `place_effector_in_viewport` | `target_object_path`*, `viewport_x`, `viewport_y`, `camera_depth`, `camera_name`, `effector`, `root_bone`, `mid_bone`, `end_bone`, `align_mode`, `custom_rotation`, `pole_vector`, `weight`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `ViewportEffectorPlacementResult` |
 | `playmode_management` | `play`*, `wait_for_idle`, `timeout_seconds` | `PlayModeManagementResult` |
 | `preview_animation` | `target_object_path`*, `clip_path`*, `camera_name`, `start_time`, `end_time`, `fps`, `width`, `height`, `auto_frame`, `max_key_frames`, `include_video_base64`, `include_clip_diagnostics` | `BaseToolResult` |
 | `preview_humanoid_retarget` | `target_object_path`*, `clip_path`*, `camera_name`, `width`, `height`, `fps`, `auto_frame` | `HumanoidRetargetPreviewResult` |
 | `project_world_points` | `points`*, `camera_name` | `ProjectWorldPointsResult` |
-| `remove_animation_event` | `clip_path`*, `time`*, `function_name`, `operation_id` | `AnimationEventEditResult` |
-| `remove_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `operation_id` | `AnimationClipEditResult` |
 | `restore_animation_clip` | `clip_path`*, `backup_id`*, `operation_id` | `RestoreAnimationClipResult` |
 | `restore_scene_state` | `undo_group`, `reload_active_scene` | `RestoreSceneResult` |
 | `safe_transaction` | `editor_code`*, `auto_save`, `record_undo`, `undo_name`, `restore_on_failure`, `timeout_seconds` | `SafeTransactionResult` |
@@ -57,16 +51,12 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `save_scene` | `save_as_path`, `force_during_play_mode` | `SaveSceneResult` |
 | `screenshot` | `camera_name`, `width`, `height` | `BaseToolResult` |
 | `search_assets` | `query`*, `category`, `source`, `limit`, `downloadable_only` | `SearchAssetsResult` |
-| `set_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `value`*, `tangent_mode`, `in_tangent`, `out_tangent`, `operation_id` | `AnimationClipEditResult` |
-| `set_keyframe_hold` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `hold_until`*, `value`, `operation_id` | `AnimationClipEditResult` |
 | `skeleton_mapper` | `root_transform_path`*, `max_bones` | `SkeletonMapperResult` |
 | `skinned_mesh_diagnostics` | `mesh_renderer_path`*, `max_bone_bindings` | `SkinnedMeshDiagnosticsResult` |
 | `solve_camera_subject_contact` | `character_path`*, `character_clip_path`*, `camera_name`*, `camera_clip_path`, `effector`, `impact_time`, `contact_duration`, `lens_viewport`, `lens_distance_meters`, `hit_stop_duration`, `camera_recoil_impulse` | `CameraSubjectContactResult` |
 | `solve_character_gaze` | `target_object_path`*, `target_look_at_position`, `target_transform_path`, `chest_weight`, `neck_weight`, `head_weight`, `eyes_weight`, `up_vector`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `CharacterGazeResult` |
 | `solve_two_bone_ik` | `target_object_path`*, `target_position`*, `effector`, `root_bone`, `mid_bone`, `end_bone`, `target_rotation`, `pole_vector`, `space`, `camera_name`, `weight`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `TwoBoneIKSolveResult` |
 | `validate_humanoid_avatar` | `target_path`, `asset_path` | `HumanoidValidationResult` |
-| `wait_for_editor_idle` | `timeout_seconds`, `poll_interval_seconds` | `WaitForEditorIdleResult` |
-| `wait_for_ticket` | `ticket_id`*, `timeout`, `poll_interval` | `QueueStatusResult` |
 | `web_search_assets` | `query`*, `limit` | `SearchAssetsResult` |
 <!-- GENERATED_TOOL_CATALOG_END -->
 
@@ -80,7 +70,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 6. For asset discovery and imports, call `search_assets` to discover CC0 materials and 3D models online, `download_and_import_asset` to download and automatically register assets with the Unity `AssetDatabase`, `inspect_imported_asset` to verify `ModelImporter` rig settings, and `instantiate_scene_asset` to place them into the scene with Undo tracking. Sketchfab's own search endpoint ignores the query text (it behaves as a browse listing, not a real search, even with `SKETCHFAB_API_TOKEN` set) — for a specific model that `search_assets` can't find, call `web_search_assets` instead; it finds the real Sketchfab page via web search and returns a `sketchfab:<uid>` ready for `download_and_import_asset`.
 7. When capturing video with `get_video_mp4` or `get_video_frames` with `enter_play_mode=True`, Visora actively polls and waits for domain reload and bridge re-binding before capturing frames, and safely restores Edit Mode on exit. When Domain Reload is enabled in Unity project settings, authored `AnimationClip` review can also be performed in Edit Mode using `sample_animation_clip` without domain reload overhead.
 8. For animation authoring and review (`skills/visora-animation-workflow`), preflight the rig with `get_editor_state`, `skeleton_mapper`, and `inspect_animation_clip`. Always iterate with lightweight Edit Mode `preview_animation` (e.g. 320x240 @ 12–24 fps) before any final capture; never infer animation success from a static screenshot (`motion_summary.is_static` must be false). Verify contacts with `analyze_contact_constraints` and bake IK fixes non-destructively via `bake_contact_constraints`.
-9. For combat and camera action timing (`skills/visora-camera-action-workflow`), establish a single authoritative impact timestamp $T_{\text{impact}}$. Synchronize character hit-stop (`set_keyframe_hold`), directional camera recoil impulse, and event triggers (`create_animation_event`) to that exact instant. Do not rely on unsynchronized procedural screen shake as the default, and verify viewport framing with `diagnose_camera_framing` and `project_world_points`.
+9. For combat and camera action timing (`skills/visora-camera-action-workflow`), establish a single authoritative impact timestamp $T_{\text{impact}}$. Synchronize character hit-stop (via `edit_animation_transaction` with `set_keyframe_hold`), directional camera recoil impulse, and event triggers (via `create_event`) to that exact instant. Do not rely on unsynchronized procedural screen shake as the default, and verify viewport framing with `diagnose_camera_framing` and `project_world_points`.
 10. For character rigs and mocap retargeting (`skills/visora-rig-retarget-workflow`), inspect the hierarchy with `skeleton_mapper` and preflight Humanoid Avatar eligibility with `validate_humanoid_avatar`. For eligible rigs, configure mappings with `configure_humanoid_avatar` and preview retargeted motion across time with `preview_humanoid_retarget`. If the rig has fatal blockers (quadrupeds, mechanical models, non-bipedal structures), never force Humanoid mode; retain Generic and use skeleton-matched Transform curves.
 
 ## Asset import safety

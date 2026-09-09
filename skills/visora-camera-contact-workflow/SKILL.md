@@ -7,7 +7,7 @@ description: Use before authoring or adjusting high-impact character-camera inte
 
 Visora exposes dedicated MCP tools for high-impact cinematic action:
 `solve_camera_subject_contact`, `bake_effector_contact`, `place_effector_in_viewport`,
-`set_keyframe_hold`, `preview_animation`, and `diagnose_camera_framing`.
+`edit_animation_transaction`, `preview_animation`, and `diagnose_camera_framing`.
 
 Cinematic impacts (e.g. dropkick into the lens, ground pound shockwave, monster grab)
 fall flat if character motion and camera reaction are authored separately. Always solve

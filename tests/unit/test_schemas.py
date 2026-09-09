@@ -44,7 +44,6 @@ from backend.schemas.scene import (
     RestoreSceneResult,
     SafeTransactionResult,
     SaveSceneResult,
-    WaitForEditorIdleResult,
 )
 from backend.schemas.vision import (
     CameraFramingDiagnosticsResult,
@@ -139,15 +138,19 @@ def test_scene_schemas_serialization() -> None:
     )
     assert state_res.is_idle is True
     assert state_res.active_scene_name == "TestScene"
+    assert state_res.waited_seconds is None
+    assert state_res.timed_out is None
 
-    # WaitForEditorIdleResult
-    idle_res = WaitForEditorIdleResult(
+    # EditorStateResult with wait fields
+    waited_state = EditorStateResult(
         success=True,
         is_idle=True,
         waited_seconds=0.1,
-        message="Editor reached idle state",
+        timed_out=False,
     )
-    assert idle_res.is_idle is True
+    assert waited_state.is_idle is True
+    assert waited_state.waited_seconds == 0.1
+    assert waited_state.timed_out is False
 
     # PlayModeManagementResult
     play_res = PlayModeManagementResult(

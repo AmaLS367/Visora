@@ -12,7 +12,7 @@ from backend.tools.scene.scripts import (
     _reload_scene_code,
     _undo_transaction_code,
 )
-from backend.tools.scene.state import get_editor_state, wait_for_editor_idle
+from backend.tools.scene.state import get_editor_state
 from backend.tools.scene.transactions import (
     _execute_undo_rollback,
     _handle_post_transaction_save,
@@ -64,8 +64,8 @@ async def safe_transaction(  # noqa: PLR0913
             )
 
         if state.is_compiling:
-            idle_res = await wait_for_editor_idle(timeout_seconds=timeout_seconds)
-            if not idle_res.success:
+            idle_res = await get_editor_state(wait=True, timeout_seconds=timeout_seconds)
+            if not idle_res.success or not idle_res.is_idle:
                 return SafeTransactionResult(
                     success=False,
                     error="Unity is compiling scripts and did not become idle in time.",

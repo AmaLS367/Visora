@@ -8,7 +8,6 @@ from backend.schemas import (
     RestoreSceneResult,
     SafeTransactionResult,
     SaveSceneResult,
-    WaitForEditorIdleResult,
 )
 from backend.tools import scene
 
@@ -137,22 +136,23 @@ async def test_get_editor_state_bridge_failure(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.anyio
-async def test_wait_for_editor_idle_immediate(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_editor_state_wait_immediate(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_bridge = FakeBridge(
         editor_state={"isPlaying": False, "isCompiling": False, "isUpdating": False},
     )
     monkeypatch.setattr(scene, "bridge", fake_bridge)
 
-    result = await scene.wait_for_editor_idle(timeout_seconds=5.0)
+    result = await scene.get_editor_state(wait=True, timeout_seconds=5.0)
 
-    assert isinstance(result, WaitForEditorIdleResult)
+    assert isinstance(result, EditorStateResult)
     assert result.success is True
     assert result.is_idle is True
-    assert result.message == "Unity Editor is idle."
+    assert result.timed_out is False
+    assert result.waited_seconds is not None
 
 
 @pytest.mark.anyio
-async def test_wait_for_editor_idle_after_compilation(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_editor_state_wait_after_compilation(monkeypatch: pytest.MonkeyPatch) -> None:
     states = [
         {"isPlaying": False, "isCompiling": True, "isUpdating": False},
         {"isPlaying": False, "isCompiling": False, "isUpdating": False},
@@ -171,25 +171,27 @@ async def test_wait_for_editor_idle_after_compilation(monkeypatch: pytest.Monkey
     monkeypatch.setattr(scene, "bridge", fake_bridge)
     monkeypatch.setattr(scene, "_sleep", _instant_sleep)
 
-    result = await scene.wait_for_editor_idle(timeout_seconds=5.0, poll_interval_seconds=0.01)
+    result = await scene.get_editor_state(wait=True, timeout_seconds=5.0, poll_interval_seconds=0.01)
 
     assert result.success is True
     assert result.is_idle is True
+    assert result.timed_out is False
     assert fake_bridge.calls >= 2
 
 
 @pytest.mark.anyio
-async def test_wait_for_editor_idle_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_editor_state_wait_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_bridge = FakeBridge(
         editor_state={"isPlaying": False, "isCompiling": True, "isUpdating": False},
     )
     monkeypatch.setattr(scene, "bridge", fake_bridge)
     monkeypatch.setattr(scene, "_sleep", _instant_sleep)
 
-    result = await scene.wait_for_editor_idle(timeout_seconds=0.001, poll_interval_seconds=0.001)
+    result = await scene.get_editor_state(wait=True, timeout_seconds=0.001, poll_interval_seconds=0.001)
 
     assert result.success is False
     assert result.is_idle is False
+    assert result.timed_out is True
     assert "Timed out" in (result.error or "")
 
 

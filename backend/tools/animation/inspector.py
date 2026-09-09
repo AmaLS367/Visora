@@ -137,48 +137,6 @@ async def inspect_animation_clip(
         )
 
 
-@mcp.tool()
-async def clip_inspector(
-    clip_path: str,
-    path_filter: str | None = None,
-    max_bindings: int | None = None,
-) -> ClipInspectorResult:
-    """
-    Inspects an animation clip's metadata, curves, and properties (alias for inspect_animation_clip).
-
-    Args:
-        clip_path: The project-relative path to the animation clip asset.
-        path_filter: Optional substring filter matching bone path or property name.
-        max_bindings: Optional maximum number of bindings to return.
-
-    Returns:
-        A ClipInspectorResult containing animation duration, frame rate, loop configuration, and curve metrics.
-    """
-    return await inspect_animation_clip(clip_path, path_filter=path_filter, max_bindings=max_bindings)
-
-
-@mcp.tool()
-async def analyze_animation_curves(
-    clip_path: str,
-    path_filter: str | None = None,
-    max_bindings: int | None = None,
-) -> ClipInspectorResult:
-    """
-    Performs focused curve diagnostic inspection on an AnimationClip asset.
-
-    Args:
-        clip_path: Project asset path to the AnimationClip.
-        path_filter: Optional substring filter matching bone path or property name.
-        max_bindings: Optional maximum number of bindings to return.
-
-    Returns:
-        A ClipInspectorResult with dangerous curve warnings and curve distribution metrics.
-    """
-    return await inspect_animation_clip(clip_path, path_filter=path_filter, max_bindings=max_bindings)
-
-
 __all__ = [
-    "analyze_animation_curves",
-    "clip_inspector",
     "inspect_animation_clip",
 ]

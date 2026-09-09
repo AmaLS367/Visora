@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Measured frame timing:** sequences report `actual_fps` and `timing_source` (`native_realtime`, `edit_mode_sampled`, or `python_wallclock`), and MP4 is encoded at the rate actually achieved so playback runs at real speed.
 - **C# compile gate:** `scripts/check_unity_package.py` builds the Unity package against real Unity assemblies with .NET and Unity analyzers, in CI as well as locally. Unity was previously the only thing that ever compiled this code.
 
+### Changed
+
+- **Pruned duplicate and single-op MCP tools:** reduced catalog overhead by removing redundant tools and aliases:
+  - Removed pure aliases `clip_inspector` and `analyze_animation_curves` in favor of canonical `inspect_animation_clip`.
+  - Removed single-op keyframe and event authoring tools (`set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, `set_keyframe_hold`, `create_animation_event`, `remove_animation_event`) in favor of atomic `edit_animation_transaction`.
+  - Merged polling wrapper `wait_for_editor_idle` into `get_editor_state(wait=True)`.
+  - Merged polling wrapper `wait_for_ticket` into `check_ticket_status(wait=True)`.
+
 ### Fixed
 
 - **`get_video_mp4` rejected its own default frame rate ([#6](https://github.com/AmaLS367/Visora/issues/6)):** it validated fps up to 30, then delegated to `get_video_frames`, which re-validated at the 12 fps frame-payload limit. Both tools now share a capture core with their own ceiling.

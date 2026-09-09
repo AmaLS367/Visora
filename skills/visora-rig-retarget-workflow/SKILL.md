@@ -129,5 +129,5 @@ creatures, mechanical machinery, or non-bipedal skeletons):
    Call `inspect_animation_clip(clip_path=...)` to inspect curve bindings. Ensure curves target the exact
    relative transform paths of the Generic skeleton (e.g. `Root/Hips/Tail_01`).
 4. **Use IK or procedural solvers for motion adjustments:**
-   Instead of relying on Humanoid muscle retargeting, adjust Generic animations using keyframe editing
-   (`set_animation_keyframe`, `move_animation_keyframe`) or Two-Bone IK constraints.
+   Instead of relying on Humanoid muscle retargeting, adjust Generic animations using atomic keyframe
+   transactions (`edit_animation_transaction` with `set_keyframe` / `move_keyframe`) or Two-Bone IK constraints.

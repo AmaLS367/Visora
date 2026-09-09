@@ -17,19 +17,9 @@ class EditorStateResult(BaseToolResult):
     active_scene_path: str | None = Field(default=None, description="Asset path of the currently active scene")
     active_scene_dirty: bool | None = Field(default=None, description="Whether the active scene has unsaved changes")
     loaded_scene_count: int = Field(default=0, description="Number of currently loaded scenes")
+    waited_seconds: float | None = Field(default=None, description="Total seconds spent waiting if wait=True")
+    timed_out: bool | None = Field(default=None, description="Whether wait timed out before editor became idle")
     warnings: list[str] = Field(default_factory=list, description="Non-blocking editor state warnings")
-
-
-class WaitForEditorIdleResult(BaseToolResult):
-    """Result schema for waiting until the Unity Editor reaches an idle state."""
-
-    is_idle: bool = Field(default=False, description="True if the editor reached idle before timeout")
-    waited_seconds: float = Field(default=0.0, description="Total seconds spent waiting")
-    is_compiling: bool = Field(default=False, description="Final compilation status")
-    is_updating: bool = Field(default=False, description="Final updating status")
-    is_playing: bool = Field(default=False, description="Final playmode status")
-    warnings: list[str] = Field(default_factory=list, description="Non-blocking warnings during wait")
-    message: str = Field(..., description="Status message detailing the wait outcome")
 
 
 class PlayModeManagementResult(BaseToolResult):

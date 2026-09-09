@@ -384,41 +384,6 @@ class ListAnimationKeyframesResult(BaseToolResult):
     keyframes: list[AnimationKeyframeInfo] = Field(default_factory=list, description="Every key, ordered by time")
 
 
-class AnimationClipEditResult(BaseToolResult):
-    """Result schema shared by set/move/remove/hold keyframe operations."""
-
-    clip_path: str | None = Field(default=None, description="Project asset path to the animation clip")
-    target_path: str | None = Field(default=None, description="Scene hierarchy path the curve is bound to")
-    type_name: str | None = Field(default=None, description="Component type name the curve is bound to")
-    property_name: str | None = Field(default=None, description="Logical property name, without channel suffix")
-    channels_affected: list[str] = Field(default_factory=list, description="Concrete channels this call touched")
-    curve_created: bool = Field(default=False, description="True when this call brought the curve into existence")
-    time: float | None = Field(default=None, description="The key's time after the edit")
-    previous_time: float | None = Field(default=None, description="Prior key time; set only by move_animation_keyframe")
-    keys_cleared: list[float] = Field(
-        default_factory=list, description="Intermediate keys removed; set only by set_keyframe_hold"
-    )
-    backup_id: str | None = Field(
-        default=None, description="Relative path under VisoraBackups/ written before this edit"
-    )
-    undo_group_id: int | None = Field(default=None, description="Unity Undo group this edit collapsed into")
-    warnings: list[str] = Field(default_factory=list, description="Non-blocking warnings")
-
-
-class AnimationEventEditResult(BaseToolResult):
-    """Result schema for create_animation_event / remove_animation_event."""
-
-    clip_path: str | None = Field(default=None, description="Project asset path to the animation clip")
-    time: float | None = Field(default=None, description="Event time in seconds")
-    function_name: str | None = Field(default=None, description="Target function name; None for a wildcard removal")
-    events_affected: int = Field(default=0, description="Events created (always 1) or removed (0 or more)")
-    backup_id: str | None = Field(
-        default=None, description="Relative path under VisoraBackups/ written before this edit"
-    )
-    undo_group_id: int | None = Field(default=None, description="Unity Undo group this edit collapsed into")
-    warnings: list[str] = Field(default_factory=list, description="Non-blocking warnings")
-
-
 class AnimationBackupInfo(BaseModel):
     """One backup snapshot of an AnimationClip."""
 

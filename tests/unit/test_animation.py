@@ -214,7 +214,7 @@ def test_analyze_sampled_pose_nan() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test MCP Tools: inspect_animation_clip & clip_inspector
+# Test MCP Tools: inspect_animation_clip
 # ---------------------------------------------------------------------------
 
 
@@ -320,29 +320,6 @@ async def test_inspect_animation_clip_bridge_error(monkeypatch: pytest.MonkeyPat
 
     assert result.success is False
     assert "Bridge disconnected" in (result.error or "")
-
-
-@pytest.mark.anyio
-async def test_clip_inspector_alias(monkeypatch: pytest.MonkeyPatch) -> None:
-    unity_response = {
-        "success": True,
-        "result": {
-            "success": True,
-            "clipName": "AliasClip",
-            "length": 2.0,
-            "fps": 30.0,
-            "loopTime": False,
-            "bindings": [],
-            "events": [],
-        },
-    }
-    fake_bridge = FakeBridge(execute_responses=[unity_response])
-    monkeypatch.setattr(animation, "bridge", fake_bridge)
-
-    result = await animation.clip_inspector("Assets/AliasClip.anim")
-    assert result.success is True
-    assert result.clip_name == "AliasClip"
-    assert result.length == 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -504,35 +481,3 @@ async def test_sample_animation_clip_with_anomalies(monkeypatch: pytest.MonkeyPa
     assert result.success is True
     assert len(result.anomalies_detected) >= 1
     assert any("Negative local scale" in a for a in result.anomalies_detected)
-
-
-@pytest.mark.anyio
-async def test_analyze_animation_curves_tool(monkeypatch: pytest.MonkeyPatch) -> None:
-    unity_response = {
-        "success": True,
-        "result": {
-            "success": True,
-            "clipName": "Jump",
-            "length": 1.0,
-            "fps": 30.0,
-            "bindings": [
-                {
-                    "path": "Root",
-                    "propertyName": "m_LocalPosition.y",
-                    "curveType": "position",
-                    "keyframeCount": 5,
-                    "minValue": 0.0,
-                    "maxValue": 2.0,
-                    "isConstant": False,
-                }
-            ],
-            "events": [],
-        },
-    }
-    fake_bridge = FakeBridge(execute_responses=[unity_response])
-    monkeypatch.setattr(animation, "bridge", fake_bridge)
-
-    result = await animation.analyze_animation_curves("Assets/Jump.anim")
-    assert result.success is True
-    assert result.clip_name == "Jump"
-    assert result.curves_count == 1

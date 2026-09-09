@@ -75,8 +75,9 @@ def test_camera_action_workflow_skill_acceptance() -> None:
     assert "authoritative impact timestamp" in lower
     assert "no unsynchronized procedural camera shake" in lower
     assert "never infer impact synchronization from a static screenshot" in lower
+    assert "edit_animation_transaction" in content
     assert "set_keyframe_hold" in content
-    assert "create_animation_event" in content
+    assert "create_event" in content
     assert "diagnose_camera_framing" in content
     assert "project_world_points" in content
 
@@ -129,6 +130,7 @@ def test_motion_polish_workflow_skill_acceptance() -> None:
     assert "every energetic action requires anticipation" in lower
     assert "never infer animation polish from a static screenshot" in lower
     assert "analyze_joint_motion" in content
+    assert "edit_animation_transaction" in content
     assert "set_keyframe_hold" in content
 
 

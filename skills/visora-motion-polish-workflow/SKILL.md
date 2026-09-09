@@ -6,8 +6,8 @@ description: Use before refining character animation timing, arcs of motion, ant
 ## Visora motion polish workflow
 
 Visora exposes high-level MCP tools for polishing animation quality:
-`analyze_joint_motion`, `list_animation_keyframes`, `set_animation_keyframe`,
-`set_keyframe_hold`, `detect_curve_discontinuities`, and `preview_animation`.
+`analyze_joint_motion`, `list_animation_keyframes`, `edit_animation_transaction`,
+`detect_curve_discontinuities`, and `preview_animation`.
 
 Use this workflow to elevate animations from stiff mechanical poses to fluid,
 believable character acting.
@@ -42,30 +42,42 @@ Check `anomalies` for `jerk_spike` or `velocity_snap`.
 
 #### 2. Shape keyframe tangents & spacing
 
-Smooth out linear or sharp tangents around the turning points:
+Smooth out linear or sharp tangents around the turning points via `edit_animation_transaction`:
 ```python
-set_animation_keyframe(
-    clip_path="Assets/Animations/Hero_Jump.anim",
-    target_path="Characters/Hero/Hips",
-    type_name="UnityEngine.Transform",
-    property_name="m_LocalPosition",
-    time=0.45,
-    values=[0.0, 1.2, 0.0],
-    tangent_mode="smooth",
+edit_animation_transaction(
+    description="Smooth jump arc tangents",
+    operations=[
+        {
+            "operation_type": "set_keyframe",
+            "clip_path": "Assets/Animations/Hero_Jump.anim",
+            "target_path": "Characters/Hero/Hips",
+            "type_name": "UnityEngine.Transform",
+            "property_name": "m_LocalPosition",
+            "time": 0.45,
+            "values": [0.0, 1.2, 0.0],
+            "tangent_mode": "smooth",
+        }
+    ],
 )
 ```
 
 #### 3. Establish hit-stop and anticipation holds
 
-On powerful impact frames, insert a brief 2–4 frame hold to emphasize contact weight:
+On powerful impact frames, insert a brief 2–4 frame hold via operation `set_keyframe_hold` to emphasize contact weight:
 ```python
-set_keyframe_hold(
-    clip_path="Assets/Animations/Hero_Jump.anim",
-    target_path="Characters/Hero/Hips",
-    type_name="UnityEngine.Transform",
-    property_name="m_LocalPosition",
-    time=0.45,
-    hold_until=0.52,
+edit_animation_transaction(
+    description="Add impact hit-stop hold",
+    operations=[
+        {
+            "operation_type": "set_keyframe_hold",
+            "clip_path": "Assets/Animations/Hero_Jump.anim",
+            "target_path": "Characters/Hero/Hips",
+            "type_name": "UnityEngine.Transform",
+            "property_name": "m_LocalPosition",
+            "start_time": 0.45,
+            "duration": 0.07,
+        }
+    ],
 )
 ```
 

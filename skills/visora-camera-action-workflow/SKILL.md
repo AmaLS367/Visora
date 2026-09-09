@@ -7,8 +7,8 @@ description: Use when orchestrating impact moments, combat beats, hits, and came
 
 Visora exposes tools for orchestrating and verifying tight action timing in Unity:
 `inspect_animation_clip`, `sample_animation_clip`, `preview_animation`, `list_animation_keyframes`,
-`set_animation_keyframe`, `set_keyframe_hold`, `create_animation_event`, `list_scene_cameras`,
-`diagnose_camera_framing`, `project_world_points`, and `get_video_mp4`.
+`edit_animation_transaction`, `list_scene_cameras`, `diagnose_camera_framing`, `project_world_points`,
+and `capture_video`.
 
 This workflow defines the standard for combat impacts, explosions, parries, and cinematic beats.
 
@@ -56,19 +56,25 @@ This workflow defines the standard for combat impacts, explosions, parries, and 
 #### 2. Apply hit-stop (Keyframe hold)
 
 A satisfying impact requires physical weight: the attacker and victim momentarily freeze upon contact.
-- Lock the character pose at $T_{\text{impact}}$ for 2 to 6 frames (typically 0.05 to 0.12 seconds):
+- Lock the character pose at $T_{\text{impact}}$ for 2 to 6 frames (typically 0.05 to 0.12 seconds)
+  via `edit_animation_transaction` with operation `set_keyframe_hold`:
   ```python
-  set_keyframe_hold(
-      clip_path="Assets/Animations/HeavyPunch.anim",
-      target_path="",
-      type_name="UnityEngine.Transform",
-      property_name="m_LocalPosition",
-      time=0.458,
-      hold_until=0.541,  # Hold for 2 frames at 24 fps
+  edit_animation_transaction(
+      operations=[
+          {
+              "operation_type": "set_keyframe_hold",
+              "clip_path": "Assets/Animations/HeavyPunch.anim",
+              "target_path": "",
+              "type_name": "UnityEngine.Transform",
+              "property_name": "m_LocalPosition",
+              "start_time": 0.458,
+              "duration": 0.083,  # Hold for 2 frames at 24 fps
+          }
+      ]
   )
   ```
 - Repeat for rotation curves if necessary, or apply hold to the root motion / effector curves.
-- Verify `backup_id` is returned so the modification can be rolled back via `restore_animation_clip`.
+- Verify `backup_ids` are returned so the modification can be rolled back via `restore_animation_clip`.
 
 #### 3. Synchronize camera recoil & verify framing
 
@@ -84,13 +90,18 @@ The camera response must be an impulse triggered at $T_{\text{impact}}$:
 #### 4. Author authoritative animation events & VFX
 
 All impact flashes, hit sparks, sound triggers, and screen flashes must share $T_{\text{impact}}$:
-- Call `create_animation_event`:
+- Call `edit_animation_transaction` with operation `create_event`:
   ```python
-  create_animation_event(
-      clip_path="Assets/Animations/HeavyPunch.anim",
-      time=0.458,
-      function_name="OnHitImpact",
-      string_param="HeavyImpact_Flesh",
+  edit_animation_transaction(
+      operations=[
+          {
+              "operation_type": "create_event",
+              "clip_path": "Assets/Animations/HeavyPunch.anim",
+              "time": 0.458,
+              "function_name": "OnHitImpact",
+              "string_parameter": "HeavyImpact_Flesh",
+          }
+      ]
   )
   ```
 - Do not let game logic rely on approximate timer coroutines (`yield return new WaitForSeconds(...)`);
@@ -116,4 +127,4 @@ Verify the synchronized action sequence in a focused window around impact:
   - `motion_intensity`: Look for high energy leading up to $T_{\text{impact}}$, a sharp plateau near zero
     during hit-stop, and an energy spike upon recovery.
   - Review keyframe captures to verify camera recoil framing and subject visibility.
-  - Once validated, render final-quality capture using `preview_animation` or `get_video_mp4` at full resolution.
+  - Once validated, render final-quality capture using `preview_animation` or `capture_video` (with `output="mp4"`) at full resolution.

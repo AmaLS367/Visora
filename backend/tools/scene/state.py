@@ -3,24 +3,11 @@ from typing import Any, cast
 
 import backend.tools.scene as scene_pkg
 from backend.app import mcp
-from backend.schemas import (
-    EditorStateResult,
-    WaitForEditorIdleResult,
-)
+from backend.schemas import EditorStateResult
 from backend.tools.scene.scripts import _get_scene_details_code
 
 
-@mcp.tool()
-async def get_editor_state(include_scene_details: bool = True) -> EditorStateResult:
-    """
-    Inspects the current Unity Editor state: Play Mode, compilation, active scene and dirty state.
-
-    Args:
-        include_scene_details: If True, queries Unity for detailed active scene info (name, path, dirty state).
-
-    Returns:
-        An EditorStateResult with comprehensive status flags.
-    """
+async def _fetch_single_editor_state(include_scene_details: bool = True) -> EditorStateResult:
     try:
         raw_state = await scene_pkg.bridge.get_editor_state()
         is_playing = bool(raw_state.get("isPlaying", False))
@@ -83,62 +70,69 @@ async def get_editor_state(include_scene_details: bool = True) -> EditorStateRes
 
 
 @mcp.tool()
-async def wait_for_editor_idle(
+async def get_editor_state(
+    include_scene_details: bool = True,
+    wait: bool = False,
     timeout_seconds: float = 30.0,
     poll_interval_seconds: float = 0.5,
-) -> WaitForEditorIdleResult:
+) -> EditorStateResult:
     """
-    Waits until the Unity Editor reaches an idle state (not compiling scripts and not updating).
+    Inspects the current Unity Editor state: Play Mode, compilation, active scene and dirty state.
+    Optionally waits for the editor to reach an idle state (not compiling and not updating).
 
     Args:
-        timeout_seconds: Maximum duration to wait before returning a timeout error.
-        poll_interval_seconds: Seconds between status polls.
+        include_scene_details: If True, queries Unity for detailed active scene info (name, path, dirty state).
+        wait: If True, polls until the editor is idle or timeout_seconds is reached.
+        timeout_seconds: Maximum duration to wait before returning a timeout error. Defaults to 30.0.
+        poll_interval_seconds: Seconds between status polls when waiting. Defaults to 0.5.
 
     Returns:
-        A WaitForEditorIdleResult detailing whether idle was reached.
+        An EditorStateResult with comprehensive status flags, including waited_seconds and timed_out when wait=True.
     """
+    if not wait:
+        return await _fetch_single_editor_state(include_scene_details=include_scene_details)
+
     start_time = time.time()
     last_state: EditorStateResult | None = None
 
     try:
         while time.time() - start_time < timeout_seconds:
-            last_state = await get_editor_state(include_scene_details=False)
+            last_state = await _fetch_single_editor_state(include_scene_details=False)
             if last_state.success and last_state.is_idle:
                 waited = time.time() - start_time
-                return WaitForEditorIdleResult(
-                    success=True,
-                    is_idle=True,
-                    waited_seconds=round(waited, 3),
-                    is_compiling=last_state.is_compiling,
-                    is_updating=last_state.is_updating,
-                    is_playing=last_state.is_playing,
-                    warnings=last_state.warnings,
-                    message="Unity Editor is idle.",
-                )
+                if include_scene_details:
+                    final_state = await _fetch_single_editor_state(include_scene_details=True)
+                    final_state.waited_seconds = round(waited, 3)
+                    final_state.timed_out = False
+                    return final_state
+                last_state.waited_seconds = round(waited, 3)
+                last_state.timed_out = False
+                return last_state
             await scene_pkg._sleep(poll_interval_seconds)
 
         waited = time.time() - start_time
-        return WaitForEditorIdleResult(
+        return EditorStateResult(
             success=False,
             is_idle=False,
+            timed_out=True,
             waited_seconds=round(waited, 3),
             is_compiling=last_state.is_compiling if last_state else False,
             is_updating=last_state.is_updating if last_state else False,
             is_playing=last_state.is_playing if last_state else False,
             error=f"Timed out after {timeout_seconds:.1f}s waiting for Unity Editor idle state.",
             warnings=["Timeout reached while waiting for editor idle."],
-            message="Editor did not reach idle state before timeout.",
         )
     except Exception as exc:
-        scene_pkg.logger.exception("wait_for_editor_idle failed")
-        return WaitForEditorIdleResult(
+        scene_pkg.logger.exception("get_editor_state with wait failed")
+        waited = time.time() - start_time
+        return EditorStateResult(
             success=False,
             is_idle=False,
-            waited_seconds=round(time.time() - start_time, 3),
+            timed_out=False,
+            waited_seconds=round(waited, 3),
             error=str(exc),
             warnings=[f"Error during idle wait: {exc}"],
-            message="Error while waiting for editor idle state.",
         )
 
 
-__all__ = ["get_editor_state", "wait_for_editor_idle"]
+__all__ = ["get_editor_state"]

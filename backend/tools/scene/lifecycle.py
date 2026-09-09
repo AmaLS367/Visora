@@ -7,7 +7,7 @@ from backend.schemas import (
     SaveSceneResult,
 )
 from backend.tools.scene.scripts import _save_scene_code
-from backend.tools.scene.state import get_editor_state, wait_for_editor_idle
+from backend.tools.scene.state import get_editor_state
 
 
 @mcp.tool()
@@ -30,8 +30,8 @@ async def playmode_management(
     warnings: list[str] = []
     try:
         if wait_for_idle:
-            idle_before = await wait_for_editor_idle(timeout_seconds=timeout_seconds)
-            if not idle_before.success:
+            idle_before = await get_editor_state(wait=True, timeout_seconds=timeout_seconds)
+            if not idle_before.success or not idle_before.is_idle:
                 warnings.append(f"Editor was not idle before play mode change: {idle_before.error}")
 
         before = await scene_pkg.bridge.get_editor_state()
@@ -40,8 +40,8 @@ async def playmode_management(
         await scene_pkg.bridge.set_play_mode(play)
 
         if wait_for_idle:
-            idle_after = await wait_for_editor_idle(timeout_seconds=timeout_seconds)
-            if not idle_after.success:
+            idle_after = await get_editor_state(wait=True, timeout_seconds=timeout_seconds)
+            if not idle_after.success or not idle_after.is_idle:
                 warnings.append(f"Editor was not idle after play mode change: {idle_after.error}")
 
         after = await scene_pkg.bridge.get_editor_state()

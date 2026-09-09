@@ -112,7 +112,7 @@ def test_compact_json_schema_strips_titles() -> None:
 @pytest.mark.anyio
 async def test_list_tools_compacted_by_default() -> None:
     tools = await mcp.list_tools()
-    assert len(tools) >= 50
+    assert len(tools) >= 44
 
     # 1. Output schema must be None for all tools
     for tool in tools:
@@ -153,12 +153,16 @@ async def test_call_tool_compacts_results_by_default() -> None:
 
     text_block = result.content[0]
     assert hasattr(text_block, "text")
-    # Result text must be single-line compact JSON without null fields
+    # Result text must be single-line compact JSON
     assert "\n" not in text_block.text
-    assert "null" not in text_block.text
     parsed = json.loads(text_block.text)
     assert parsed["ticket_id"] == "nonexistent-ticket-id"
     assert parsed["status"] == "error"
+    # Verify that no None values exist in the deserialized object
+    assert all(v is not None for v in parsed.values())
+    # Verify specific optional fields that defaulted to None are omitted
+    assert "duration_seconds" not in parsed
+    assert "result" not in parsed
 
 
 @pytest.mark.anyio

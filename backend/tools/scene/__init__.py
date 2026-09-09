@@ -20,7 +20,6 @@ from backend.tools.scene.scripts import (
 )
 from backend.tools.scene.state import (
     get_editor_state,
-    wait_for_editor_idle,
 )
 from backend.tools.scene.transactions import (
     _execute_undo_rollback,
@@ -47,5 +46,4 @@ __all__ = [
     "restore_scene_state",
     "safe_transaction",
     "save_scene",
-    "wait_for_editor_idle",
 ]

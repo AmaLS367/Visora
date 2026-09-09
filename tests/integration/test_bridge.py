@@ -15,7 +15,7 @@ from backend.bridge import (
 )
 from backend.config import Settings
 from backend.tools.bridge.health import get_bridge_status
-from backend.tools.bridge.queue import check_ticket_status, wait_for_ticket
+from backend.tools.bridge.queue import check_ticket_status
 
 
 @pytest.fixture(autouse=True)
@@ -528,14 +528,16 @@ async def test_check_ticket_status_unexpected_exception() -> None:
 
 
 @pytest.mark.anyio
-async def test_wait_for_ticket_completion() -> None:
+async def test_check_ticket_status_wait_completion() -> None:
     responses = [
         {"status": "running", "progress": 0.5},
         {"status": "completed", "progress": 1.0, "result": "Baked"},
     ]
 
     with patch("backend.tools.bridge.queue.bridge.get_queue_status", side_effect=responses):
-        result = await wait_for_ticket(ticket_id="ticket-poll", timeout=5.0, poll_interval=0.01)
+        result = await check_ticket_status(
+            ticket_id="ticket-poll", wait=True, timeout_seconds=5.0, poll_interval_seconds=0.01
+        )
         assert result.success is True
         assert result.status == "completed"
         assert result.progress == 1.0
@@ -544,50 +546,58 @@ async def test_wait_for_ticket_completion() -> None:
 
 
 @pytest.mark.anyio
-async def test_wait_for_ticket_cancelled() -> None:
+async def test_check_ticket_status_wait_cancelled() -> None:
     with patch(
         "backend.tools.bridge.queue.bridge.get_queue_status",
         return_value={"status": "cancelled", "progress": 0.2},
     ):
-        result = await wait_for_ticket(ticket_id="ticket-cancelled", timeout=5.0, poll_interval=0.01)
+        result = await check_ticket_status(
+            ticket_id="ticket-cancelled", wait=True, timeout_seconds=5.0, poll_interval_seconds=0.01
+        )
         assert result.success is False
         assert result.status == "cancelled"
         assert "cancelled in Unity Editor" in (result.error or "")
 
 
 @pytest.mark.anyio
-async def test_wait_for_ticket_failed_with_error_message() -> None:
+async def test_check_ticket_status_wait_failed_with_error_message() -> None:
     with patch(
         "backend.tools.bridge.queue.bridge.get_queue_status",
         return_value={"status": "failed", "progress": 0.1, "errorMessage": "Out of memory"},
     ):
-        result = await wait_for_ticket(ticket_id="ticket-fail-msg", timeout=5.0, poll_interval=0.01)
+        result = await check_ticket_status(
+            ticket_id="ticket-fail-msg", wait=True, timeout_seconds=5.0, poll_interval_seconds=0.01
+        )
         assert result.success is False
         assert result.status == "failed"
         assert result.error == "Out of memory"
 
 
 @pytest.mark.anyio
-async def test_wait_for_ticket_transient_error_recovery() -> None:
+async def test_check_ticket_status_wait_transient_error_recovery() -> None:
     responses = [
         httpx.ConnectError("Transient connection drop"),
         {"status": "completed", "progress": 1.0, "result": {"baked": True}},
     ]
 
     with patch("backend.tools.bridge.queue.bridge.get_queue_status", side_effect=responses):
-        result = await wait_for_ticket(ticket_id="ticket-recover", timeout=5.0, poll_interval=0.01)
+        result = await check_ticket_status(
+            ticket_id="ticket-recover", wait=True, timeout_seconds=5.0, poll_interval_seconds=0.01
+        )
         assert result.success is True
         assert result.status == "completed"
         assert result.result == {"baked": True}
 
 
 @pytest.mark.anyio
-async def test_wait_for_ticket_timeout() -> None:
+async def test_check_ticket_status_wait_timeout() -> None:
     with patch(
         "backend.tools.bridge.queue.bridge.get_queue_status",
         return_value={"status": "running", "progress": 0.2},
     ):
-        result = await wait_for_ticket(ticket_id="ticket-timeout", timeout=0.02, poll_interval=0.01)
+        result = await check_ticket_status(
+            ticket_id="ticket-timeout", wait=True, timeout_seconds=0.02, poll_interval_seconds=0.01
+        )
         assert result.success is False
         assert result.status == "timeout"
         assert "timed out" in (result.error or "")

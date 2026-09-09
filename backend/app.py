@@ -26,8 +26,9 @@ one. download_and_import_asset fails explicitly if it's missing, rather than imp
 the result: asset_type should be a real type with submesh_count > 0, not an empty placeholder.
 - Never infer animation or retargeting success from a static screenshot: verify motion over time \
 via preview_animation (checking motion_summary.is_static) using the smallest safe preview first.
-- Action and combat impacts must anchor hit-stop (set_keyframe_hold), camera recoil impulse, and \
-events to a single authoritative impact timestamp; avoid unsynchronized procedural shake as default.
+- Action and combat impacts must anchor hit-stop (via edit_animation_transaction operation \
+set_keyframe_hold), camera recoil impulse, and events (via create_event) to a single authoritative \
+impact timestamp; avoid unsynchronized procedural shake as default.
 - Preflight Humanoid eligibility with validate_humanoid_avatar before retargeting mocap; if fatal \
 blockers exist, never force Humanoid mode—use Generic Transform curves.
 See docs/AGENT_WORKFLOWS.md and skills/ for the full tool catalog and workflow sequence."""

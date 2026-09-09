@@ -14,10 +14,8 @@ TOOL_FUNCTIONS = [
     # Bridge & Queue
     bridge.health.get_bridge_status,
     bridge.queue.check_ticket_status,
-    bridge.queue.wait_for_ticket,
     # Scene
     scene.state.get_editor_state,
-    scene.state.wait_for_editor_idle,
     scene.lifecycle.playmode_management,
     scene.lifecycle.save_scene,
     scene.execution.safe_transaction,
@@ -33,8 +31,6 @@ TOOL_FUNCTIONS = [
     vision.video.get_video_mp4,
     # Animation & Skeleton
     animation.inspector.inspect_animation_clip,
-    animation.inspector.clip_inspector,
-    animation.inspector.analyze_animation_curves,
     animation.sampling.sample_animation_clip,
     animation.skeleton.skeleton_mapper,
     animation.skeleton.find_bones,
@@ -284,13 +280,7 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.success is False
     assert res.error is not None
 
-    # 17. analyze_animation_curves
-    res = await animation.inspector.analyze_animation_curves("Assets/Test.anim")
-    assert isinstance(res, BaseToolResult)
-    assert res.success is False
-    assert res.error is not None
-
-    # 18. get_video_frames
+    # 17. get_video_frames
     raw_res = await vision.video.get_video_frames(duration_seconds=0.1)
     res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert isinstance(res, BaseToolResult)
@@ -371,12 +361,7 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     assert res.success is False
     assert res.error is not None
 
-    # 7. analyze_animation_curves with error
-    res = await animation.inspector.analyze_animation_curves("Assets/Test.anim")
-    assert res.success is False
-    assert res.error is not None
-
-    # 8. sample_animation_clip with error
+    # 7. sample_animation_clip with error
     res = await animation.sampling.sample_animation_clip("Player", "Assets/Test.anim")
     assert res.success is False
     assert res.error is not None

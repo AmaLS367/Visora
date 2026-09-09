@@ -68,7 +68,7 @@ Do not mount the Docker socket or the Unity project into the Visora container: t
 
 ## Verification and recovery
 
-Call `get_bridge_status` to identify the selected port and flavor. For a busy editor, use `wait_for_editor_idle`. For an unreachable bridge, confirm that Unity is open and the configured mode matches the bridge flavor. The exact tool names and parameters are maintained in [AGENT_WORKFLOWS.md](AGENT_WORKFLOWS.md).
+Call `get_bridge_status` to identify the selected port and flavor. For a busy editor, use `get_editor_state(wait=True)`. For an unreachable bridge, confirm that Unity is open and the configured mode matches the bridge flavor. The exact tool names and parameters are maintained in [AGENT_WORKFLOWS.md](AGENT_WORKFLOWS.md).
 
 ## Agent skills
 

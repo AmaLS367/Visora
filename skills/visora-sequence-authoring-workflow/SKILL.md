@@ -6,8 +6,7 @@ description: Use when coordinating multi-track scenes, simultaneous character an
 ## Visora sequence authoring workflow
 
 Visora exposes high-level MCP tools for multi-track cinematic and gameplay sequence authoring:
-`edit_animation_transaction`, `create_animation_event`, `set_keyframe_hold`,
-`solve_camera_subject_contact`, and `preview_animation`.
+`edit_animation_transaction`, `solve_camera_subject_contact`, and `preview_animation`.
 
 Sequences involving multiple actors, camera paths, and VFX timing must be authored atomically
 so that partial failures never leave scenes or assets in corrupted intermediate states.
