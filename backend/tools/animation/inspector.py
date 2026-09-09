@@ -2,6 +2,7 @@ from typing import Any, cast
 
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
+from backend.config import get_settings
 from backend.schemas import (
     AnimationBindingCurve,
     AnimationEventInfo,
@@ -12,13 +13,20 @@ from backend.tools.animation.scripts import _inspect_clip_code
 
 
 @mcp.tool()
-async def inspect_animation_clip(clip_path: str) -> ClipInspectorResult:
+async def inspect_animation_clip(
+    clip_path: str,
+    path_filter: str | None = None,
+    max_bindings: int | None = None,
+) -> ClipInspectorResult:
     """
     Inspects an AnimationClip's metadata, curves, bindings, and animation events in Unity project assets.
     Automatically detects dangerous curves (unexpected position, scale animations, static flat curves).
+    Truncates full curve bindings list to protect context window; use path_filter or max_bindings for details.
 
     Args:
         clip_path: Project-relative path to the AnimationClip (e.g. "Assets/Animations/Run.anim").
+        path_filter: Optional substring filter matching bone path or property name.
+        max_bindings: Optional maximum number of bindings to return (defaults to DIAGNOSTIC_MAX_BINDINGS).
 
     Returns:
         A ClipInspectorResult containing clip details, bindings list, events, and dangerous curve diagnostics.
@@ -85,6 +93,24 @@ async def inspect_animation_clip(clip_path: str) -> ClipInspectorResult:
             has_root_motion=has_root_motion,
         )
 
+        filtered_bindings = bindings
+        if path_filter:
+            p_filter = path_filter.lower()
+            filtered_bindings = [
+                b for b in bindings if p_filter in b.path.lower() or p_filter in b.property_name.lower()
+            ]
+
+        settings = get_settings()
+        limit = max_bindings if max_bindings is not None else settings.diagnostic_max_bindings
+        if limit is not None and len(filtered_bindings) > limit:
+            truncated_bindings = filtered_bindings[:limit]
+            summary_metrics["truncation_note"] = (
+                f"Showing {len(truncated_bindings)} of {len(filtered_bindings)} bindings "
+                f"(total clip curves: {len(bindings)}). Use path_filter or max_bindings for more."
+            )
+        else:
+            truncated_bindings = filtered_bindings
+
         return ClipInspectorResult(
             success=True,
             clip_name=cast(str | None, result_data.get("clipName")),
@@ -97,7 +123,7 @@ async def inspect_animation_clip(clip_path: str) -> ClipInspectorResult:
             has_root_motion=has_root_motion,
             curves_count=len(bindings),
             events_count=len(events),
-            bindings=bindings,
+            bindings=truncated_bindings,
             dangerous_curves=dangerous_curves,
             events=events,
             summary_metrics=summary_metrics,
@@ -112,31 +138,43 @@ async def inspect_animation_clip(clip_path: str) -> ClipInspectorResult:
 
 
 @mcp.tool()
-async def clip_inspector(clip_path: str) -> ClipInspectorResult:
+async def clip_inspector(
+    clip_path: str,
+    path_filter: str | None = None,
+    max_bindings: int | None = None,
+) -> ClipInspectorResult:
     """
     Inspects an animation clip's metadata, curves, and properties (alias for inspect_animation_clip).
 
     Args:
         clip_path: The project-relative path to the animation clip asset.
+        path_filter: Optional substring filter matching bone path or property name.
+        max_bindings: Optional maximum number of bindings to return.
 
     Returns:
         A ClipInspectorResult containing animation duration, frame rate, loop configuration, and curve metrics.
     """
-    return await inspect_animation_clip(clip_path)
+    return await inspect_animation_clip(clip_path, path_filter=path_filter, max_bindings=max_bindings)
 
 
 @mcp.tool()
-async def analyze_animation_curves(clip_path: str) -> ClipInspectorResult:
+async def analyze_animation_curves(
+    clip_path: str,
+    path_filter: str | None = None,
+    max_bindings: int | None = None,
+) -> ClipInspectorResult:
     """
     Performs focused curve diagnostic inspection on an AnimationClip asset.
 
     Args:
         clip_path: Project asset path to the AnimationClip.
+        path_filter: Optional substring filter matching bone path or property name.
+        max_bindings: Optional maximum number of bindings to return.
 
     Returns:
         A ClipInspectorResult with dangerous curve warnings and curve distribution metrics.
     """
-    return await inspect_animation_clip(clip_path)
+    return await inspect_animation_clip(clip_path, path_filter=path_filter, max_bindings=max_bindings)
 
 
 __all__ = [

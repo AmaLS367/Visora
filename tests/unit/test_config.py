@@ -30,6 +30,11 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_mode == "legacy"
     assert settings.unity_bridge_execution_timeout_seconds == 60.0
     assert settings.compact_tool_definitions is True
+    assert settings.diagnostic_max_bindings == 25
+    assert settings.diagnostic_max_transforms == 25
+    assert settings.diagnostic_max_bones == 30
+    assert settings.diagnostic_max_bone_bindings == 30
+    assert settings.diagnostic_max_hierarchy_nodes == 50
     assert settings.log_level == "INFO"
     assert settings.sketchfab_api_token == ""
     assert settings.poly_pizza_api_key == ""

@@ -2,6 +2,7 @@ from typing import Any
 
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
+from backend.config import get_settings
 from backend.schemas import BoneNode, BoneSearchResult, SkeletonMapperResult
 from backend.tools.animation.analysis import (
     detect_duplicate_bones,
@@ -53,14 +54,16 @@ async def _fetch_bone_hierarchy(root_transform_path: str) -> tuple[list[BoneNode
 
 
 @mcp.tool()
-async def skeleton_mapper(root_transform_path: str) -> SkeletonMapperResult:
+async def skeleton_mapper(root_transform_path: str, max_bones: int | None = None) -> SkeletonMapperResult:
     """
     Walks a real imported skeleton hierarchy, maps standard humanoid bones (via the Unity
     Avatar when present, or fuzzy name matching otherwise), and detects duplicate bone names,
     likely helper/dummy bones, and MMD-style primary/physics ('_D') bone chains.
+    Truncates full bones list to protect context window; use find_bones for specific searches.
 
     Args:
         root_transform_path: Hierarchical path in the active scene to the skeleton root GameObject.
+        max_bones: Optional maximum number of bone nodes to return in bones (defaults to DIAGNOSTIC_MAX_BONES).
 
     Returns:
         A SkeletonMapperResult detailing every bone found, the humanoid mapping, and rig diagnostics.
@@ -95,11 +98,22 @@ async def skeleton_mapper(root_transform_path: str) -> SkeletonMapperResult:
                 "No Humanoid Avatar found under root; humanoid bone mapping is heuristic (fuzzy name matching)."
             )
 
+        settings = get_settings()
+        limit = max_bones if max_bones is not None else settings.diagnostic_max_bones
+        if limit is not None and len(bones) > limit:
+            truncated_bones = bones[:limit]
+            warnings.append(
+                f"Showing {len(truncated_bones)} of {len(bones)} bones in bones list. "
+                "Use find_bones to search specific bones or increase max_bones."
+            )
+        else:
+            truncated_bones = bones
+
         return SkeletonMapperResult(
             success=True,
             root_transform_path=root_transform_path,
             bone_count=len(bones),
-            bones=bones,
+            bones=truncated_bones,
             mapping_source=mapping_source,
             is_valid=is_valid,
             mappings=mappings,

@@ -13,14 +13,14 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 <!-- GENERATED_TOOL_CATALOG_START -->
 | Tool | Parameters | Result |
 | --- | --- | --- |
-| `analyze_animation_curves` | `clip_path`* | `ClipInspectorResult` |
+| `analyze_animation_curves` | `clip_path`*, `path_filter`, `max_bindings` | `ClipInspectorResult` |
 | `analyze_contact_constraints` | `target_object_path`*, `clip_path`*, `effectors`, `ground_mode`, `ground_plane_y`, `velocity_threshold`, `height_tolerance` | `ContactAnalysisResult` |
 | `analyze_joint_motion` | `clip_path`*, `target_object_path`*, `bones`, `sample_fps`, `jerk_threshold`, `angular_jerk_threshold` | `JointMotionAnalysisResult` |
 | `analyze_self_intersections` | `target_object_path`*, `clip_path`*, `sample_fps`, `tolerance_meters` | `SelfIntersectionResult` |
 | `bake_contact_constraints` | `clip_path`*, `target_object_path`*, `output_clip_path`, `effectors`, `ground_plane_y`, `fix_foot_sliding`, `fix_penetration`, `operation_id` | `BakeContactConstraintsResult` |
 | `bake_effector_contact` | `clip_path`*, `target_object_path`*, `effector`*, `target_type`, `target_position`, `scene_object_path`, `camera_name`, `viewport_coordinates`, `viewport_depth`, `time_range`, `blend_in_seconds`, `blend_out_seconds`, `pole_vector`, `target_rotation` | `BakeEffectorContactResult` |
 | `check_ticket_status` | `ticket_id`* | `QueueStatusResult` |
-| `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
+| `clip_inspector` | `clip_path`*, `path_filter`, `max_bindings` | `ClipInspectorResult` |
 | `compare_animation_previews` | `baseline_preview_id`*, `comparison_preview_id`*, `baseline_slide_distance`, `comparison_slide_distance`, `baseline_peak_jerk`, `comparison_peak_jerk`, `baseline_peak_speed`, `comparison_peak_speed`, `baseline_camera_distance`, `comparison_camera_distance`, `keyframes_diff_count` | `AnimationComparisonResult` |
 | `compare_screenshots` | `before_image_path`*, `after_image_path`*, `threshold` | `BaseToolResult` |
 | `configure_humanoid_avatar` | `asset_path`*, `bone_mapping_overrides`, `source_avatar_path` | `HumanoidConfigurationResult` |
@@ -35,8 +35,8 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `get_video_frames` | `camera_names`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `BaseToolResult` |
 | `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_video_base64` | `VideoMp4Result` |
 | `import_local_asset` | `source_path`*, `target_folder`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
-| `inspect_animation_clip` | `clip_path`* | `ClipInspectorResult` |
-| `inspect_imported_asset` | `asset_path`* | `InspectAssetResult` |
+| `inspect_animation_clip` | `clip_path`*, `path_filter`, `max_bindings` | `ClipInspectorResult` |
+| `inspect_imported_asset` | `asset_path`*, `max_hierarchy_nodes` | `InspectAssetResult` |
 | `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `BaseToolResult` |
 | `instantiate_scene_asset` | `asset_path`*, `parent_path`, `position`, `rotation`, `scale`, `name` | `InstantiateSceneAssetResult` |
 | `list_animation_backups` | `clip_path`* | `ListAnimationBackupsResult` |
@@ -53,14 +53,14 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `restore_animation_clip` | `clip_path`*, `backup_id`*, `operation_id` | `RestoreAnimationClipResult` |
 | `restore_scene_state` | `undo_group`, `reload_active_scene` | `RestoreSceneResult` |
 | `safe_transaction` | `editor_code`*, `auto_save`, `record_undo`, `undo_name`, `restore_on_failure`, `timeout_seconds` | `SafeTransactionResult` |
-| `sample_animation_clip` | `target_game_object_path`*, `clip_path`*, `time`, `normalized_time`, `restore_pose_after`, `track_transforms` | `SampleAnimationResult` |
+| `sample_animation_clip` | `target_game_object_path`*, `clip_path`*, `time`, `normalized_time`, `restore_pose_after`, `track_transforms`, `max_transforms` | `SampleAnimationResult` |
 | `save_scene` | `save_as_path`, `force_during_play_mode` | `SaveSceneResult` |
 | `screenshot` | `camera_name`, `width`, `height` | `BaseToolResult` |
 | `search_assets` | `query`*, `category`, `source`, `limit`, `downloadable_only` | `SearchAssetsResult` |
 | `set_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `value`*, `tangent_mode`, `in_tangent`, `out_tangent`, `operation_id` | `AnimationClipEditResult` |
 | `set_keyframe_hold` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `hold_until`*, `value`, `operation_id` | `AnimationClipEditResult` |
-| `skeleton_mapper` | `root_transform_path`* | `SkeletonMapperResult` |
-| `skinned_mesh_diagnostics` | `mesh_renderer_path`* | `SkinnedMeshDiagnosticsResult` |
+| `skeleton_mapper` | `root_transform_path`*, `max_bones` | `SkeletonMapperResult` |
+| `skinned_mesh_diagnostics` | `mesh_renderer_path`*, `max_bone_bindings` | `SkinnedMeshDiagnosticsResult` |
 | `solve_camera_subject_contact` | `character_path`*, `character_clip_path`*, `camera_name`*, `camera_clip_path`, `effector`, `impact_time`, `contact_duration`, `lens_viewport`, `lens_distance_meters`, `hit_stop_duration`, `camera_recoil_impulse` | `CameraSubjectContactResult` |
 | `solve_character_gaze` | `target_object_path`*, `target_look_at_position`, `target_transform_path`, `chest_weight`, `neck_weight`, `head_weight`, `eyes_weight`, `up_vector`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `CharacterGazeResult` |
 | `solve_two_bone_ik` | `target_object_path`*, `target_position`*, `effector`, `root_bone`, `mid_bone`, `end_bone`, `target_rotation`, `pole_vector`, `space`, `camera_name`, `weight`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `TwoBoneIKSolveResult` |

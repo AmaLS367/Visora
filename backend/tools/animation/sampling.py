@@ -2,6 +2,7 @@ from typing import Any, cast
 
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
+from backend.config import get_settings
 from backend.schemas import (
     SampleAnimationResult,
     TransformPose,
@@ -19,11 +20,13 @@ async def sample_animation_clip(  # noqa: PLR0913
     normalized_time: float | None = None,
     restore_pose_after: bool = True,
     track_transforms: list[str] | None = None,
+    max_transforms: int | None = None,
 ) -> SampleAnimationResult:
     """
     Samples an AnimationClip on a GameObject at a specific timestamp or normalized time in the Unity scene.
     Inspects resulting transform hierarchy poses, root motion deltas, and validates for pose anomalies.
-    Safely restores the original GameObject pose after sampling by default.
+    Safely restores the original GameObject pose after sampling by default. Truncates full transforms dict
+    to protect context window; pass track_transforms or max_transforms for specific bones.
 
     Args:
         target_game_object_path: Hierarchy path in the active scene to the target GameObject.
@@ -32,6 +35,7 @@ async def sample_animation_clip(  # noqa: PLR0913
         normalized_time: Normalized timestamp between 0.0 (start) and 1.0 (end). Used if time is omitted.
         restore_pose_after: If True (default), reverts all transform poses to rest state after sampling.
         track_transforms: Optional list of bone/transform paths relative to target to sample. If None, samples all children.
+        max_transforms: Optional maximum number of transforms to return in sampled_transforms (defaults to DIAGNOSTIC_MAX_TRANSFORMS).
 
     Returns:
         A SampleAnimationResult with sampled transform poses, root motion displacement, and anomaly checks.
@@ -87,6 +91,29 @@ async def sample_animation_clip(  # noqa: PLR0913
                     )
 
         anomalies, warnings = analyze_sampled_pose(sampled_transforms)
+
+        if track_transforms is None:
+            settings = get_settings()
+            limit = max_transforms if max_transforms is not None else settings.diagnostic_max_transforms
+            if limit is not None and len(sampled_transforms) > limit:
+                # Prioritize anomalous/warning transforms and root/shallow bones
+                problem_notes = anomalies + warnings
+                priority_keys: list[str] = [
+                    k
+                    for k in sampled_transforms
+                    if any(f"({k})" in note or f"'{sampled_transforms[k].name}'" in note for note in problem_notes)
+                ]
+                remaining_keys = sorted(
+                    [k for k in sampled_transforms if k not in priority_keys],
+                    key=lambda p: (p.count("/"), len(p)),
+                )
+                selected_keys = (priority_keys + remaining_keys)[:limit]
+                limited_transforms = {k: sampled_transforms[k] for k in selected_keys}
+                warnings.append(
+                    f"Showing {len(limited_transforms)} of {len(sampled_transforms)} transforms in sampled_transforms. "
+                    "Specify track_transforms or max_transforms to inspect specific bones."
+                )
+                sampled_transforms = limited_transforms
 
         raw_root_delta = result_data.get("rootMotionDelta")
         root_motion_delta = list(raw_root_delta) if isinstance(raw_root_delta, list) else None

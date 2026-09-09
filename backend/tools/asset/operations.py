@@ -449,14 +449,18 @@ async def import_local_asset(  # noqa: PLR0913
 
 
 @mcp.tool()
-async def inspect_imported_asset(asset_path: str) -> InspectAssetResult:
+async def inspect_imported_asset(
+    asset_path: str,
+    max_hierarchy_nodes: int | None = None,
+) -> InspectAssetResult:
     """
     Inspects an imported asset in Unity, returning ModelImporter settings (animation type,
     material import mode, normal generation), submeshes, referenced materials, textures,
-    and embedded animation clips.
+    and embedded animation clips. Truncates full hierarchy tree to protect context window.
 
     Args:
         asset_path: Relative Unity asset path (e.g. 'Assets/VisoraDownloads/model.glb').
+        max_hierarchy_nodes: Optional maximum number of hierarchy nodes to return (defaults to DIAGNOSTIC_MAX_HIERARCHY_NODES).
 
     Returns:
         An InspectAssetResult with comprehensive asset and rig import metadata.
@@ -489,6 +493,20 @@ async def inspect_imported_asset(asset_path: str) -> InspectAssetResult:
                 mesh_compression=raw_info.get("mesh_compression", "Off"),
             )
 
+        raw_hierarchy = list(data.get("hierarchy_tree", []))
+        warnings = [str(w) for w in data.get("warnings", [])]
+
+        settings = get_settings()
+        limit = max_hierarchy_nodes if max_hierarchy_nodes is not None else settings.diagnostic_max_hierarchy_nodes
+        if limit is not None and len(raw_hierarchy) > limit:
+            hierarchy_tree = raw_hierarchy[:limit]
+            warnings.append(
+                f"Showing {len(hierarchy_tree)} of {len(raw_hierarchy)} nodes in hierarchy_tree. "
+                "Pass max_hierarchy_nodes to view more."
+            )
+        else:
+            hierarchy_tree = raw_hierarchy
+
         return InspectAssetResult(
             success=True,
             asset_path=clean_path,
@@ -498,7 +516,8 @@ async def inspect_imported_asset(asset_path: str) -> InspectAssetResult:
             materials=list(data.get("materials", [])),
             textures=list(data.get("textures", [])),
             animation_clips=list(data.get("animation_clips", [])),
-            hierarchy_tree=list(data.get("hierarchy_tree", [])),
+            hierarchy_tree=hierarchy_tree,
+            warnings=warnings,
         )
     except Exception as exc:
         logger.exception("inspect_asset_op failed")

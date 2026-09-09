@@ -2,6 +2,7 @@ from typing import Any
 
 import backend.tools.mesh as mesh_pkg
 from backend.app import mcp
+from backend.config import get_settings
 from backend.schemas.mesh import SkinnedMeshDiagnosticsResult
 from backend.tools.mesh.analysis import (
     analyze_bones,
@@ -14,14 +15,19 @@ from backend.tools.mesh.scripts import _skinned_mesh_diagnostics_code
 
 
 @mcp.tool()
-async def skinned_mesh_diagnostics(mesh_renderer_path: str) -> SkinnedMeshDiagnosticsResult:
+async def skinned_mesh_diagnostics(
+    mesh_renderer_path: str,
+    max_bone_bindings: int | None = None,
+) -> SkinnedMeshDiagnosticsResult:
     """
     Performs runtime diagnostics on a SkinnedMeshRenderer component, verifying mesh deformation,
     bounding box validity, bone bindings, material/submesh alignment, and distinguishing
-    geometry/skinning bugs from texture/material bugs.
+    geometry/skinning bugs from texture/material bugs. Truncates full bone_bindings list to protect
+    context window; detected problems remain highlighted in 'issues'.
 
     Args:
         mesh_renderer_path: Hierarchical path in the active scene to the GameObject holding the SkinnedMeshRenderer.
+        max_bone_bindings: Optional maximum number of bone bindings to return (defaults to DIAGNOSTIC_MAX_BONE_BINDINGS).
 
     Returns:
         A typed SkinnedMeshDiagnosticsResult detailing mesh stats, bounds, bone attachments,
@@ -115,6 +121,19 @@ async def skinned_mesh_diagnostics(mesh_renderer_path: str) -> SkinnedMeshDiagno
 
         is_sub_mesh_valid = not has_material_mismatch and all(sm.has_matching_material for sm in submeshes)
 
+        settings = get_settings()
+        limit = max_bone_bindings if max_bone_bindings is not None else settings.diagnostic_max_bone_bindings
+        if limit is not None and len(bone_bindings) > limit:
+            broken_slots = [b for b in bone_bindings if b.is_null]
+            normal_slots = [b for b in bone_bindings if not b.is_null]
+            truncated_bindings = (broken_slots + normal_slots)[:limit]
+            warnings.append(
+                f"Showing {len(truncated_bindings)} of {len(bone_bindings)} bone bindings. "
+                "All detected bone issues are detailed in 'issues'."
+            )
+        else:
+            truncated_bindings = bone_bindings
+
         return SkinnedMeshDiagnosticsResult(
             success=True,
             mesh_renderer_path=mesh_renderer_path,
@@ -132,7 +151,7 @@ async def skinned_mesh_diagnostics(mesh_renderer_path: str) -> SkinnedMeshDiagno
             has_deformation_issue=has_deformation_issue,
             primary_issue_category=primary_category,
             bounds=bounds_info,
-            bone_bindings=bone_bindings,
+            bone_bindings=truncated_bindings,
             materials=materials,
             submeshes=submeshes,
             deformation=deformation,

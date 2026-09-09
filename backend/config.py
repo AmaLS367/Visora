@@ -34,6 +34,11 @@ class Settings(BaseSettings):
         default=60.0, validation_alias="UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS"
     )
     compact_tool_definitions: bool = Field(default=True, validation_alias="COMPACT_TOOL_DEFINITIONS")
+    diagnostic_max_bindings: int = Field(default=25, validation_alias="DIAGNOSTIC_MAX_BINDINGS")
+    diagnostic_max_transforms: int = Field(default=25, validation_alias="DIAGNOSTIC_MAX_TRANSFORMS")
+    diagnostic_max_bones: int = Field(default=30, validation_alias="DIAGNOSTIC_MAX_BONES")
+    diagnostic_max_bone_bindings: int = Field(default=30, validation_alias="DIAGNOSTIC_MAX_BONE_BINDINGS")
+    diagnostic_max_hierarchy_nodes: int = Field(default=50, validation_alias="DIAGNOSTIC_MAX_HIERARCHY_NODES")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     sketchfab_api_token: str = Field(default="", validation_alias="SKETCHFAB_API_TOKEN")
     poly_pizza_api_key: str = Field(default="", validation_alias="POLY_PIZZA_API_KEY")
