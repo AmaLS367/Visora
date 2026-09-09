@@ -865,7 +865,7 @@ namespace Visora.Editor.Core
                             p.targetPath, p.effector, p.rootBone, p.midBone, p.endBone,
                             p.targetPosition, p.targetRotation, p.poleVector,
                             p.space, p.cameraName, p.weight, p.applyToScene, p.bakeToClip, st));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/viewport-placement")
                 {
@@ -877,7 +877,7 @@ namespace Visora.Editor.Core
                             p.cameraName, p.targetPath, p.effector, p.rootBone, p.midBone, p.endBone,
                             p.viewportX, p.viewportY, p.cameraDepth, p.alignMode,
                             p.customRotation, p.poleVector, p.weight, p.applyToScene, p.bakeToClip, st));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/gaze/solve")
                 {
@@ -889,7 +889,7 @@ namespace Visora.Editor.Core
                             p.targetPath, p.targetLookAtPosition, p.targetTransformPath,
                             p.chestWeight, p.neckWeight, p.headWeight, p.eyesWeight,
                             p.upVector, p.applyToScene, p.bakeToClip, st));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/qa/motion")
                 {
@@ -899,7 +899,7 @@ namespace Visora.Editor.Core
                         AnimationMotionQAService.AnalyzeJointMotion(
                             p.clipPath, p.targetPath, p.bones, p.sampleFps,
                             p.jerkThreshold, p.angularJerkThreshold));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/qa/discontinuities")
                 {
@@ -908,7 +908,7 @@ namespace Visora.Editor.Core
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         AnimationMotionQAService.DetectCurveDiscontinuities(
                             p.clipPath, p.filterCurves, p.autoFix));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/transaction/execute")
                 {
@@ -916,7 +916,7 @@ namespace Visora.Editor.Core
                     var p = JsonUtility.FromJson<AnimationTransactionRequest>(body) ?? new AnimationTransactionRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         AnimationTransactionService.ExecuteTransaction(p));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/contact/bake-effector")
                 {
@@ -924,7 +924,7 @@ namespace Visora.Editor.Core
                     var p = JsonUtility.FromJson<EffectorContactBakeRequest>(body) ?? new EffectorContactBakeRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         AnimationEffectorContactService.BakeContact(p));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/action/camera-subject-contact")
                 {
@@ -932,7 +932,7 @@ namespace Visora.Editor.Core
                     var p = JsonUtility.FromJson<CameraSubjectContactRequest>(body) ?? new CameraSubjectContactRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         CameraSubjectActionService.SolveCameraSubjectContact(p));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/animation/intersections/analyze")
                 {
@@ -940,7 +940,7 @@ namespace Visora.Editor.Core
                     var p = JsonUtility.FromJson<SelfIntersectionRequest>(body) ?? new SelfIntersectionRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         AnimationSelfIntersectionService.AnalyzeSelfIntersections(p));
-                    responseJson = JsonUtility.ToJson(result);
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else
                 {

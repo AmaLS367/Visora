@@ -424,6 +424,25 @@ namespace Visora.Editor.Services
             string clipPath, string targetPath, string typeName, string propertyName,
             float time, float[] values, string tangentMode, float[] inTangent, float[] outTangent, string operationId)
         {
+            return SetKeyframeCore(
+                clipPath, targetPath, typeName, propertyName, time, values, tangentMode,
+                inTangent, outTangent, operationId, createBackup: true, manageUndo: true);
+        }
+
+        internal static AnimationClipEditResult SetPreparedKeyframe(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float time, float[] values, string tangentMode)
+        {
+            return SetKeyframeCore(
+                clipPath, targetPath, typeName, propertyName, time, values, tangentMode,
+                null, null, null, createBackup: false, manageUndo: false);
+        }
+
+        private static AnimationClipEditResult SetKeyframeCore(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float time, float[] values, string tangentMode, float[] inTangent, float[] outTangent,
+            string operationId, bool createBackup, bool manageUndo)
+        {
             if (AnimationBackupService.TryGetCached(operationId, out AnimationClipEditResult cached))
             {
                 return cached;
@@ -508,21 +527,28 @@ namespace Visora.Editor.Services
                 return result;
             }
 
-            string backupId;
-            try
+            string backupId = null;
+            if (createBackup)
             {
-                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "set_animation_keyframe");
-            }
-            catch (Exception ex)
-            {
-                result.success = false;
-                result.error = $"Backup failed, edit aborted: {ex.Message}";
-                return result;
+                try
+                {
+                    backupId = AnimationBackupService.WriteBackup(clip, clipPath, "set_animation_keyframe");
+                }
+                catch (Exception ex)
+                {
+                    result.success = false;
+                    result.error = $"Backup failed, edit aborted: {ex.Message}";
+                    return result;
+                }
             }
 
-            Undo.IncrementCurrentGroup();
-            int undoGroup = Undo.GetCurrentGroup();
-            Undo.SetCurrentGroupName("Visora: set_animation_keyframe");
+            int undoGroup = -1;
+            if (manageUndo)
+            {
+                Undo.IncrementCurrentGroup();
+                undoGroup = Undo.GetCurrentGroup();
+                Undo.SetCurrentGroupName("Visora: set_animation_keyframe");
+            }
 
             try
             {
@@ -531,7 +557,7 @@ namespace Visora.Editor.Services
                     var binding = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
                     var curve = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
 
-                    Undo.RecordObject(clip, "Visora: set_animation_keyframe");
+                    if (manageUndo) Undo.RecordObject(clip, "Visora: set_animation_keyframe");
                     int keyIndex = UpsertKey(curve, time, values[i], tangentMode, clip.frameRate);
                     if (inTangent != null) SetTangentValue(curve, keyIndex, left: true, value: inTangent[i]);
                     if (outTangent != null) SetTangentValue(curve, keyIndex, left: false, value: outTangent[i]);
@@ -540,7 +566,7 @@ namespace Visora.Editor.Services
                 }
 
                 EditorUtility.SetDirty(clip);
-                Undo.CollapseUndoOperations(undoGroup);
+                if (manageUndo) Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;
                 result.channelsAffected.AddRange(channels);
@@ -548,12 +574,12 @@ namespace Visora.Editor.Services
                 result.time = time;
                 result.hasTime = true;
                 result.backupId = backupId;
-                result.undoGroupId = undoGroup;
+                result.undoGroupId = manageUndo ? undoGroup : 0;
                 AnimationBackupService.CacheSuccess(operationId, result);
             }
             catch (Exception ex)
             {
-                Undo.RevertAllDownToGroup(undoGroup);
+                if (manageUndo) Undo.RevertAllDownToGroup(undoGroup);
                 result.success = false;
                 result.error = ex.Message;
             }
@@ -1025,6 +1051,25 @@ namespace Visora.Editor.Services
             string clipPath, string targetPath, string typeName, string propertyName,
             float time, float holdUntil, float[] value, string operationId)
         {
+            return SetKeyframeHoldCore(
+                clipPath, targetPath, typeName, propertyName, time, holdUntil, value,
+                operationId, createBackup: true, manageUndo: true);
+        }
+
+        internal static AnimationClipEditResult SetPreparedKeyframeHold(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float time, float holdUntil, float[] value)
+        {
+            return SetKeyframeHoldCore(
+                clipPath, targetPath, typeName, propertyName, time, holdUntil, value,
+                null, createBackup: false, manageUndo: false);
+        }
+
+        private static AnimationClipEditResult SetKeyframeHoldCore(
+            string clipPath, string targetPath, string typeName, string propertyName,
+            float time, float holdUntil, float[] value, string operationId,
+            bool createBackup, bool manageUndo)
+        {
             if (AnimationBackupService.TryGetCached(operationId, out AnimationClipEditResult cached))
             {
                 return cached;
@@ -1080,21 +1125,28 @@ namespace Visora.Editor.Services
                 value = ExpandValue(value, channels.Length, nameof(value));
             }
 
-            string backupId;
-            try
+            string backupId = null;
+            if (createBackup)
             {
-                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "set_keyframe_hold");
-            }
-            catch (Exception ex)
-            {
-                result.success = false;
-                result.error = $"Backup failed, edit aborted: {ex.Message}";
-                return result;
+                try
+                {
+                    backupId = AnimationBackupService.WriteBackup(clip, clipPath, "set_keyframe_hold");
+                }
+                catch (Exception ex)
+                {
+                    result.success = false;
+                    result.error = $"Backup failed, edit aborted: {ex.Message}";
+                    return result;
+                }
             }
 
-            Undo.IncrementCurrentGroup();
-            int undoGroup = Undo.GetCurrentGroup();
-            Undo.SetCurrentGroupName("Visora: set_keyframe_hold");
+            int undoGroup = -1;
+            if (manageUndo)
+            {
+                Undo.IncrementCurrentGroup();
+                undoGroup = Undo.GetCurrentGroup();
+                Undo.SetCurrentGroupName("Visora: set_keyframe_hold");
+            }
 
             try
             {
@@ -1105,7 +1157,7 @@ namespace Visora.Editor.Services
                     var binding = new EditorCurveBinding { path = targetPath, type = componentType, propertyName = channels[i] };
                     var curve = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
 
-                    Undo.RecordObject(clip, "Visora: set_keyframe_hold");
+                    if (manageUndo) Undo.RecordObject(clip, "Visora: set_keyframe_hold");
 
                     float holdVal = value != null ? value[i] : curve.Evaluate(time);
 
@@ -1127,7 +1179,7 @@ namespace Visora.Editor.Services
                 }
 
                 EditorUtility.SetDirty(clip);
-                Undo.CollapseUndoOperations(undoGroup);
+                if (manageUndo) Undo.CollapseUndoOperations(undoGroup);
 
                 result.success = true;
                 result.channelsAffected.AddRange(channels);
@@ -1136,12 +1188,12 @@ namespace Visora.Editor.Services
                 result.hasTime = true;
                 result.keysCleared.AddRange(clearedTimes);
                 result.backupId = backupId;
-                result.undoGroupId = undoGroup;
+                result.undoGroupId = manageUndo ? undoGroup : 0;
                 AnimationBackupService.CacheSuccess(operationId, result);
             }
             catch (Exception ex)
             {
-                Undo.RevertAllDownToGroup(undoGroup);
+                if (manageUndo) Undo.RevertAllDownToGroup(undoGroup);
                 result.success = false;
                 result.error = ex.Message;
             }
@@ -1406,5 +1458,4 @@ namespace Visora.Editor.Services
         public List<string> warnings = new List<string>();
     }
 }
-
 

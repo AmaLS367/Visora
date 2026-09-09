@@ -170,6 +170,24 @@ namespace Visora.Editor.Services
             return true;
         }
 
+        private const float IkEpsilon = 1e-5f;
+
+        /// <summary>Angle (radians) opposite side <paramref name="opposite"/> in a triangle with the other two sides.</summary>
+        private static float TriangleAngle(float opposite, float adjacent1, float adjacent2)
+        {
+            float denom = 2f * adjacent1 * adjacent2;
+            if (denom < IkEpsilon) return 0f;
+            float cos = ((adjacent1 * adjacent1) + (adjacent2 * adjacent2) - (opposite * opposite)) / denom;
+            return Mathf.Acos(Mathf.Clamp(cos, -1f, 1f));
+        }
+
+        /// <summary>
+        /// Analytic two-bone IK. Rotates the mid joint to the law-of-cosines interior angle, aims
+        /// the chain at the target, then rolls the chain around the root-&gt;target axis so the mid
+        /// joint sits in the plane defined by the pole vector. Degenerate rigs (zero-length bone
+        /// or target coincident with the root) are left untouched and reported via
+        /// <paramref name="clamped"/> + a NaN-free zero residual is avoided by returning early.
+        /// </summary>
         public static void SolveTwoBoneIKInternal(
             Transform root,
             Transform mid,
@@ -184,6 +202,9 @@ namespace Visora.Editor.Services
             out float posResidual,
             out float rotResidualDeg)
         {
+            clamped = false;
+            rotResidualDeg = 0f;
+
             Vector3 a = root.position;
             Vector3 b = mid.position;
             Vector3 c = end.position;
@@ -196,73 +217,82 @@ namespace Visora.Editor.Services
 
             Vector3 targetDir = targetPos - a;
             actualDistance = targetDir.magnitude;
-            clamped = false;
 
-            // Soft damping near full extension to prevent violent snaps
+            // Degenerate: a collapsed rig (l1 or l2 == 0) or a target on top of the root joint
+            // would divide by zero in the law of cosines and write NaN quaternions to the skeleton.
+            if (l1 < IkEpsilon || l2 < IkEpsilon || actualDistance < IkEpsilon)
+            {
+                clamped = true;
+                posResidual = actualDistance;
+                return;
+            }
+
+            // Clamp reach: keep strictly inside [|l1-l2|, l1+l2] with soft damping near extension.
             float softThreshold = maxLen * 0.96f;
             float targetDist = actualDistance;
             if (targetDist > softThreshold)
             {
                 float da = maxLen - softThreshold;
-                targetDist = softThreshold + da * (1f - Mathf.Exp(-(actualDistance - softThreshold) / Mathf.Max(da, 0.0001f)));
+                targetDist = softThreshold + (da * (1f - Mathf.Exp(-(actualDistance - softThreshold) / Mathf.Max(da, IkEpsilon))));
                 clamped = true;
             }
+            float lo = minLen + 0.002f;
+            float hi = maxLen * 0.999f;
+            if (targetDist < lo) { targetDist = lo; clamped = true; }
+            else if (targetDist > hi) { targetDist = hi; clamped = true; }
 
-            if (targetDist < minLen + 0.002f)
-            {
-                targetDist = minLen + 0.002f;
-                clamped = true;
-            }
-            else if (targetDist > maxLen * 0.999f)
-            {
-                targetDist = maxLen * 0.999f;
-                clamped = true;
-            }
-
-            // Determine bend plane
+            // Bend axis: prefer the pole-defined plane, fall back to the current chain plane, then root.right.
+            Vector3 axisDir = targetDir / actualDistance;
+            Vector3 currentBend = Vector3.Cross(c - a, b - a);
             Vector3 bendNormal;
             if (poleVector.HasValue)
             {
                 Vector3 poleDir = poleVector.Value - a;
-                bendNormal = Vector3.Cross(targetDir, poleDir);
-                if (bendNormal.sqrMagnitude < 0.0001f)
-                {
-                    bendNormal = Vector3.Cross(b - a, c - a);
-                }
+                Vector3 poleProj = poleDir - (Vector3.Dot(poleDir, axisDir) * axisDir);
+                bendNormal = poleProj.sqrMagnitude > IkEpsilon
+                    ? Vector3.Cross(axisDir, poleProj)
+                    : currentBend;
             }
             else
             {
-                bendNormal = Vector3.Cross(b - a, c - a);
+                bendNormal = currentBend;
             }
-
-            if (bendNormal.sqrMagnitude < 0.0001f)
-            {
-                bendNormal = root.right;
-            }
+            if (bendNormal.sqrMagnitude < IkEpsilon) bendNormal = Vector3.Cross(axisDir, root.right);
+            if (bendNormal.sqrMagnitude < IkEpsilon) bendNormal = Vector3.Cross(axisDir, root.up);
             bendNormal.Normalize();
 
-            // Law of Cosines
-            float cosAlpha = ((l1 * l1) + (targetDist * targetDist) - (l2 * l2)) / (2f * l1 * targetDist);
-            float alpha = Mathf.Acos(Mathf.Clamp(cosAlpha, -1f, 1f)) * Mathf.Rad2Deg;
+            // 1. Set the interior mid-joint angle via law of cosines.
+            float midAngle0 = TriangleAngle((c - a).magnitude, l1, l2);
+            float midAngle1 = TriangleAngle(targetDist, l1, l2);
+            Vector3 curMidAxis = Vector3.Cross(a - b, c - b);
+            if (curMidAxis.sqrMagnitude < IkEpsilon) curMidAxis = bendNormal;
+            Quaternion midDelta = Quaternion.AngleAxis((midAngle1 - midAngle0) * Mathf.Rad2Deg, curMidAxis.normalized);
+            ApplyWorldRotation(mid, midDelta, weight);
 
-            float cosBeta = ((l1 * l1) + (l2 * l2) - (targetDist * targetDist)) / (2f * l1 * l2);
-            float beta = Mathf.Acos(Mathf.Clamp(cosBeta, -1f, 1f)) * Mathf.Rad2Deg;
+            // 2. Aim the chain so the end lands on the (clamped) target direction.
+            c = end.position;
+            Vector3 acDir = (c - a).normalized;
+            if (acDir.sqrMagnitude > IkEpsilon)
+            {
+                float aimAngle = Vector3.Angle(acDir, axisDir);
+                Vector3 aimAxis = Vector3.Cross(acDir, axisDir);
+                if (aimAxis.sqrMagnitude < IkEpsilon) aimAxis = bendNormal;
+                Quaternion rootAim = Quaternion.AngleAxis(aimAngle, aimAxis.normalized);
+                ApplyWorldRotation(root, rootAim, weight);
+            }
 
-            // Root rotation
-            Vector3 targetDirNorm = targetDir.normalized;
-            Quaternion targetRotRoot = Quaternion.AngleAxis(-alpha, bendNormal) * Quaternion.LookRotation(targetDirNorm, bendNormal);
-            Quaternion rootDelta = targetRotRoot * Quaternion.Inverse(root.rotation);
-            Quaternion solvedRootRot = Quaternion.Slerp(root.rotation, rootDelta * root.rotation, weight);
-            root.rotation = solvedRootRot;
+            // 3. Roll the chain around the root->target axis so the mid joint sits in the pole plane.
+            b = mid.position;
+            Vector3 abProj = (b - a) - (Vector3.Dot(b - a, axisDir) * axisDir);
+            Vector3 poleTarget = Vector3.Cross(bendNormal, axisDir); // in-plane direction the elbow should point
+            if (abProj.sqrMagnitude > IkEpsilon && poleTarget.sqrMagnitude > IkEpsilon)
+            {
+                float rollAngle = Vector3.SignedAngle(abProj, poleTarget, axisDir);
+                Quaternion rollRot = Quaternion.AngleAxis(rollAngle, axisDir);
+                ApplyWorldRotation(root, rollRot, weight);
+            }
 
-            // Mid rotation (bend)
-            Vector3 desiredEndDir = (targetPos - mid.position).normalized;
-            Quaternion midDelta = Quaternion.FromToRotation((end.position - mid.position).normalized, desiredEndDir);
-            Quaternion solvedMidRot = Quaternion.Slerp(mid.rotation, midDelta * mid.rotation, weight);
-            mid.rotation = solvedMidRot;
-
-            // End rotation (optional effector orientation matching)
-            rotResidualDeg = 0f;
+            // 4. Optional effector orientation matching.
             if (targetRot.HasValue)
             {
                 Quaternion targetEndRot = targetRot.Value;
@@ -273,6 +303,13 @@ namespace Visora.Editor.Services
             }
 
             posResidual = Vector3.Distance(end.position, targetPos);
+        }
+
+        /// <summary>Applies a world-space delta rotation to <paramref name="t"/>, blended by <paramref name="weight"/>.</summary>
+        private static void ApplyWorldRotation(Transform t, Quaternion worldDelta, float weight)
+        {
+            Quaternion target = worldDelta * t.rotation;
+            t.rotation = weight >= 0.999f ? target : Quaternion.Slerp(t.rotation, target, weight);
         }
 
         public static NativeTwoBoneIKResult SolveTwoBoneIK(
@@ -289,7 +326,8 @@ namespace Visora.Editor.Services
             float weight,
             bool applyToScene,
             string bakeToClip,
-            float? sampleTime)
+            float? sampleTime,
+            bool deferRestore = false)
         {
             var result = new NativeTwoBoneIKResult
             {
@@ -364,10 +402,24 @@ namespace Visora.Editor.Services
                 poleVector = new Vector3(poleVectorArray[0], poleVectorArray[1], poleVectorArray[2]);
             }
 
-            // Save initial pose if not applying to scene permanently
+            // A bake target with no sample time silently no-ops without this guard.
+            if (!string.IsNullOrEmpty(bakeToClip) && !sampleTime.HasValue)
+            {
+                result.success = false;
+                result.error = "sample_time is required when bake_to_clip is set.";
+                return result;
+            }
+
+            // Save initial pose so a query-mode solve can be reverted after measurement.
             Quaternion initRoot = root.localRotation;
             Quaternion initMid = mid.localRotation;
             Quaternion initEnd = end.localRotation;
+
+            // Undo must snapshot the pre-solve pose; recording it after mutation makes undo a no-op.
+            if (applyToScene)
+            {
+                Undo.RecordObjects(new UnityEngine.Object[] { root, mid, end }, "Visora: Solve Two-Bone IK");
+            }
 
             SolveTwoBoneIKInternal(
                 root, mid, end, targetPos, targetRot, poleVector, Mathf.Clamp01(weight),
@@ -408,34 +460,22 @@ namespace Visora.Editor.Services
                 }
             }
 
-            if (!applyToScene)
+            if (applyToScene)
             {
-                // Restore initial pose if scene mutation was not requested
+                EditorUtility.SetDirty(root);
+                EditorUtility.SetDirty(mid);
+                EditorUtility.SetDirty(end);
+            }
+            else if (!deferRestore)
+            {
+                // Restore initial pose if scene mutation was not requested.
                 root.localRotation = initRoot;
                 mid.localRotation = initMid;
                 end.localRotation = initEnd;
             }
-            else
-            {
-                Undo.RecordObjects(new UnityEngine.Object[] { root, mid, end }, "Visora: Solve Two-Bone IK");
-            }
 
             result.success = true;
             return result;
-        }
-
-        private static string GetRelativeHierarchyPath(Transform root, Transform target)
-        {
-            if (root == target) return "";
-            var path = new List<string>();
-            var current = target;
-            while (current != null && current != root)
-            {
-                path.Add(current.name);
-                current = current.parent;
-            }
-            path.Reverse();
-            return string.Join("/", path);
         }
 
         private static void BakeIKToClip(
@@ -457,9 +497,10 @@ namespace Visora.Editor.Services
                 return;
             }
 
+            string backupId = null;
             try
             {
-                string backupId = AnimationBackupService.WriteBackup(clip, clipPath, "two_bone_ik");
+                backupId = AnimationBackupService.WriteBackup(clip, clipPath, "two_bone_ik");
                 result.backupId = backupId;
 
                 int undoGroup = Undo.GetCurrentGroup();
@@ -467,10 +508,9 @@ namespace Visora.Editor.Services
                 Undo.SetCurrentGroupName("Visora: Bake Two-Bone IK");
                 Undo.RecordObject(clip, "Visora: Bake Two-Bone IK");
 
-                // Write quaternion curves for root, mid, end
-                WriteBoneQuaternionCurves(clip, targetGo.transform, root, time, rootRot);
-                WriteBoneQuaternionCurves(clip, targetGo.transform, mid, time, midRot);
-                WriteBoneQuaternionCurves(clip, targetGo.transform, end, time, endRot);
+                AnimationCurveWriter.WriteQuaternionKey(clip, targetGo.transform, root, time, rootRot);
+                AnimationCurveWriter.WriteQuaternionKey(clip, targetGo.transform, mid, time, midRot);
+                AnimationCurveWriter.WriteQuaternionKey(clip, targetGo.transform, end, time, endRot);
 
                 clip.EnsureQuaternionContinuity();
                 EditorUtility.SetDirty(clip);
@@ -480,39 +520,19 @@ namespace Visora.Editor.Services
             catch (Exception ex)
             {
                 result.warnings.Add($"Error baking to clip: {ex.Message}");
-            }
-        }
-
-        private static void WriteBoneQuaternionCurves(
-            AnimationClip clip,
-            Transform rootTransform,
-            Transform bone,
-            float time,
-            Quaternion localRot)
-        {
-            string bonePath = GetRelativeHierarchyPath(rootTransform, bone);
-            string[] props = { "m_LocalRotation.x", "m_LocalRotation.y", "m_LocalRotation.z", "m_LocalRotation.w" };
-            float[] vals = { localRot.x, localRot.y, localRot.z, localRot.w };
-
-            for (int i = 0; i < 4; i++)
-            {
-                var binding = EditorCurveBinding.FloatCurve(bonePath, typeof(Transform), props[i]);
-                var curve = AnimationUtility.GetEditorCurve(clip, binding) ?? new AnimationCurve();
-                bool replaced = false;
-                for (int k = 0; k < curve.length; k++)
+                if (!string.IsNullOrEmpty(backupId))
                 {
-                    if (Mathf.Abs(curve[k].time - time) < 0.0001f)
+                    try
                     {
-                        curve.MoveKey(k, new Keyframe(time, vals[i]));
-                        replaced = true;
-                        break;
+                        AnimationBackupService.RestoreBackup(clip, clipPath, backupId, null);
+                        AssetDatabase.SaveAssets();
+                        result.warnings.Add("Clip restored from pre-bake backup after the failure.");
+                    }
+                    catch (Exception restoreEx)
+                    {
+                        result.warnings.Add($"Rollback also failed: {restoreEx.Message}");
                     }
                 }
-                if (!replaced)
-                {
-                    curve.AddKey(time, vals[i]);
-                }
-                AnimationUtility.SetEditorCurve(clip, binding, curve);
             }
         }
 
@@ -588,49 +608,64 @@ namespace Visora.Editor.Services
                 targetRotArr = new[] { targetRot.Value.x, targetRot.Value.y, targetRot.Value.z, targetRot.Value.w };
             }
 
-            // Solve Two-Bone IK
-            var ikResult = SolveTwoBoneIK(
-                targetObjectPath, effector, rootBone, midBone, endBone,
-                new[] { worldTarget.x, worldTarget.y, worldTarget.z },
-                targetRotArr, poleVectorArray, "world", cameraName, weight, applyToScene, bakeToClip, sampleTime);
-
-            res.ikResult = ikResult;
-            if (!ikResult.success)
-            {
-                res.success = false;
-                res.error = ikResult.error;
-                return res;
-            }
-
-            res.reachDistance = ikResult.reachDistance;
-            res.actualDistance = ikResult.actualDistance;
-            res.targetClamped = ikResult.targetClamped;
-
-            // Find end transform to measure actual solved position
+            // Snapshot the limb so query-mode metrics can be read from the SOLVED pose before revert.
             var targetGo = GameObject.Find(targetObjectPath);
-            ResolveLimbTransforms(targetGo, effector, rootBone, midBone, endBone, out _, out _, out var endTransform, out _);
-            if (endTransform != null)
+            ResolveLimbTransforms(targetGo, effector, rootBone, midBone, endBone,
+                out var snapRoot, out var snapMid, out var endTransform, out _);
+            Quaternion snapRootRot = snapRoot != null ? snapRoot.localRotation : Quaternion.identity;
+            Quaternion snapMidRot = snapMid != null ? snapMid.localRotation : Quaternion.identity;
+            Quaternion snapEndRot = endTransform != null ? endTransform.localRotation : Quaternion.identity;
+
+            bool restoreQueryPose = !applyToScene && snapRoot != null && snapMid != null && endTransform != null;
+            try
             {
+                // Keep the solved pose in place (deferRestore) until every viewport metric is captured.
+                var ikResult = SolveTwoBoneIK(
+                    targetObjectPath, effector, rootBone, midBone, endBone,
+                    new[] { worldTarget.x, worldTarget.y, worldTarget.z },
+                    targetRotArr, poleVectorArray, "world", cameraName, weight, applyToScene, bakeToClip, sampleTime,
+                    deferRestore: true);
+
+                res.ikResult = ikResult;
+                if (!ikResult.success)
+                {
+                    res.success = false;
+                    res.error = ikResult.error;
+                    return res;
+                }
+
+                res.reachDistance = ikResult.reachDistance;
+                res.actualDistance = ikResult.actualDistance;
+                res.targetClamped = ikResult.targetClamped;
+
                 Vector3 solvedWorld = endTransform.position;
                 res.solvedWorldPosition = new[] { solvedWorld.x, solvedWorld.y, solvedWorld.z };
-
-                // Reproject through camera
                 Vector3 actualVp = cam.WorldToViewportPoint(solvedWorld);
                 res.actualViewport = new[] { actualVp.x, actualVp.y, actualVp.z };
 
                 float pixelWidth = cam.pixelWidth > 0 ? cam.pixelWidth : 1920f;
                 float pixelHeight = cam.pixelHeight > 0 ? cam.pixelHeight : 1080f;
-                float residualPixelX = (actualVp.x - viewportX) * pixelWidth;
-                float residualPixelY = (actualVp.y - viewportY) * pixelHeight;
-                res.screenResidualPixels = new[] { residualPixelX, residualPixelY };
+                res.screenResidualPixels = new[]
+                {
+                    (actualVp.x - viewportX) * pixelWidth,
+                    (actualVp.y - viewportY) * pixelHeight,
+                };
                 res.depthResidualMeters = Mathf.Abs(actualVp.z - cameraDepth);
-
-                res.isInFrustum = actualVp.z > 0f && actualVp.x >= 0f && actualVp.x <= 1f && actualVp.y >= 0f && actualVp.y <= 1f;
+                res.isInFrustum = actualVp.z > 0f && actualVp.x >= 0f && actualVp.x <= 1f
+                    && actualVp.y >= 0f && actualVp.y <= 1f;
                 res.isClippedByNearPlane = actualVp.z <= cam.nearClipPlane;
+                res.success = true;
+                return res;
             }
-
-            res.success = true;
-            return res;
+            finally
+            {
+                if (restoreQueryPose)
+                {
+                    snapRoot.localRotation = snapRootRot;
+                    snapMid.localRotation = snapMidRot;
+                    endTransform.localRotation = snapEndRot;
+                }
+            }
         }
     }
 }

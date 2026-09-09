@@ -50,7 +50,7 @@ namespace Visora.Editor.Services
 
     /// <summary>
     /// Diagnoses character mesh self-intersections and limb-body clipping across AnimationClip playback
-    /// using skeletal capsule proxies.
+    /// using skeletal capsule proxies built generically from the rig hierarchy (no humanoid assumption).
     /// </summary>
     public static class AnimationSelfIntersectionService
     {
@@ -88,16 +88,22 @@ namespace Visora.Editor.Services
             var segments = BuildSegmentProxies(rootGo);
             if (segments.Count < 2)
             {
-                result.success = true;
-                result.cleanIntervalPercent = 100f;
-                result.warnings.Add("Insufficient humanoid or named bones identified to build body collision proxies.");
+                // No fake "100% clean" pass on a rig the analyzer cannot model.
+                result.success = false;
+                result.error = "Cannot build at least 2 skeletal capsule proxies for this rig; " +
+                               "self-intersection analysis is not available for it.";
                 return result;
             }
 
-            // Define non-adjacent collision pairs
             var pairs = BuildCollisionPairs(segments);
+            if (pairs.Count == 0)
+            {
+                result.success = false;
+                result.error = "No non-adjacent segment pairs to test on this rig.";
+                return result;
+            }
 
-            // Snapshot rest transforms
+            // Snapshot rest transforms (restored in finally; also covers an already-active animation mode).
             var allTransforms = rootGo.GetComponentsInChildren<Transform>(true);
             var restPos = new Vector3[allTransforms.Length];
             var restRot = new Quaternion[allTransforms.Length];
@@ -108,23 +114,17 @@ namespace Visora.Editor.Services
             }
 
             float fps = request.sampleFps > 0 ? request.sampleFps : 30f;
-            float dt = 1f / fps;
-            int totalFrames = Mathf.Max(2, Mathf.RoundToInt(clip.length * fps));
-            result.sampleCount = totalFrames;
+            var times = AnimationSampling.BuildFrameTimes(clip.length, fps);
+            result.sampleCount = times.Count;
 
             int framesWithPenetration = 0;
             float maxPenetration = 0f;
 
             try
             {
-                for (int f = 0; f < totalFrames; f++)
+                AnimationSampling.SampleClip(rootGo, clip, times, i =>
                 {
-                    float t = Mathf.Clamp(f * dt, 0f, clip.length);
-
-                    AnimationMode.BeginSampling();
-                    AnimationMode.SampleAnimationClip(rootGo, clip, t);
-                    AnimationMode.EndSampling();
-
+                    float t = times[i];
                     bool framePenetrated = false;
 
                     for (int p = 0; p < pairs.Count; p++)
@@ -132,19 +132,23 @@ namespace Visora.Editor.Services
                         var segA = pairs[p].Item1;
                         var segB = pairs[p].Item2;
 
-                        float dist = SegmentSegmentDistance(
-                            segA.start.position, segA.end.position,
-                            segB.start.position, segB.end.position);
+                        Vector3 a0 = segA.start.position, a1 = segA.end.position;
+                        Vector3 b0 = segB.start.position, b1 = segB.end.position;
 
-                        float combinedRadius = segA.radius + segB.radius;
-                        float penetration = combinedRadius - dist;
+                        // Broad phase: bounding-sphere reject before the precise capsule test.
+                        Vector3 ca = (a0 + a1) * 0.5f, cb = (b0 + b1) * 0.5f;
+                        float ra = (Vector3.Distance(a0, a1) * 0.5f) + segA.radius;
+                        float rb = (Vector3.Distance(b0, b1) * 0.5f) + segB.radius;
+                        if ((ca - cb).sqrMagnitude > (ra + rb) * (ra + rb)) continue;
 
+                        float dist = SegmentSegmentDistance(a0, a1, b0, b1);
+
+                        float penetration = (segA.radius + segB.radius) - dist;
                         if (penetration > request.toleranceMeters)
                         {
                             framePenetrated = true;
                             if (penetration > maxPenetration) maxPenetration = penetration;
 
-                            // Limit reported events to prevent payload explosion
                             if (result.penetrations.Count < 50)
                             {
                                 string severity = penetration > 0.05f ? "critical" : "warning";
@@ -162,11 +166,10 @@ namespace Visora.Editor.Services
                     }
 
                     if (framePenetrated) framesWithPenetration++;
-                }
+                });
             }
             finally
             {
-                // Restore rest pose
                 for (int i = 0; i < allTransforms.Length; i++)
                 {
                     if (allTransforms[i] != null)
@@ -180,77 +183,125 @@ namespace Visora.Editor.Services
             result.success = true;
             result.intersectionsFound = result.penetrations.Count;
             result.maxPenetrationDepth = (float)Math.Round(maxPenetration, 4);
-            result.cleanIntervalPercent = totalFrames > 0
-                ? (float)Math.Round(((totalFrames - framesWithPenetration) / (float)totalFrames) * 100f, 1)
+            result.cleanIntervalPercent = times.Count > 0
+                ? (float)Math.Round(((times.Count - framesWithPenetration) / (float)times.Count) * 100f, 1)
                 : 100f;
 
             return result;
         }
 
+        // Bones whose name matches any of these are twist / helper / IK / rig-root markers - not body mass.
+        private static readonly string[] HelperBoneMarkers =
+        {
+            "twist", "_end", "end_", "roll", "ik_", "_ik", "pole", "target", "adjust", "helper",
+            "ctrl", "_aux", "bendy", "ribbon", "armature", "rootjoint", "_root", "root_",
+            "reference", "master", "prop"
+        };
+
+        // Cap on segment count so a high-density rig (500+ twist bones) does not blow up the O(n^2)
+        // pair set - keep the longest links, which carry the body mass.
+        private const int MaxSegments = 48;
+
+        /// <summary>
+        /// Builds capsule proxies from bone-to-child-bone links. Bone transforms come from every
+        /// SkinnedMeshRenderer's bone array (union), falling back to the full transform hierarchy
+        /// when the rig has no skinned mesh. Twist/helper bones are filtered out and the set is
+        /// capped to the longest <see cref="MaxSegments"/> links. Radius scales with segment length.
+        /// </summary>
         private static List<BodySegmentProxy> BuildSegmentProxies(GameObject rootGo)
         {
+            var boneSet = new HashSet<Transform>();
+            foreach (var smr in rootGo.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.bones == null) continue;
+                foreach (var b in smr.bones)
+                {
+                    if (b != null) boneSet.Add(b);
+                }
+            }
+            if (boneSet.Count < 2)
+            {
+                boneSet.Clear();
+                foreach (var t in rootGo.GetComponentsInChildren<Transform>(true)) boneSet.Add(t);
+            }
+
             var segments = new List<BodySegmentProxy>();
-            var animator = rootGo.GetComponentInChildren<Animator>();
-            bool isHuman = animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
-            Transform[] cached = rootGo.GetComponentsInChildren<Transform>(true);
+            foreach (var bone in boneSet)
+            {
+                if (IsHelperBone(bone.name)) continue;
 
-            Transform hips = isHuman ? animator.GetBoneTransform(HumanBodyBones.Hips) : InverseKinematicsService.FindTransformFuzzy(cached, "Hips", "Pelvis");
-            Transform spine = isHuman ? animator.GetBoneTransform(HumanBodyBones.Spine) : InverseKinematicsService.FindTransformFuzzy(cached, "Spine", "Spine1");
-            Transform chest = isHuman ? animator.GetBoneTransform(HumanBodyBones.Chest) : InverseKinematicsService.FindTransformFuzzy(cached, "Chest", "Spine2");
+                for (int i = 0; i < bone.childCount; i++)
+                {
+                    Transform child = bone.GetChild(i);
+                    if (!boneSet.Contains(child) || IsHelperBone(child.name)) continue;
 
-            Transform lUpperArm = isHuman ? animator.GetBoneTransform(HumanBodyBones.LeftUpperArm) : InverseKinematicsService.FindTransformFuzzy(cached, "LeftUpperArm", "upperarm_l");
-            Transform lForearm = isHuman ? animator.GetBoneTransform(HumanBodyBones.LeftLowerArm) : InverseKinematicsService.FindTransformFuzzy(cached, "LeftLowerArm", "forearm_l");
-            Transform lHand = isHuman ? animator.GetBoneTransform(HumanBodyBones.LeftHand) : InverseKinematicsService.FindTransformFuzzy(cached, "LeftHand", "hand_l");
+                    float length = Vector3.Distance(bone.position, child.position);
+                    if (length < 0.04f) continue; // skip near-zero links
 
-            Transform rUpperArm = isHuman ? animator.GetBoneTransform(HumanBodyBones.RightUpperArm) : InverseKinematicsService.FindTransformFuzzy(cached, "RightUpperArm", "upperarm_r");
-            Transform rForearm = isHuman ? animator.GetBoneTransform(HumanBodyBones.RightLowerArm) : InverseKinematicsService.FindTransformFuzzy(cached, "RightLowerArm", "forearm_r");
-            Transform rHand = isHuman ? animator.GetBoneTransform(HumanBodyBones.RightHand) : InverseKinematicsService.FindTransformFuzzy(cached, "RightHand", "hand_r");
+                    segments.Add(new BodySegmentProxy
+                    {
+                        name = bone.name,
+                        start = bone,
+                        end = child,
+                        radius = Mathf.Clamp(length * 0.15f, 0.02f, 0.09f)
+                    });
+                }
+            }
 
-            Transform lThigh = isHuman ? animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg) : InverseKinematicsService.FindTransformFuzzy(cached, "LeftUpperLeg", "thigh_l");
-            Transform lCalf = isHuman ? animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg) : InverseKinematicsService.FindTransformFuzzy(cached, "LeftLowerLeg", "calf_l");
+            if (segments.Count == 0) return segments;
 
-            Transform rThigh = isHuman ? animator.GetBoneTransform(HumanBodyBones.RightUpperLeg) : InverseKinematicsService.FindTransformFuzzy(cached, "RightUpperLeg", "thigh_r");
-            Transform rCalf = isHuman ? animator.GetBoneTransform(HumanBodyBones.RightLowerLeg) : InverseKinematicsService.FindTransformFuzzy(cached, "RightLowerLeg", "calf_r");
+            segments.Sort((x, y) =>
+                Vector3.Distance(y.start.position, y.end.position)
+                    .CompareTo(Vector3.Distance(x.start.position, x.end.position)));
 
-            if (hips != null && spine != null) segments.Add(new BodySegmentProxy { name = "Pelvis", start = hips, end = spine, radius = 0.14f });
-            if (spine != null && chest != null) segments.Add(new BodySegmentProxy { name = "Torso", start = spine, end = chest, radius = 0.15f });
+            // Drop torso-spanning outlier links (a rig-root -> hip bone dwarfs real limb segments and
+            // would "penetrate" everything). Anything longer than 2.5x the median limb length goes.
+            float median = Vector3.Distance(
+                segments[segments.Count / 2].start.position, segments[segments.Count / 2].end.position);
+            if (median > 1e-4f)
+            {
+                segments.RemoveAll(s => Vector3.Distance(s.start.position, s.end.position) > median * 2.5f);
+            }
 
-            if (lUpperArm != null && lForearm != null) segments.Add(new BodySegmentProxy { name = "LeftUpperArm", start = lUpperArm, end = lForearm, radius = 0.08f });
-            if (lForearm != null && lHand != null) segments.Add(new BodySegmentProxy { name = "LeftForearm", start = lForearm, end = lHand, radius = 0.06f });
-
-            if (rUpperArm != null && rForearm != null) segments.Add(new BodySegmentProxy { name = "RightUpperArm", start = rUpperArm, end = rForearm, radius = 0.08f });
-            if (rForearm != null && rHand != null) segments.Add(new BodySegmentProxy { name = "RightForearm", start = rForearm, end = rHand, radius = 0.06f });
-
-            if (lThigh != null && lCalf != null) segments.Add(new BodySegmentProxy { name = "LeftThigh", start = lThigh, end = lCalf, radius = 0.11f });
-            if (rThigh != null && rCalf != null) segments.Add(new BodySegmentProxy { name = "RightThigh", start = rThigh, end = rCalf, radius = 0.11f });
+            if (segments.Count > MaxSegments)
+            {
+                segments.RemoveRange(MaxSegments, segments.Count - MaxSegments);
+            }
 
             return segments;
         }
 
+        private static bool IsHelperBone(string name)
+        {
+            string n = name.ToLowerInvariant();
+            for (int i = 0; i < HelperBoneMarkers.Length; i++)
+            {
+                if (n.Contains(HelperBoneMarkers[i])) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// All segment pairs except those that share a joint (chained bones) or whose start bones are
+        /// in a direct parent-child relationship - those always "touch" and would be false positives.
+        /// </summary>
         private static List<Tuple<BodySegmentProxy, BodySegmentProxy>> BuildCollisionPairs(List<BodySegmentProxy> segments)
         {
-            var dict = new Dictionary<string, BodySegmentProxy>(StringComparer.OrdinalIgnoreCase);
-            foreach (var s in segments) dict[s.name] = s;
-
             var pairs = new List<Tuple<BodySegmentProxy, BodySegmentProxy>>();
-
-            void TryAddPair(string a, string b)
+            for (int i = 0; i < segments.Count; i++)
             {
-                if (dict.TryGetValue(a, out var sa) && dict.TryGetValue(b, out var sb))
+                for (int j = i + 1; j < segments.Count; j++)
                 {
-                    pairs.Add(new Tuple<BodySegmentProxy, BodySegmentProxy>(sa, sb));
+                    var a = segments[i];
+                    var b = segments[j];
+
+                    bool chained = a.end == b.start || b.end == a.start || a.start == b.start || a.end == b.end;
+                    bool parentChild = a.start.parent == b.start || b.start.parent == a.start;
+                    if (chained || parentChild) continue;
+
+                    pairs.Add(new Tuple<BodySegmentProxy, BodySegmentProxy>(a, b));
                 }
             }
-
-            TryAddPair("LeftForearm", "Torso");
-            TryAddPair("RightForearm", "Torso");
-            TryAddPair("LeftForearm", "Pelvis");
-            TryAddPair("RightForearm", "Pelvis");
-            TryAddPair("LeftForearm", "RightForearm");
-            TryAddPair("LeftThigh", "RightThigh");
-            TryAddPair("LeftForearm", "LeftThigh");
-            TryAddPair("RightForearm", "RightThigh");
-
             return pairs;
         }
 

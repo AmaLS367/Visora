@@ -75,22 +75,6 @@ namespace Visora.Editor.Services
 
     public static class AnimationMotionQAService
     {
-        private static Transform FindTransformFuzzy(Transform[] transforms, params string[] patterns)
-        {
-            if (transforms == null) return null;
-            for (int p = 0; p < patterns.Length; p++)
-            {
-                string pat = patterns[p];
-                for (int i = 0; i < transforms.Length; i++)
-                {
-                    var t = transforms[i];
-                    if (t != null && t.name.Contains(pat, StringComparison.OrdinalIgnoreCase))
-                        return t;
-                }
-            }
-            return null;
-        }
-
         private static List<Transform> ResolveKeyBones(GameObject rootGo, string[] requestedBones)
         {
             var result = new List<Transform>();
@@ -102,7 +86,7 @@ namespace Visora.Editor.Services
             {
                 for (int i = 0; i < requestedBones.Length; i++)
                 {
-                    var t = FindTransformFuzzy(cached, requestedBones[i]);
+                    var t = InverseKinematicsService.FindTransformFuzzy(cached, requestedBones[i]);
                     if (t != null && !result.Contains(t)) result.Add(t);
                 }
                 return result;
@@ -130,7 +114,7 @@ namespace Visora.Editor.Services
                 string[] patterns = { "pelvis", "hips", "head", "foot_l", "foot_r", "hand_l", "hand_r", "knee_l", "knee_r" };
                 for (int i = 0; i < patterns.Length; i++)
                 {
-                    var t = FindTransformFuzzy(cached, patterns[i]);
+                    var t = InverseKinematicsService.FindTransformFuzzy(cached, patterns[i]);
                     if (t != null && !result.Contains(t)) result.Add(t);
                 }
             }
@@ -317,7 +301,8 @@ namespace Visora.Editor.Services
                 }
 
                 float avgJrk = jrkCount > 0 ? sumJrk / jrkCount : 0f;
-                float boneScore = Mathf.Clamp01(1f - (avgJrk / (jerkThreshold * 1.5f)));
+                float scoreDenom = Mathf.Max(0.0001f, jerkThreshold * 1.5f);
+                float boneScore = Mathf.Clamp01(1f - (avgJrk / scoreDenom));
                 totalSmoothness += boneScore;
 
                 res.perBoneSummary.Add(new NativeBoneMotionSummary
@@ -438,14 +423,25 @@ namespace Visora.Editor.Services
                 var cz = AnimationUtility.GetEditorCurve(clip, grp.z);
                 var cw = AnimationUtility.GetEditorCurve(clip, grp.w);
 
-                if (cx == null || cy == null || cz == null || cw == null || cx.length < 2) continue;
+                if (cx == null || cy == null || cz == null || cw == null) continue;
 
-                for (int k = 0; k < cx.length - 1; k++)
+                // The four component curves may have different key counts / times (partial edits,
+                // curve simplification), so sample them on the union of all key times rather than
+                // indexing cy/cz/cw with cx's key index.
+                var sampleTimes = new SortedSet<float>();
+                foreach (var curve in new[] { cx, cy, cz, cw })
                 {
-                    float t0 = cx[k].time;
-                    float t1 = cx[k + 1].time;
-                    Quaternion q0 = new Quaternion(cx[k].value, cy[k].value, cz[k].value, cw[k].value);
-                    Quaternion q1 = new Quaternion(cx[k + 1].value, cy[k + 1].value, cz[k + 1].value, cw[k + 1].value);
+                    for (int k = 0; k < curve.length; k++) sampleTimes.Add(curve[k].time);
+                }
+                if (sampleTimes.Count < 2) continue;
+
+                var timeList = new List<float>(sampleTimes);
+                for (int k = 0; k < timeList.Count - 1; k++)
+                {
+                    float t0 = timeList[k];
+                    float t1 = timeList[k + 1];
+                    Quaternion q0 = new Quaternion(cx.Evaluate(t0), cy.Evaluate(t0), cz.Evaluate(t0), cw.Evaluate(t0));
+                    Quaternion q1 = new Quaternion(cx.Evaluate(t1), cy.Evaluate(t1), cz.Evaluate(t1), cw.Evaluate(t1));
 
                     float dot = (q0.x * q1.x) + (q0.y * q1.y) + (q0.z * q1.z) + (q0.w * q1.w);
                     if (dot < -0.0001f)

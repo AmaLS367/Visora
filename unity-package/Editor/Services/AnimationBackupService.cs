@@ -406,5 +406,58 @@ namespace Visora.Editor.Services
 
             return result;
         }
+
+        /// <summary>
+        /// Restores a transaction snapshot after its Undo group has already been reverted.
+        /// Unlike the public restore operation, rollback must not create another backup or append
+        /// a new Undo record, because either would become part of the failed transaction itself.
+        /// </summary>
+        internal static RestoreAnimationClipResult RestoreBackupForRollback(
+            AnimationClip clip,
+            string clipPath,
+            string backupId)
+        {
+            var result = new RestoreAnimationClipResult { clipPath = clipPath };
+            string tempPath = null;
+            try
+            {
+                string absoluteClipPath = ResolveProjectPath(clipPath, nameof(clipPath));
+                string backupPath = ResolveBackupPath(backupId);
+                RequireStandaloneClipFile(clip, clipPath);
+                if (!File.Exists(backupPath))
+                {
+                    throw new FileNotFoundException($"Backup '{backupId}' not found.", backupPath);
+                }
+
+                string expectedGuid = AssetDatabase.AssetPathToGUID(clipPath);
+                string actualGuid = Path.GetFileName(Path.GetDirectoryName(backupPath));
+                if (!string.Equals(expectedGuid, actualGuid, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Backup '{backupId}' belongs to a different clip than '{clipPath}'.");
+                }
+
+                tempPath = absoluteClipPath + ".visora-rollback-tmp";
+                File.Copy(backupPath, tempPath, overwrite: true);
+                File.Replace(tempPath, absoluteClipPath, null);
+                AssetDatabase.ImportAsset(clipPath, ImportAssetOptions.ForceUpdate);
+                // Undo and nested authoring calls may have left the in-memory object dirty.
+                // The imported backup is authoritative during rollback; prevent SaveAssets from
+                // immediately serializing stale pre-import state back over the restored bytes.
+                EditorUtility.ClearDirty(clip);
+                result.restoredFromBackupId = backupId;
+                result.success = true;
+            }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Rollback restore failed for '{clipPath}' from '{backupId}': {ex.Message}";
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempPath) && File.Exists(tempPath)) File.Delete(tempPath);
+            }
+            return result;
+        }
     }
 }

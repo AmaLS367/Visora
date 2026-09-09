@@ -86,78 +86,15 @@ namespace Visora.Editor.Services
 
     public static class HumanoidContactService
     {
-        private static LimbChain ResolveLimbChain(GameObject rootGo, Animator animator, string effector, Transform[] cachedTransforms = null)
+        private static LimbChain ResolveLimbChain(GameObject rootGo, string effector)
         {
             var chain = new LimbChain { effector = effector };
-            Transform r = null, m = null, e = null;
 
-            bool isHuman = animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
-
-            if (effector == "left_foot")
+            if (!InverseKinematicsService.ResolveLimbTransforms(
+                    rootGo, effector, null, null, null,
+                    out var r, out var m, out var e, out var blocker))
             {
-                if (isHuman)
-                {
-                    r = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
-                    m = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
-                    e = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
-                }
-                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
-                if (r == null) r = FindTransformFuzzy(cachedTransforms, "LeftUpperLeg", "thigh_l", "upperleg_l", "leftupleg");
-                if (m == null) m = FindTransformFuzzy(cachedTransforms, "LeftLowerLeg", "calf_l", "lowerleg_l", "knee_l", "leftleg");
-                if (e == null) e = FindTransformFuzzy(cachedTransforms, "LeftFoot", "foot_l", "ankle_l", "leftfoot");
-            }
-            else if (effector == "right_foot")
-            {
-                if (isHuman)
-                {
-                    r = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
-                    m = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
-                    e = animator.GetBoneTransform(HumanBodyBones.RightFoot);
-                }
-                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
-                if (r == null) r = FindTransformFuzzy(cachedTransforms, "RightUpperLeg", "thigh_r", "upperleg_r", "rightupleg");
-                if (m == null) m = FindTransformFuzzy(cachedTransforms, "RightLowerLeg", "calf_r", "lowerleg_r", "knee_r", "rightleg");
-                if (e == null) e = FindTransformFuzzy(cachedTransforms, "RightFoot", "foot_r", "ankle_r", "rightfoot");
-            }
-            else if (effector == "left_hand")
-            {
-                if (isHuman)
-                {
-                    r = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
-                    m = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
-                    e = animator.GetBoneTransform(HumanBodyBones.LeftHand);
-                }
-                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
-                if (r == null) r = FindTransformFuzzy(cachedTransforms, "LeftUpperArm", "upperarm_l", "arm_l", "leftarm");
-                if (m == null) m = FindTransformFuzzy(cachedTransforms, "LeftLowerArm", "forearm_l", "lowerarm_l", "elbow_l", "leftforearm");
-                if (e == null) e = FindTransformFuzzy(cachedTransforms, "LeftHand", "hand_l", "wrist_l", "lefthand");
-            }
-            else if (effector == "right_hand")
-            {
-                if (isHuman)
-                {
-                    r = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
-                    m = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
-                    e = animator.GetBoneTransform(HumanBodyBones.RightHand);
-                }
-                cachedTransforms = cachedTransforms ?? (rootGo != null ? rootGo.GetComponentsInChildren<Transform>(true) : null);
-                if (r == null) r = FindTransformFuzzy(cachedTransforms, "RightUpperArm", "upperarm_r", "arm_r", "rightarm");
-                if (m == null) m = FindTransformFuzzy(cachedTransforms, "RightLowerArm", "forearm_r", "lowerarm_r", "elbow_r", "rightforearm");
-                if (e == null) e = FindTransformFuzzy(cachedTransforms, "RightHand", "hand_r", "wrist_r", "righthand");
-            }
-            else
-            {
-                chain.blocker = $"Unknown effector '{effector}'. Supported effectors: left_foot, right_foot, left_hand, right_hand.";
-                return chain;
-            }
-
-            if (r == null || m == null || e == null)
-            {
-                var missing = new List<string>();
-                if (r == null) missing.Add("upper bone");
-                if (m == null) missing.Add("mid bone");
-                if (e == null) missing.Add("end bone");
-                chain.blocker = $"Missing Two-Bone chain joints for '{effector}': {string.Join(", ", missing)}.";
+                chain.blocker = blocker;
                 return chain;
             }
 
@@ -174,22 +111,6 @@ namespace Visora.Editor.Services
             }
 
             return chain;
-        }
-
-        private static Transform FindTransformFuzzy(Transform[] transforms, params string[] searchNames)
-        {
-            if (transforms == null) return null;
-            foreach (var s in searchNames)
-            {
-                for (int i = 0; i < transforms.Length; i++)
-                {
-                    if (transforms[i] != null && transforms[i].name.Contains(s, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return transforms[i];
-                    }
-                }
-            }
-            return null;
         }
 
         public static NativeContactAnalysisResult AnalyzeContacts(
@@ -228,13 +149,11 @@ namespace Visora.Editor.Services
                 effectors = new string[] { "left_foot", "right_foot" };
             }
 
-            var animator = target.GetComponentInChildren<Animator>(true);
             var activeChains = new List<LimbChain>();
 
-            var targetTransforms = target.GetComponentsInChildren<Transform>(true);
             foreach (var eff in effectors)
             {
-                var chain = ResolveLimbChain(target, animator, eff, targetTransforms);
+                var chain = ResolveLimbChain(target, eff);
                 var diag = new NativeContactEffectorDiagnostic
                 {
                     effector = eff,
@@ -283,21 +202,18 @@ namespace Visora.Editor.Services
             var chainSamples = new Dictionary<string, List<Vector3>>();
             foreach (var c in activeChains) chainSamples[c.effector] = new List<Vector3>();
 
+            var sampleTimes = new List<float>(frameCount);
+            for (int f = 0; f < frameCount; f++) sampleTimes.Add(Mathf.Clamp(f * dt, 0f, clip.length));
+
             try
             {
-                // First pass: sample all frame positions
-                for (int f = 0; f < frameCount; f++)
+                AnimationSampling.SampleClip(target, clip, sampleTimes, _ =>
                 {
-                    float sampleTime = Mathf.Clamp(f * dt, 0f, clip.length);
-                    AnimationMode.BeginSampling();
-                    AnimationMode.SampleAnimationClip(target, clip, sampleTime);
-                    AnimationMode.EndSampling();
-
                     foreach (var c in activeChains)
                     {
                         chainSamples[c.effector].Add(c.end.position);
                     }
-                }
+                });
             }
             finally
             {
@@ -470,10 +386,11 @@ namespace Visora.Editor.Services
                 outputClipPath = outputClipPath
             };
 
-            if (EditorApplication.isPlaying)
+            string editModeErr = AnimationBackupService.CheckEditMode();
+            if (editModeErr != null)
             {
                 result.success = false;
-                result.error = "Bake contact constraints requires Edit Mode; exit Play Mode before baking.";
+                result.error = editModeErr;
                 return result;
             }
 
@@ -498,12 +415,10 @@ namespace Visora.Editor.Services
                 effectors = new string[] { "left_foot", "right_foot" };
             }
 
-            var animator = target.GetComponentInChildren<Animator>(true);
             var activeChains = new List<LimbChain>();
-            var targetTransforms = target.GetComponentsInChildren<Transform>(true);
             foreach (var eff in effectors)
             {
-                var chain = ResolveLimbChain(target, animator, eff, targetTransforms);
+                var chain = ResolveLimbChain(target, eff);
                 if (string.IsNullOrEmpty(chain.blocker)) activeChains.Add(chain);
             }
 
@@ -572,36 +487,25 @@ namespace Visora.Editor.Services
             float dt = targetClip.length / (frameCount - 1);
 
             int keysModified = 0;
+            var bakeTimes = new List<float>(frameCount);
+            for (int f = 0; f < frameCount; f++) bakeTimes.Add(Mathf.Clamp(f * dt, 0f, targetClip.length));
 
             try
             {
-                // For each supported chain, solve Two-Bone IK during contact and write back curves
+                // For each supported chain, solve Two-Bone IK during contact and write back curves.
                 foreach (var chain in activeChains)
                 {
-                    var rootCurveX = new AnimationCurve();
-                    var rootCurveY = new AnimationCurve();
-                    var rootCurveZ = new AnimationCurve();
-                    var rootCurveW = new AnimationCurve();
-
-                    var midCurveX = new AnimationCurve();
-                    var midCurveY = new AnimationCurve();
-                    var midCurveZ = new AnimationCurve();
-                    var midCurveW = new AnimationCurve();
+                    var rootSamples = new List<(float, Quaternion)>(frameCount);
+                    var midSamples = new List<(float, Quaternion)>(frameCount);
 
                     Vector3 lockedContactPos = Vector3.zero;
                     bool inContact = false;
 
-                    for (int f = 0; f < frameCount; f++)
+                    AnimationSampling.SampleClip(target, targetClip, bakeTimes, i =>
                     {
-                        float sampleTime = Mathf.Clamp(f * dt, 0f, targetClip.length);
-                        AnimationMode.BeginSampling();
-                        AnimationMode.SampleAnimationClip(target, targetClip, sampleTime);
-                        AnimationMode.EndSampling();
-
+                        float sampleTime = bakeTimes[i];
                         Vector3 endPos = chain.end.position;
                         float height = endPos.y - groundY;
-
-                        // Contact condition
                         bool isContact = Mathf.Abs(height) < 0.05f;
 
                         if (isContact)
@@ -610,10 +514,7 @@ namespace Visora.Editor.Services
                             {
                                 inContact = true;
                                 lockedContactPos = endPos;
-                                if (fixPenetration && lockedContactPos.y < groundY)
-                                {
-                                    lockedContactPos.y = groundY;
-                                }
+                                if (fixPenetration && lockedContactPos.y < groundY) lockedContactPos.y = groundY;
                             }
 
                             Vector3 desiredEndPos = endPos;
@@ -622,43 +523,24 @@ namespace Visora.Editor.Services
                                 desiredEndPos.x = lockedContactPos.x;
                                 desiredEndPos.z = lockedContactPos.z;
                             }
-                            if (fixPenetration && desiredEndPos.y < groundY)
-                            {
-                                desiredEndPos.y = groundY;
-                            }
+                            if (fixPenetration && desiredEndPos.y < groundY) desiredEndPos.y = groundY;
 
-                            // Solve 3D Two-Bone IK
-                            SolveTwoBoneIK(chain.root, chain.mid, chain.end, desiredEndPos);
+                            InverseKinematicsService.SolveTwoBoneIKInternal(
+                                chain.root, chain.mid, chain.end, desiredEndPos, null, null, 1f,
+                                out _, out _, out _, out _, out _);
                         }
                         else
                         {
                             inContact = false;
                         }
 
-                        // Record keyframe rotations
-                        var rRot = chain.root.localRotation;
-                        var mRot = chain.mid.localRotation;
-
-                        rootCurveX.AddKey(sampleTime, rRot.x);
-                        rootCurveY.AddKey(sampleTime, rRot.y);
-                        rootCurveZ.AddKey(sampleTime, rRot.z);
-                        rootCurveW.AddKey(sampleTime, rRot.w);
-
-                        midCurveX.AddKey(sampleTime, mRot.x);
-                        midCurveY.AddKey(sampleTime, mRot.y);
-                        midCurveZ.AddKey(sampleTime, mRot.z);
-                        midCurveW.AddKey(sampleTime, mRot.w);
-
+                        rootSamples.Add((sampleTime, chain.root.localRotation));
+                        midSamples.Add((sampleTime, chain.mid.localRotation));
                         keysModified += 8;
-                    }
+                    });
 
-                    // Apply curves to AnimationClip
-                    string rootRelPath = AnimationUtility.CalculateTransformPath(chain.root, target.transform);
-                    string midRelPath = AnimationUtility.CalculateTransformPath(chain.mid, target.transform);
-
-                    SetRotationCurves(targetClip, rootRelPath, rootCurveX, rootCurveY, rootCurveZ, rootCurveW);
-                    SetRotationCurves(targetClip, midRelPath, midCurveX, midCurveY, midCurveZ, midCurveW);
-
+                    AnimationCurveWriter.WriteQuaternionCurves(targetClip, target.transform, chain.root, rootSamples);
+                    AnimationCurveWriter.WriteQuaternionCurves(targetClip, target.transform, chain.mid, midSamples);
                     result.effectorsBaked.Add(chain.effector);
                 }
 
@@ -684,63 +566,5 @@ namespace Visora.Editor.Services
             return result;
         }
 
-        private static void SetRotationCurves(
-            AnimationClip clip,
-            string path,
-            AnimationCurve x,
-            AnimationCurve y,
-            AnimationCurve z,
-            AnimationCurve w)
-        {
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.x", x);
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.y", y);
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.z", z);
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.w", w);
-        }
-
-        private static void SolveTwoBoneIK(Transform root, Transform mid, Transform end, Vector3 targetPos)
-        {
-            Vector3 a = root.position;
-            Vector3 b = mid.position;
-            Vector3 c = end.position;
-
-            float l1 = Vector3.Distance(a, b);
-            float l2 = Vector3.Distance(b, c);
-            float maxLen = l1 + l2;
-
-            Vector3 targetDir = targetPos - a;
-            float targetDist = targetDir.magnitude;
-
-            // Clamp target distance to avoid NaN singularities
-            targetDist = Mathf.Clamp(targetDist, Mathf.Abs(l1 - l2) + 0.001f, maxLen * 0.999f);
-
-            // Calculate bend plane normal using existing knee direction
-            Vector3 currentBendPlane = Vector3.Cross(b - a, c - a);
-            if (currentBendPlane.sqrMagnitude < 0.0001f)
-            {
-                currentBendPlane = root.right;
-            }
-            currentBendPlane.Normalize();
-
-            // Law of cosines for interior angle at root (alpha) and mid (beta)
-            float cosAlpha = ((l1 * l1) + (targetDist * targetDist) - (l2 * l2)) / (2f * l1 * targetDist);
-            float alpha = Mathf.Acos(Mathf.Clamp(cosAlpha, -1f, 1f)) * Mathf.Rad2Deg;
-
-            float cosBeta = ((l1 * l1) + (l2 * l2) - (targetDist * targetDist)) / (2f * l1 * l2);
-            float beta = Mathf.Acos(Mathf.Clamp(cosBeta, -1f, 1f)) * Mathf.Rad2Deg;
-
-            // Orient root towards target rotated by alpha
-            Vector3 targetDirNorm = targetDir.normalized;
-            Quaternion targetRotRoot = Quaternion.AngleAxis(-alpha, currentBendPlane) * Quaternion.LookRotation(targetDirNorm, currentBendPlane);
-
-            // Apply rotation delta to root
-            Quaternion rootDelta = targetRotRoot * Quaternion.Inverse(root.rotation);
-            root.rotation = rootDelta * root.rotation;
-
-            // Orient mid so the fold angle is (180 - beta)
-            Vector3 desiredEndDir = (targetPos - mid.position).normalized;
-            Quaternion midDelta = Quaternion.FromToRotation((end.position - mid.position).normalized, desiredEndDir);
-            mid.rotation = midDelta * mid.rotation;
-        }
     }
 }

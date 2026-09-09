@@ -19,6 +19,7 @@ namespace Visora.Editor.Services
         public float startTime;
         public float duration;
         public float value;
+        public bool hasValue;
         public float[] values;
         public string tangentMode;
         public string functionName;
@@ -65,10 +66,11 @@ namespace Visora.Editor.Services
                     : request.transactionId
             };
 
-            if (EditorApplication.isPlaying)
+            string editModeErr = AnimationBackupService.CheckEditMode();
+            if (editModeErr != null)
             {
                 result.success = false;
-                result.error = "Animation transactions require Edit Mode; exit Play Mode before running.";
+                result.error = editModeErr;
                 return result;
             }
 
@@ -140,13 +142,16 @@ namespace Visora.Editor.Services
                     {
                         case "set_keyframe":
                             {
+                                // The singular `value` is honoured when `values` is absent so a
+                                // caller that supplied only `value` is not silently dropped.
+                                float[] keyVals = op.values ?? (op.hasValue ? new float[] { op.value } : null);
                                 var r = AnimationAuthoringService.SetKeyframe(
                                     op.clipPath,
                                     op.targetPath,
                                     op.typeName,
                                     op.propertyName,
                                     op.time,
-                                    op.values,
+                                    keyVals,
                                     op.tangentMode,
                                     null,
                                     null,
@@ -199,7 +204,8 @@ namespace Visora.Editor.Services
 
                         case "set_keyframe_hold":
                             {
-                                float[] holdVals = op.values ?? (op.value != 0f ? new float[] { op.value } : null);
+                                // hasValue distinguishes an explicit hold value of 0.0 from "unset".
+                                float[] holdVals = op.values ?? (op.hasValue ? new float[] { op.value } : null);
                                 var r = AnimationAuthoringService.SetKeyframeHold(
                                     op.clipPath,
                                     op.targetPath,
@@ -255,6 +261,7 @@ namespace Visora.Editor.Services
                             {
                                 if (resolvedClips.TryGetValue(op.clipPath, out var clip))
                                 {
+                                    Undo.RecordObject(clip, "Visora: Ensure Quaternion Continuity");
                                     clip.EnsureQuaternionContinuity();
                                     EditorUtility.SetDirty(clip);
                                 }
@@ -279,41 +286,29 @@ namespace Visora.Editor.Services
             }
             catch (Exception ex)
             {
-                // Rollback! Restore all clips from pre-mutation backups and revert Undo group
+                // Rollback! Revert the Undo group first, THEN restore each clip from its
+                // pre-mutation backup on disk (so an Undo of a partial edit cannot re-dirty a
+                // just-restored asset), and finally persist the restored state.
                 result.success = false;
                 result.error = ex.Message;
                 result.rollbackPerformed = true;
 
+                var rollbackEntries = new List<AnimationRollbackEntry>();
                 foreach (var kvp in backupMap)
                 {
                     string cp = kvp.Key;
-                    string backupId = kvp.Value;
                     if (resolvedClips.TryGetValue(cp, out var clip))
                     {
-                        try
+                        rollbackEntries.Add(new AnimationRollbackEntry
                         {
-                            var restoreRes = AnimationBackupService.RestoreBackup(clip, cp, backupId, null);
-                            if (!restoreRes.success)
-                            {
-                                result.warnings.Add($"Rollback warning: could not restore '{cp}' from backup '{backupId}': {restoreRes.error}");
-                            }
-                        }
-                        catch (Exception rex)
-                        {
-                            result.warnings.Add($"Rollback error restoring '{cp}': {rex.Message}");
-                        }
+                            clipPath = cp,
+                            clip = clip,
+                            backupId = kvp.Value,
+                            label = cp,
+                        });
                     }
                 }
-
-                try
-                {
-                    Undo.RevertAllDownToGroup(undoGroup);
-                }
-                catch (Exception uex)
-                {
-                    result.warnings.Add($"Undo revert warning: {uex.Message}");
-                }
-
+                AnimationRollbackService.RevertUndoThenRestore(undoGroup, rollbackEntries, result.warnings);
                 return result;
             }
         }

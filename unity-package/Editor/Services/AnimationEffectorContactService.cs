@@ -49,16 +49,39 @@ namespace Visora.Editor.Services
     {
         public static EffectorContactBakeResult BakeContact(EffectorContactBakeRequest request)
         {
+            return BakeContactInternal(
+                request, null, null, manageUndo: true, saveAssets: true, restoreOnFailure: true);
+        }
+
+        internal static EffectorContactBakeResult BakePreparedContact(
+            EffectorContactBakeRequest request,
+            string preparedBackupId,
+            AnimationClip targetCameraClip)
+        {
+            return BakeContactInternal(
+                request, preparedBackupId, targetCameraClip,
+                manageUndo: false, saveAssets: false, restoreOnFailure: false);
+        }
+
+        private static EffectorContactBakeResult BakeContactInternal(
+            EffectorContactBakeRequest request,
+            string preparedBackupId,
+            AnimationClip targetCameraClip,
+            bool manageUndo,
+            bool saveAssets,
+            bool restoreOnFailure)
+        {
             var result = new EffectorContactBakeResult
             {
                 clipPath = request?.clipPath,
                 effector = request?.effector
             };
 
-            if (EditorApplication.isPlaying)
+            string editModeErr = AnimationBackupService.CheckEditMode();
+            if (editModeErr != null)
             {
                 result.success = false;
-                result.error = "Bake effector contact requires Edit Mode; exit Play Mode before running.";
+                result.error = editModeErr;
                 return result;
             }
 
@@ -96,6 +119,14 @@ namespace Visora.Editor.Services
             {
                 result.success = false;
                 result.error = blocker ?? $"Could not resolve limb transforms for effector '{request.effector}'.";
+                return result;
+            }
+
+            string rotationConflict = FindEulerRotationConflict(clip, rootGo.transform, rootBone, midBone, endBone);
+            if (rotationConflict != null)
+            {
+                result.success = false;
+                result.error = rotationConflict;
                 return result;
             }
 
@@ -163,17 +194,26 @@ namespace Visora.Editor.Services
 
             result.activeDuration = windowEnd - windowStart;
 
-            // Pre-mutation backup
-            try
+            if (!string.IsNullOrEmpty(preparedBackupId))
             {
-                result.backupId = AnimationBackupService.WriteBackup(clip, request.clipPath, "bake_effector_contact");
+                result.backupId = preparedBackupId;
             }
-            catch (Exception ex)
+            else
             {
-                result.warnings.Add($"Pre-mutation backup warning: {ex.Message}");
+                // A contact bake is not allowed to mutate an asset without a recoverable snapshot.
+                try
+                {
+                    result.backupId = AnimationBackupService.WriteBackup(clip, request.clipPath, "bake_effector_contact");
+                }
+                catch (Exception ex)
+                {
+                    result.success = false;
+                    result.error = $"Pre-mutation backup failed; contact bake aborted: {ex.Message}";
+                    return result;
+                }
             }
 
-            Undo.RegisterCompleteObjectUndo(clip, "Visora Bake Effector Contact");
+            if (manageUndo) Undo.RegisterCompleteObjectUndo(clip, "Visora Bake Effector Contact");
 
             // Snapshot rest pose of rootGo transforms
             var allTransforms = rootGo.GetComponentsInChildren<Transform>(true);
@@ -184,6 +224,8 @@ namespace Visora.Editor.Services
                 restPos[i] = allTransforms[i].localPosition;
                 restRot[i] = allTransforms[i].localRotation;
             }
+            Vector3 cameraRestPosition = targetCamera != null ? targetCamera.transform.localPosition : Vector3.zero;
+            Quaternion cameraRestRotation = targetCamera != null ? targetCamera.transform.localRotation : Quaternion.identity;
 
             Vector3? poleVec = null;
             if (request.poleVector != null && request.poleVector.Length >= 3)
@@ -198,23 +240,32 @@ namespace Visora.Editor.Services
             }
 
             float fps = clip.frameRate > 0f ? clip.frameRate : 60f;
-            float dt = 1f / fps;
-            int totalFrames = Mathf.Max(2, Mathf.RoundToInt(clip.length * fps));
 
-            var rootRotCurveX = new AnimationCurve();
-            var rootRotCurveY = new AnimationCurve();
-            var rootRotCurveZ = new AnimationCurve();
-            var rootRotCurveW = new AnimationCurve();
+            // Only frames inside the blended contact window are re-authored; keys elsewhere on the
+            // m_LocalRotation channels are preserved (AnimationCurveWriter upserts, never replaces).
+            var allTimes = AnimationSampling.BuildFrameTimes(clip.length, fps);
+            var exactTimes = new SortedSet<float>
+            {
+                windowStart,
+                Mathf.Clamp(tStart, windowStart, windowEnd),
+                Mathf.Clamp(tEnd, windowStart, windowEnd),
+                windowEnd,
+            };
+            foreach (float t in allTimes)
+            {
+                if (t >= windowStart - 1e-4f && t <= windowEnd + 1e-4f) exactTimes.Add(t);
+            }
+            var windowTimes = new List<float>(exactTimes);
+            if (windowTimes.Count < 2)
+            {
+                result.success = false;
+                result.error = $"Contact window [{windowStart:F2}, {windowEnd:F2}]s is too short to sample at {fps:F0} fps.";
+                return result;
+            }
 
-            var midRotCurveX = new AnimationCurve();
-            var midRotCurveY = new AnimationCurve();
-            var midRotCurveZ = new AnimationCurve();
-            var midRotCurveW = new AnimationCurve();
-
-            var endRotCurveX = new AnimationCurve();
-            var endRotCurveY = new AnimationCurve();
-            var endRotCurveZ = new AnimationCurve();
-            var endRotCurveW = new AnimationCurve();
+            var rootSamples = new List<(float, Quaternion)>(windowTimes.Count);
+            var midSamples = new List<(float, Quaternion)>(windowTimes.Count);
+            var endSamples = new List<(float, Quaternion)>(windowTimes.Count);
 
             float maxDisplacement = 0f;
             float maxResidual = 0f;
@@ -222,17 +273,12 @@ namespace Visora.Editor.Services
 
             try
             {
-                for (int f = 0; f < totalFrames; f++)
+                AnimationSampling.SampleClip(rootGo, clip, windowTimes, i =>
                 {
-                    float t = Mathf.Clamp(f * dt, 0f, clip.length);
-
-                    AnimationMode.BeginSampling();
-                    AnimationMode.SampleAnimationClip(rootGo, clip, t);
-                    AnimationMode.EndSampling();
-
+                    float t = windowTimes[i];
                     Vector3 originalEndPos = endBone.position;
 
-                    // Calculate Hermite blend weight
+                    // Cubic Hermite (smoothstep) blend weight across the lead-in / lead-out.
                     float w = 0f;
                     if (t >= tStart && t <= tEnd)
                     {
@@ -240,18 +286,17 @@ namespace Visora.Editor.Services
                     }
                     else if (t >= windowStart && t < tStart)
                     {
-                        float u = (t - windowStart) / blendIn;
+                        float u = Mathf.Clamp01((t - windowStart) / blendIn);
                         w = (3f * u * u) - (2f * u * u * u);
                     }
                     else if (t > tEnd && t <= windowEnd)
                     {
-                        float u = (t - tEnd) / blendOut;
+                        float u = Mathf.Clamp01((t - tEnd) / blendOut);
                         w = 1f - ((3f * u * u) - (2f * u * u * u));
                     }
 
                     if (w > 0.0001f)
                     {
-                        // Determine target world position
                         Vector3 currentTargetPos = staticWorldTarget;
                         if (targetType == "scene_object" && targetSceneTransform != null)
                         {
@@ -259,6 +304,10 @@ namespace Visora.Editor.Services
                         }
                         else if (targetType == "camera_viewport" && targetCamera != null)
                         {
+                            if (targetCameraClip != null)
+                            {
+                                AnimationMode.SampleAnimationClip(targetCamera.gameObject, targetCameraClip, t);
+                            }
                             float u = request.viewportCoordinates != null && request.viewportCoordinates.Length >= 1 ? request.viewportCoordinates[0] : 0.5f;
                             float v = request.viewportCoordinates != null && request.viewportCoordinates.Length >= 2 ? request.viewportCoordinates[1] : 0.5f;
                             float depth = request.viewportDepth > 0.01f ? request.viewportDepth : 0.5f;
@@ -266,66 +315,36 @@ namespace Visora.Editor.Services
                         }
 
                         InverseKinematicsService.SolveTwoBoneIKInternal(
-                            rootBone,
-                            midBone,
-                            endBone,
-                            currentTargetPos,
-                            targetRot,
-                            poleVec,
-                            w,
-                            out bool clamped,
-                            out float reachDistance,
-                            out float actualDistance,
-                            out float posResidual,
-                            out float rotResidualDeg);
+                            rootBone, midBone, endBone, currentTargetPos, targetRot, poleVec, w,
+                            out _, out _, out _, out float posResidual, out _);
 
                         float displacement = Vector3.Distance(originalEndPos, endBone.position);
                         if (displacement > maxDisplacement) maxDisplacement = displacement;
-                        if (posResidual > maxResidual) maxResidual = posResidual;
+                        // Contact residual describes the locked portion of the window. During the
+                        // lead-in/out the solve is intentionally partial, so comparing that pose
+                        // with the full target would report the blend itself as an IK error.
+                        if (w >= 0.9999f && posResidual > maxResidual) maxResidual = posResidual;
                     }
 
-                    // Capture bone local rotations
-                    var rRot = rootBone.localRotation;
-                    var mRot = midBone.localRotation;
-                    var eRot = endBone.localRotation;
-
-                    rootRotCurveX.AddKey(t, rRot.x);
-                    rootRotCurveY.AddKey(t, rRot.y);
-                    rootRotCurveZ.AddKey(t, rRot.z);
-                    rootRotCurveW.AddKey(t, rRot.w);
-
-                    midRotCurveX.AddKey(t, mRot.x);
-                    midRotCurveY.AddKey(t, mRot.y);
-                    midRotCurveZ.AddKey(t, mRot.z);
-                    midRotCurveW.AddKey(t, mRot.w);
-
-                    if (targetRot.HasValue)
-                    {
-                        endRotCurveX.AddKey(t, eRot.x);
-                        endRotCurveY.AddKey(t, eRot.y);
-                        endRotCurveZ.AddKey(t, eRot.z);
-                        endRotCurveW.AddKey(t, eRot.w);
-                    }
-
+                    rootSamples.Add((t, rootBone.localRotation));
+                    midSamples.Add((t, midBone.localRotation));
+                    if (targetRot.HasValue) endSamples.Add((t, endBone.localRotation));
                     modifiedCount += targetRot.HasValue ? 12 : 8;
-                }
+                });
 
-                // Write curves into clip
-                string rootRelPath = AnimationUtility.CalculateTransformPath(rootBone, rootGo.transform);
-                string midRelPath = AnimationUtility.CalculateTransformPath(midBone, rootGo.transform);
-
-                SetCurves(clip, rootRelPath, rootRotCurveX, rootRotCurveY, rootRotCurveZ, rootRotCurveW);
-                SetCurves(clip, midRelPath, midRotCurveX, midRotCurveY, midRotCurveZ, midRotCurveW);
-
+                AnimationCurveWriter.WriteQuaternionCurves(
+                    clip, rootGo.transform, rootBone, rootSamples, windowStart, windowEnd);
+                AnimationCurveWriter.WriteQuaternionCurves(
+                    clip, rootGo.transform, midBone, midSamples, windowStart, windowEnd);
                 if (targetRot.HasValue)
                 {
-                    string endRelPath = AnimationUtility.CalculateTransformPath(endBone, rootGo.transform);
-                    SetCurves(clip, endRelPath, endRotCurveX, endRotCurveY, endRotCurveZ, endRotCurveW);
+                    AnimationCurveWriter.WriteQuaternionCurves(
+                        clip, rootGo.transform, endBone, endSamples, windowStart, windowEnd);
                 }
 
                 clip.EnsureQuaternionContinuity();
                 EditorUtility.SetDirty(clip);
-                AssetDatabase.SaveAssets();
+                if (saveAssets) AssetDatabase.SaveAssets();
 
                 result.success = true;
                 result.keyframesModifiedCount = modifiedCount;
@@ -333,9 +352,28 @@ namespace Visora.Editor.Services
                 result.residualError = maxResidual;
                 return result;
             }
+            catch (Exception ex)
+            {
+                result.success = false;
+                result.error = $"Effector contact bake failed: {ex.Message}";
+                if (restoreOnFailure && !string.IsNullOrEmpty(result.backupId))
+                {
+                    try
+                    {
+                        AnimationBackupService.RestoreBackup(clip, request.clipPath, result.backupId, null);
+                        AssetDatabase.SaveAssets();
+                        result.warnings.Add("Clip restored from pre-bake backup after the failure.");
+                    }
+                    catch (Exception restoreEx)
+                    {
+                        result.warnings.Add($"Rollback also failed: {restoreEx.Message}");
+                    }
+                }
+                return result;
+            }
             finally
             {
-                // Restore rest pose
+                // Restore rest pose (covers the case where animation mode was already active on entry).
                 for (int i = 0; i < allTransforms.Length; i++)
                 {
                     if (allTransforms[i] != null)
@@ -344,15 +382,37 @@ namespace Visora.Editor.Services
                         allTransforms[i].localRotation = restRot[i];
                     }
                 }
+                if (targetCamera != null)
+                {
+                    targetCamera.transform.localPosition = cameraRestPosition;
+                    targetCamera.transform.localRotation = cameraRestRotation;
+                }
             }
         }
 
-        private static void SetCurves(AnimationClip clip, string path, AnimationCurve x, AnimationCurve y, AnimationCurve z, AnimationCurve w)
+        private static string FindEulerRotationConflict(
+            AnimationClip clip,
+            Transform animationRoot,
+            params Transform[] bones)
         {
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.x", x);
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.y", y);
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.z", z);
-            clip.SetCurve(path, typeof(Transform), "m_LocalRotation.w", w);
+            var editedPaths = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var bone in bones)
+            {
+                if (bone != null)
+                {
+                    editedPaths.Add(AnimationUtility.CalculateTransformPath(bone, animationRoot));
+                }
+            }
+
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                if (editedPaths.Contains(binding.path)
+                    && binding.propertyName.Contains("Euler", StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Euler rotation curve '{binding.propertyName}' on '{binding.path}' conflicts with quaternion contact baking.";
+                }
+            }
+            return null;
         }
     }
 }
