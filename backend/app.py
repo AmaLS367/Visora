@@ -1,4 +1,11 @@
+from __future__ import annotations
+
+from typing import Any
+
 from mcp.server import MCPServer
+from mcp.types import Tool as MCPTool
+
+from backend.config import get_settings
 
 # The MCP `instructions` field is sent to every connecting client as part of its own context, with
 # no per-project setup required (unlike a Claude Code skill file, which only applies if a user
@@ -22,4 +29,59 @@ events to a single authoritative impact timestamp; avoid unsynchronized procedur
 blockers exist, never force Humanoid mode—use Generic Transform curves.
 See docs/AGENT_WORKFLOWS.md and skills/ for the full tool catalog and workflow sequence."""
 
-mcp = MCPServer("Visora", instructions=INSTRUCTIONS)
+_SECTION_MARKERS = (
+    "\nArgs:\n",
+    "\nParameters:\n",
+    "\nReturns:\n",
+    "\nRaises:\n",
+    "\nArgs:",
+    "\nParameters:",
+    "\nReturns:",
+    "\nRaises:",
+)
+
+
+def _compact_tool_description(description: str | None) -> str | None:
+    if not description:
+        return description
+    desc = description
+    for marker in _SECTION_MARKERS:
+        if marker in desc:
+            desc = desc.split(marker)[0]
+    return desc.strip()
+
+
+def _compact_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(schema, dict):
+        return schema
+    cleaned: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key == "title":
+            continue
+        if isinstance(value, dict):
+            cleaned[key] = _compact_json_schema(value)
+        elif isinstance(value, list):
+            cleaned[key] = [_compact_json_schema(item) if isinstance(item, dict) else item for item in value]
+        else:
+            cleaned[key] = value
+    return cleaned
+
+
+class VisoraMCPServer(MCPServer):
+    """MCP server wrapper that compacts tool definitions to minimize LLM context window overhead."""
+
+    async def list_tools(self) -> list[MCPTool]:
+        tools = await super().list_tools()
+        settings = get_settings()
+        if not settings.compact_tool_definitions:
+            return tools
+
+        for tool in tools:
+            tool.output_schema = None
+            tool.description = _compact_tool_description(tool.description)
+            if tool.input_schema:
+                tool.input_schema = _compact_json_schema(tool.input_schema)
+        return tools
+
+
+mcp = VisoraMCPServer("Visora", instructions=INSTRUCTIONS)

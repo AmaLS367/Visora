@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     unity_bridge_execution_timeout_seconds: float = Field(
         default=60.0, validation_alias="UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS"
     )
+    compact_tool_definitions: bool = Field(default=True, validation_alias="COMPACT_TOOL_DEFINITIONS")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     sketchfab_api_token: str = Field(default="", validation_alias="SKETCHFAB_API_TOKEN")
     poly_pizza_api_key: str = Field(default="", validation_alias="POLY_PIZZA_API_KEY")

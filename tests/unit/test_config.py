@@ -29,6 +29,7 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_retry_backoff == 0.5
     assert settings.unity_bridge_mode == "legacy"
     assert settings.unity_bridge_execution_timeout_seconds == 60.0
+    assert settings.compact_tool_definitions is True
     assert settings.log_level == "INFO"
     assert settings.sketchfab_api_token == ""
     assert settings.poly_pizza_api_key == ""
