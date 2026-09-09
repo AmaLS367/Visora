@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     )
     compact_tool_definitions: bool = Field(default=True, validation_alias="COMPACT_TOOL_DEFINITIONS")
     compact_tool_results: bool = Field(default=True, validation_alias="COMPACT_TOOL_RESULTS")
+    vision_inline_max_dimension: int = Field(default=1280, validation_alias="VISION_INLINE_MAX_DIMENSION")
     diagnostic_max_bindings: int = Field(default=25, validation_alias="DIAGNOSTIC_MAX_BINDINGS")
     diagnostic_max_transforms: int = Field(default=25, validation_alias="DIAGNOSTIC_MAX_TRANSFORMS")
     diagnostic_max_bones: int = Field(default=30, validation_alias="DIAGNOSTIC_MAX_BONES")

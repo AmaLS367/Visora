@@ -20,6 +20,7 @@ from backend.tools.animation.preview_math import (
     resolve_frame_budget,
     summarize_motion,
 )
+from backend.tools.vision.image_utils import _downscale_for_inline
 
 # The established bridge contract uses endTime=0 as "to the clip end". Preserve that external
 # behavior for older get_video_* callers while still representing preview_animation's explicit
@@ -79,6 +80,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
 ) -> tuple[AnimationPreviewResult, Image] | AnimationPreviewResult:
     """
     Capture and summarize an authored AnimationClip in one Edit Mode-only review call.
+    The full-resolution image is available at the saved artifact path or via targeted screenshot.
 
     Args:
         target_object_path: Hierarchy path of the GameObject to animate.
@@ -384,7 +386,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     )
 
     if contact_sheet_path is not None:
-        return (result, Image(path=contact_sheet_path))
+        return (result, Image(data=_downscale_for_inline(contact_sheet_path), format="png"))
     return result
 
 

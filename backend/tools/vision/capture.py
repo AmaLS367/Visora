@@ -15,6 +15,7 @@ from backend.schemas import (
 from backend.tools.vision.image_utils import (
     _capture_from_payload,
     _create_side_by_side_comparison,
+    _downscale_for_inline,
     _extract_result_payload,
     _payload_warnings,
     _save_image_artifact,
@@ -29,12 +30,13 @@ from backend.tools.vision.scripts import (
 @mcp.tool()
 async def screenshot(
     camera_name: str = "Main Camera",
-    width: int = 1920,
-    height: int = 1080,
+    width: int = 1280,
+    height: int = 720,
 ) -> tuple[ScreenshotResult, Image] | ScreenshotResult:
     """
     Captures a high-resolution screenshot from the specified editor or gameplay camera.
     Saves the image to disk as an artifact and returns an Image block for native vision along with metadata.
+    The full-resolution image is available at the saved artifact path or via targeted screenshot.
 
     Args:
         camera_name: Name of the Unity camera in the active scene to render from.
@@ -79,7 +81,7 @@ async def screenshot(
             camera_name=str(payload.get("cameraName", camera_name)),
             warnings=_payload_warnings(payload),
         )
-        return (result, Image(path=saved_path))
+        return (result, Image(data=_downscale_for_inline(saved_path), format="png"))
     except Exception as exc:
         vision_pkg.logger.exception("Screenshot capture failed")
         return ScreenshotResult(success=False, error=str(exc))
@@ -93,6 +95,7 @@ def compare_screenshots(
 ) -> tuple[VisualComparisonResult, Image] | VisualComparisonResult:
     """
     Compares two screenshots and returns compact visual-change diagnostics.
+    The full-resolution image is available at the saved artifact path or via targeted screenshot.
 
     Args:
         before_image_path: Absolute or relative local path to the reference image (or base64 string).
@@ -107,7 +110,7 @@ def compare_screenshots(
     if not result.success:
         return result
     if diff_path is not None:
-        return (result, Image(path=diff_path))
+        return (result, Image(data=_downscale_for_inline(diff_path), format="png"))
     return result
 
 
@@ -121,6 +124,7 @@ async def inspect_scene_visual(
     """
     Captures a scene with both authored camera rendering and diagnostic inspection rendering.
     Combines both perspectives side-by-side into a single comparative image for multimodal vision.
+    The full-resolution image is available at the saved artifact path or via targeted screenshot.
 
     Use this when the user asks what is visible in a Unity scene, whether a model/pose/animation looks correct,
     or when production lighting, environment, or final camera framing may be incomplete. Agents should inspect
@@ -203,7 +207,7 @@ async def inspect_scene_visual(
     )
 
     if contact_sheet_path is not None:
-        return (result, Image(path=contact_sheet_path))
+        return (result, Image(data=_downscale_for_inline(contact_sheet_path), format="png"))
     return result
 
 

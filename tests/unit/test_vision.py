@@ -1,4 +1,6 @@
 import base64
+import inspect
+import io
 import struct
 import zlib
 from pathlib import Path
@@ -6,6 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 from mcp.server.mcpserver import Image
+from PIL import Image as PILImage
 
 from backend.schemas import (
     CameraFramingDiagnosticsResult,
@@ -19,6 +22,7 @@ from backend.schemas import (
     VisualInspectionResult,
 )
 from backend.tools import vision
+from backend.tools.vision.image_utils import _downscale_for_inline
 
 
 @pytest.fixture
@@ -1232,3 +1236,124 @@ async def test_failed_play_mode_transition_still_restores_edit_mode(monkeypatch:
     # Entered, failed to confirm, and was still returned to Edit Mode.
     assert bridge.play_mode_changes == [True, False]
     assert bridge.waits == [True, False]
+
+
+def test_screenshot_default_parameters() -> None:
+    sig = inspect.signature(vision.screenshot)
+    assert sig.parameters["width"].default == 1280
+    assert sig.parameters["height"].default == 720
+
+
+def test_downscale_for_inline_large_image() -> None:
+    # 1920x1080 downscaled to max_dim 1280 should be 1280x720
+    im = PILImage.new("RGB", (1920, 1080), color=(100, 150, 200))
+    png_bytes = _downscale_for_inline(im, max_dim=1280)
+    result_img = PILImage.open(io.BytesIO(png_bytes))
+    assert result_img.size == (1280, 720)
+
+
+def test_downscale_for_inline_no_upscale_small_image() -> None:
+    # 640x360 with max_dim 1280 should not be upscaled
+    im = PILImage.new("RGB", (640, 360), color=(100, 150, 200))
+    png_bytes = _downscale_for_inline(im, max_dim=1280)
+    result_img = PILImage.open(io.BytesIO(png_bytes))
+    assert result_img.size == (640, 360)
+
+
+def test_downscale_for_inline_disabled_when_nonpositive() -> None:
+    # max_dim <= 0 disables scaling
+    im = PILImage.new("RGB", (1920, 1080), color=(100, 150, 200))
+    for disabled_dim in (0, -1, -100):
+        png_bytes = _downscale_for_inline(im, max_dim=disabled_dim)
+        result_img = PILImage.open(io.BytesIO(png_bytes))
+        assert result_img.size == (1920, 1080)
+
+
+def test_downscale_for_inline_from_file_path(tmp_path: Path) -> None:
+    im = PILImage.new("RGB", (1600, 800), color=(50, 100, 150))
+    file_path = tmp_path / "test_img.png"
+    im.save(file_path, format="PNG")
+
+    # Pass Path object
+    bytes_from_path = _downscale_for_inline(file_path, max_dim=800)
+    res_path = PILImage.open(io.BytesIO(bytes_from_path))
+    assert res_path.size == (800, 400)
+
+    # Pass str
+    bytes_from_str = _downscale_for_inline(str(file_path), max_dim=800)
+    res_str = PILImage.open(io.BytesIO(bytes_from_str))
+    assert res_str.size == (800, 400)
+
+
+@pytest.mark.anyio
+async def test_screenshot_inline_image_downscaled_disk_artifact_full_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Simulate a 1920x1080 capture from Unity
+    large_im = PILImage.new("RGB", (1920, 1080), color=(200, 100, 50))
+    buf = io.BytesIO()
+    large_im.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    fake_bridge = FakeBridge(
+        {
+            "success": True,
+            "result": {
+                "imageBase64": b64,
+                "width": 1920,
+                "height": 1080,
+                "cameraName": "Main Camera",
+            },
+        }
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    res = await vision.screenshot(camera_name="Main Camera", width=1920, height=1080)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert result.success is True
+
+    # On-disk artifact must remain 1920x1080
+    assert result.file_path is not None
+    disk_file = Path(result.file_path)
+    assert disk_file.exists()
+    disk_im = PILImage.open(disk_file)
+    assert disk_im.size == (1920, 1080)
+
+    # Inline Image data must be downscaled to longest edge <= 1280
+    assert img.data is not None
+    inline_im = PILImage.open(io.BytesIO(img.data))
+    assert max(inline_im.size) <= 1280
+    assert inline_im.size == (1280, 720)
+
+
+@pytest.mark.anyio
+async def test_inspect_scene_visual_inline_image_downscaled_disk_artifact_full_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 2 captures at 1280x720 side-by-side produce sheet width > 2500px (> 1280)
+    cap_im = PILImage.new("RGB", (1280, 720), color=(100, 100, 100))
+    buf = io.BytesIO()
+    cap_im.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    fake_bridge = FakeBridge(
+        [
+            {"success": True, "result": {"imageBase64": b64, "width": 1280, "height": 720, "cameraName": "Game"}},
+            {"success": True, "result": {"imageBase64": b64, "width": 1280, "height": 720, "cameraName": "Diag"}},
+        ]
+    )
+    monkeypatch.setattr(vision, "bridge", fake_bridge)
+
+    res = await vision.inspect_scene_visual(camera_name="Game", width=1280, height=720)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert result.success is True
+    assert result.contact_sheet_path is not None
+
+    disk_sheet = PILImage.open(Path(result.contact_sheet_path))
+    assert disk_sheet.width > 1280
+
+    assert img.data is not None
+    inline_sheet = PILImage.open(io.BytesIO(img.data))
+    assert max(inline_sheet.size) <= 1280

@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Downscaled inline MCP images and lowered screenshot default:** optimized agent token and context consumption across vision workflows:
+  - Downscaled inline MCP `Image` payloads to at most 1280px on the longest edge via `_downscale_for_inline` (`VISION_INLINE_MAX_DIMENSION`), preserving aspect ratio while keeping full-resolution PNG artifacts intact on disk across `screenshot`, `compare_screenshots`, `inspect_scene_visual`, `preview_animation`, and `capture_video`.
+  - Lowered default `screenshot` resolution to 1280×720 (previously 1920×1080), saving ~55% pixels per call.
 - **Pruned duplicate and single-op MCP tools:** reduced catalog overhead by removing redundant tools and aliases:
   - Removed pure aliases `clip_inspector` and `analyze_animation_curves` in favor of canonical `inspect_animation_clip`.
   - Removed single-op keyframe and event authoring tools (`set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, `set_keyframe_hold`, `create_animation_event`, `remove_animation_event`) in favor of atomic `edit_animation_transaction`.

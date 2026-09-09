@@ -11,6 +11,7 @@ import imageio.v2 as imageio
 import numpy as np
 from PIL import Image, ImageDraw, UnidentifiedImageError
 
+from backend.config import get_settings
 from backend.schemas import FrameMotionMetrics, VisualCapture, VisualComparisonResult
 
 
@@ -109,6 +110,47 @@ def _load_image(source: str | Path | Image.Image) -> Image.Image:
     if isinstance(source, str):
         return _decode_image(source)
     raise ValueError(f"Cannot load image from {type(source)}")
+
+
+def _downscale_for_inline(source: str | Path | Image.Image, max_dim: int | None = None) -> bytes:
+    """Returns PNG bytes of `source` scaled so its longest edge <= max_dim (no upscaling).
+
+    max_dim=None reads settings.vision_inline_max_dimension; <=0 disables scaling.
+    """
+    if max_dim is None:
+        max_dim = get_settings().vision_inline_max_dimension
+
+    source_path: Path | None = None
+    if isinstance(source, Path):
+        source_path = source
+    elif isinstance(source, str) and len(source) < 4096:
+        try:
+            p = Path(source)
+            if p.is_file():
+                source_path = p
+        except OSError:
+            pass
+
+    is_png_file = source_path is not None and source_path.suffix.lower() == ".png"
+
+    img = _load_image(source)
+    w, h = img.size
+    longest_edge = max(w, h)
+
+    if max_dim <= 0 or longest_edge <= max_dim:
+        if is_png_file and source_path is not None:
+            return source_path.read_bytes()
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    scale = max_dim / longest_edge
+    new_w = max(1, round(w * scale))
+    new_h = max(1, round(h * scale))
+    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    buf = io.BytesIO()
+    resized.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _extract_result_payload(response: dict[str, Any]) -> dict[str, Any]:

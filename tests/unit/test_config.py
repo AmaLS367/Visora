@@ -31,6 +31,7 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_execution_timeout_seconds == 60.0
     assert settings.compact_tool_definitions is True
     assert settings.compact_tool_results is True
+    assert settings.vision_inline_max_dimension == 1280
     assert settings.diagnostic_max_bindings == 25
     assert settings.diagnostic_max_transforms == 25
     assert settings.diagnostic_max_bones == 30

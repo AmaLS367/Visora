@@ -17,6 +17,7 @@ from backend.schemas import (
 )
 from backend.tools.vision.image_utils import (
     _create_contact_sheet,
+    _downscale_for_inline,
     _encode_frames_to_mp4,
     _extract_result_payload,
     _frame_count,
@@ -758,7 +759,7 @@ def _build_frames_capture_result(
         ),
     )
     if contact_sheet_path is not None:
-        return (result, Image(path=contact_sheet_path))
+        return (result, Image(data=_downscale_for_inline(contact_sheet_path), format="png"))
     return result
 
 
@@ -843,6 +844,7 @@ async def capture_video(  # noqa: PLR0913
     include_video_base64: bool = False,
 ) -> tuple[VideoCaptureResult, Image] | VideoCaptureResult:
     """Captures camera motion as either sampled frames contact sheet or an MP4 video.
+    The full-resolution image is available at the saved artifact path or via targeted screenshot.
 
     Args:
         output: Capture output format: "frames" for sampled PNG contact sheet (default),
