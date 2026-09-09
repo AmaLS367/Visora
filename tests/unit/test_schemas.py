@@ -200,13 +200,14 @@ def test_vision_schemas_serialization() -> None:
     # ScreenshotResult
     screen_res = ScreenshotResult(
         success=True,
-        image_base64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        file_path="/path/to/screenshot.png",
         camera_name="MainCamera",
         width=1920,
         height=1080,
     )
     assert screen_res.width == 1920
     assert screen_res.camera_name == "MainCamera"
+    assert screen_res.file_path == "/path/to/screenshot.png"
 
     # VisualComparisonResult
     comp_res = VisualComparisonResult(
@@ -218,13 +219,15 @@ def test_vision_schemas_serialization() -> None:
         mean_delta=1.5,
         max_delta=50,
         changed_bounds=[10, 10, 100, 100],
+        diff_image_path="/path/to/diff.png",
     )
     assert comp_res.changed_pixel_ratio == 0.02
+    assert comp_res.diff_image_path == "/path/to/diff.png"
 
     # VisualCapture & VisualInspectionResult
     capture = VisualCapture(
         mode="game_camera",
-        image_base64="pngdata",
+        file_path="/path/to/capture.png",
         width=640,
         height=360,
         camera_name="Main Camera",
@@ -232,10 +235,12 @@ def test_vision_schemas_serialization() -> None:
     insp_res = VisualInspectionResult(
         success=True,
         subject_path="Player",
+        contact_sheet_path="/path/to/sheet.png",
         captures=[capture],
         recommended_interpretation="Inspect lighting artifacts",
     )
     assert len(insp_res.captures) == 1
+    assert insp_res.contact_sheet_path == "/path/to/sheet.png"
 
     # SceneCameraInfo & ListSceneCamerasResult
     cam_info = SceneCameraInfo(
@@ -279,7 +284,7 @@ def test_vision_schemas_serialization() -> None:
         timestamp_seconds=0.0,
         camera_name="Main",
         mode="game_camera",
-        image_base64="abc",
+        file_path="/path/to/frame.png",
         width=640,
         height=360,
     )

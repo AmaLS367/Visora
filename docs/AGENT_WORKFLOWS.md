@@ -22,7 +22,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `check_ticket_status` | `ticket_id`* | `QueueStatusResult` |
 | `clip_inspector` | `clip_path`* | `ClipInspectorResult` |
 | `compare_animation_previews` | `baseline_preview_id`*, `comparison_preview_id`*, `baseline_slide_distance`, `comparison_slide_distance`, `baseline_peak_jerk`, `comparison_peak_jerk`, `baseline_peak_speed`, `comparison_peak_speed`, `baseline_camera_distance`, `comparison_camera_distance`, `keyframes_diff_count` | `AnimationComparisonResult` |
-| `compare_screenshots` | `before_image_base64`*, `after_image_base64`*, `threshold` | `VisualComparisonResult` |
+| `compare_screenshots` | `before_image_path`*, `after_image_path`*, `threshold` | `BaseToolResult` |
 | `configure_humanoid_avatar` | `asset_path`*, `bone_mapping_overrides`, `source_avatar_path` | `HumanoidConfigurationResult` |
 | `create_animation_event` | `clip_path`*, `time`*, `function_name`*, `string_param`, `float_param`, `int_param`, `operation_id` | `AnimationEventEditResult` |
 | `detect_curve_discontinuities` | `clip_path`*, `filter_curves`, `auto_fix` | `CurveDiscontinuityResult` |
@@ -32,12 +32,12 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `find_bones` | `root_transform_path`*, `query`*, `exact_only`, `max_results` | `BoneSearchResult` |
 | `get_bridge_status` | `scan_all_ports` | `BridgeStatusResult` |
 | `get_editor_state` | `include_scene_details` | `EditorStateResult` |
-| `get_video_frames` | `camera_names`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `VideoFramesResult` |
-| `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode` | `VideoMp4Result` |
+| `get_video_frames` | `camera_names`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_motion_metrics` | `BaseToolResult` |
+| `get_video_mp4` | `camera_name`, `subject_path`, `mode`, `clip_path`, `target_object_path`, `duration_seconds`, `fps`, `width`, `height`, `enter_play_mode`, `include_video_base64` | `VideoMp4Result` |
 | `import_local_asset` | `source_path`*, `target_folder`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
 | `inspect_animation_clip` | `clip_path`* | `ClipInspectorResult` |
 | `inspect_imported_asset` | `asset_path`* | `InspectAssetResult` |
-| `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `VisualInspectionResult` |
+| `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `BaseToolResult` |
 | `instantiate_scene_asset` | `asset_path`*, `parent_path`, `position`, `rotation`, `scale`, `name` | `InstantiateSceneAssetResult` |
 | `list_animation_backups` | `clip_path`* | `ListAnimationBackupsResult` |
 | `list_animation_keyframes` | `clip_path`*, `target_path`*, `type_name`*, `property_name`* | `ListAnimationKeyframesResult` |
@@ -45,7 +45,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `move_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `from_time`*, `to_time`*, `operation_id` | `AnimationClipEditResult` |
 | `place_effector_in_viewport` | `target_object_path`*, `viewport_x`, `viewport_y`, `camera_depth`, `camera_name`, `effector`, `root_bone`, `mid_bone`, `end_bone`, `align_mode`, `custom_rotation`, `pole_vector`, `weight`, `apply_to_scene`, `bake_to_clip`, `sample_time` | `ViewportEffectorPlacementResult` |
 | `playmode_management` | `play`*, `wait_for_idle`, `timeout_seconds` | `PlayModeManagementResult` |
-| `preview_animation` | `target_object_path`*, `clip_path`*, `camera_name`, `start_time`, `end_time`, `fps`, `width`, `height`, `auto_frame`, `max_key_frames`, `include_video_base64`, `include_clip_diagnostics` | `AnimationPreviewResult` |
+| `preview_animation` | `target_object_path`*, `clip_path`*, `camera_name`, `start_time`, `end_time`, `fps`, `width`, `height`, `auto_frame`, `max_key_frames`, `include_video_base64`, `include_clip_diagnostics` | `BaseToolResult` |
 | `preview_humanoid_retarget` | `target_object_path`*, `clip_path`*, `camera_name`, `width`, `height`, `fps`, `auto_frame` | `HumanoidRetargetPreviewResult` |
 | `project_world_points` | `points`*, `camera_name` | `ProjectWorldPointsResult` |
 | `remove_animation_event` | `clip_path`*, `time`*, `function_name`, `operation_id` | `AnimationEventEditResult` |
@@ -55,7 +55,7 @@ An asterisk marks a required parameter. This region is generated from MCPServer 
 | `safe_transaction` | `editor_code`*, `auto_save`, `record_undo`, `undo_name`, `restore_on_failure`, `timeout_seconds` | `SafeTransactionResult` |
 | `sample_animation_clip` | `target_game_object_path`*, `clip_path`*, `time`, `normalized_time`, `restore_pose_after`, `track_transforms` | `SampleAnimationResult` |
 | `save_scene` | `save_as_path`, `force_during_play_mode` | `SaveSceneResult` |
-| `screenshot` | `camera_name`, `width`, `height` | `ScreenshotResult` |
+| `screenshot` | `camera_name`, `width`, `height` | `BaseToolResult` |
 | `search_assets` | `query`*, `category`, `source`, `limit`, `downloadable_only` | `SearchAssetsResult` |
 | `set_animation_keyframe` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `value`*, `tangent_mode`, `in_tangent`, `out_tangent`, `operation_id` | `AnimationClipEditResult` |
 | `set_keyframe_hold` | `clip_path`*, `target_path`*, `type_name`*, `property_name`*, `time`*, `hold_until`*, `value`, `operation_id` | `AnimationClipEditResult` |

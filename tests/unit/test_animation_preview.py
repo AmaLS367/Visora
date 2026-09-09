@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 import pytest
+from mcp.server.mcpserver import Image
 
 from backend.bridge.client import UnityBridge
 from backend.schemas import AnimationPreviewKeyFrame, AnimationPreviewResult
@@ -252,13 +253,14 @@ def test_preview_key_frame_holds_every_event_at_one_timestamp() -> None:
         normalized_time=0.25,
         source="clip_event",
         event_functions=["OnHit", "PlaySound"],
-        image_base64="AAA",
+        file_path="/path/to/keyframe_5.png",
         width=640,
         height=360,
     )
 
     assert key_frame.event_functions == ["OnHit", "PlaySound"]
     assert key_frame.changed_pixel_ratio_from_previous is None
+    assert key_frame.file_path == "/path/to/keyframe_5.png"
 
 
 @pytest.mark.anyio
@@ -395,14 +397,18 @@ async def test_preview_animation_returns_key_frames_and_artifact_path(
     monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload()))
     _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca",
         clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.frame_count == 3
     assert result.key_frames
+    assert result.contact_sheet_path is not None
     assert result.video_artifact_path == str(tmp_path / "preview.mp4")
     assert result.video_base64 is None
     assert result.rendered_camera_name == "Main Camera"
@@ -417,9 +423,12 @@ async def test_preview_animation_reports_unsupported_auto_frame(
     monkeypatch.setattr(animation_pkg, "bridge", bridge)
     _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.auto_frame_status == "unsupported"
@@ -438,9 +447,12 @@ async def test_preview_animation_keeps_key_frames_when_mp4_encoding_fails(
 
     monkeypatch.setattr(vision_pkg, "_encode_frames_to_mp4", failing_encode)
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.video_artifact_path is None
@@ -456,6 +468,7 @@ async def test_preview_animation_refuses_play_mode(monkeypatch: pytest.MonkeyPat
         target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
     )
 
+    assert isinstance(result, AnimationPreviewResult)
     assert result.success is False
     assert result.error is not None
     assert "game_camera" in result.error
@@ -467,9 +480,12 @@ async def test_preview_animation_lowers_fps_for_a_long_clip(monkeypatch: pytest.
     monkeypatch.setattr(animation_pkg, "bridge", bridge)
     _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.effective_fps < 24
     assert result.frame_ceiling_applied is True
@@ -482,9 +498,12 @@ async def test_preview_animation_surfaces_unrestored_pose(monkeypatch: pytest.Mo
     monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload(poseRestored=False)))
     _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.pose_restored is False
@@ -498,11 +517,14 @@ async def test_preview_animation_includes_video_bytes_only_when_requested(
     monkeypatch.setattr(animation_pkg, "bridge", FakePreviewBridge(_preview_payload()))
     _stub_encoder(monkeypatch, tmp_path / "preview.mp4")
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca",
         clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
         include_video_base64=True,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.video_base64 == base64.b64encode(b"mp4").decode("ascii")
@@ -524,9 +546,12 @@ async def test_preview_animation_keeps_a_single_key_frame_without_encoding(
 
     monkeypatch.setattr(vision_pkg, "_encode_frames_to_mp4", encoder_must_not_run)
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca", clip_path="Assets/VisoraAnim/RebeccaDropkick.anim"
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.frame_count == 1
@@ -541,12 +566,15 @@ async def test_preview_animation_preserves_an_explicit_zero_length_range(monkeyp
     monkeypatch.setattr(animation_pkg, "bridge", bridge)
     monkeypatch.setattr(vision_pkg, "_encode_frames_to_mp4", lambda *_: (b"", Path("preview.mp4")))
 
-    result = await animation_pkg.preview_animation(
+    res = await animation_pkg.preview_animation(
         target_object_path="Rebecca",
         clip_path="Assets/VisoraAnim/RebeccaDropkick.anim",
         start_time=0.0,
         end_time=0.0,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.start_time == 0.0
     assert result.end_time == 0.0
@@ -563,6 +591,7 @@ async def test_preview_animation_rejects_oversized_dimensions() -> None:
         height=1000,
     )
 
+    assert isinstance(result, AnimationPreviewResult)
     assert result.success is False
     assert result.error == "width and height must not exceed 1920x1080"
 

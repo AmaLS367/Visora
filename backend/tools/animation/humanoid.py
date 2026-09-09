@@ -250,7 +250,7 @@ async def preview_humanoid_retarget(  # noqa: PLR0913
         )
 
     # Render preview using shared preview engine
-    prev_res = await preview_animation(
+    raw_preview = await preview_animation(
         target_object_path=target_object_path,
         clip_path=clip_path,
         camera_name=camera_name,
@@ -259,6 +259,7 @@ async def preview_humanoid_retarget(  # noqa: PLR0913
         fps=fps,
         auto_frame=auto_frame,
     )
+    prev_res = raw_preview[0] if isinstance(raw_preview, tuple) else raw_preview
 
     if not prev_res.success:
         return HumanoidRetargetPreviewResult(

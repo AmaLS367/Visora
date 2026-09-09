@@ -2,7 +2,10 @@ import base64
 import time
 from dataclasses import dataclass, field
 from itertools import pairwise
+from pathlib import Path
 from typing import Any
+
+from mcp.server.mcpserver import Image
 
 import backend.tools.vision as vision_pkg
 from backend.app import mcp
@@ -14,11 +17,14 @@ from backend.schemas import (
     VideoMp4Result,
 )
 from backend.tools.vision.image_utils import (
+    _create_contact_sheet,
     _encode_frames_to_mp4,
     _extract_result_payload,
     _frame_count,
+    _load_image,
     _motion_metric_from_frames,
     _payload_warnings,
+    _save_image_artifact,
     _validate_video_request,
 )
 from backend.tools.vision.scripts import (
@@ -95,12 +101,14 @@ async def _capture_video_frame(  # noqa: PLR0913
     if not isinstance(image_base64, str) or not image_base64:
         raise RuntimeError("Unity video frame response did not include imageBase64")
 
+    saved_path = _save_image_artifact(image_base64, prefix=f"frame_{frame_index}", subfolder="frames")
+
     return VideoFrame(
         frame_index=frame_index,
         timestamp_seconds=timestamp_seconds,
         camera_name=str(payload.get("cameraName", fallback_camera_name)),
         mode=mode,
-        image_base64=image_base64,
+        file_path=str(saved_path),
         width=int(payload.get("width", width)),
         height=int(payload.get("height", height)),
         warnings=_payload_warnings(payload),
@@ -190,8 +198,8 @@ async def _discard_stale_frames(  # noqa: PLR0913
         metric = _motion_metric_from_frames(
             from_frame=-1,
             to_frame=0,
-            before_base64=baseline.image_base64,
-            after_base64=candidate.image_base64,
+            before_source=baseline.file_path,
+            after_source=candidate.file_path,
         )
         if metric.changed_pixel_ratio >= _STATIC_FRAME_RATIO:
             return
@@ -288,8 +296,8 @@ async def _capture_sequence(  # noqa: PLR0913
             _motion_metric_from_frames(
                 from_frame=previous.frame_index,
                 to_frame=current.frame_index,
-                before_base64=previous.image_base64,
-                after_base64=current.image_base64,
+                before_source=previous.file_path,
+                after_source=current.file_path,
             )
             for previous, current in pairwise(frames)
         ]
@@ -349,13 +357,14 @@ def _sequence_from_native_payload(  # noqa: PLR0913
         image_base64 = raw_frame.get("imageBase64")
         if not isinstance(image_base64, str) or not image_base64:
             continue
+        saved_path = _save_image_artifact(image_base64, prefix=f"frame_{position}", subfolder="frames")
         frames.append(
             VideoFrame(
                 frame_index=int(raw_frame.get("frameIndex", position)),
                 timestamp_seconds=float(raw_frame.get("timestamp", 0.0)),
                 camera_name=resolved_camera,
                 mode=mode,
-                image_base64=image_base64,
+                file_path=str(saved_path),
                 width=int(payload.get("width", width) or width),
                 height=int(payload.get("height", height) or height),
             )
@@ -373,8 +382,8 @@ def _sequence_from_native_payload(  # noqa: PLR0913
             _motion_metric_from_frames(
                 from_frame=previous.frame_index,
                 to_frame=current.frame_index,
-                before_base64=previous.image_base64,
-                after_base64=current.image_base64,
+                before_source=previous.file_path,
+                after_source=current.file_path,
             )
             for previous, current in pairwise(frames)
         ]
@@ -723,7 +732,7 @@ async def get_video_frames(  # noqa: PLR0913
     height: int = 720,
     enter_play_mode: bool = True,
     include_motion_metrics: bool = True,
-) -> VideoFramesResult:
+) -> tuple[VideoFramesResult, Image] | VideoFramesResult:
     """
     Captures sampled camera frames for agents that reason over frame sequences instead of raw video.
 
@@ -737,17 +746,15 @@ async def get_video_frames(  # noqa: PLR0913
         target_object_path: Scene path of the GameObject the clip is applied to. Required for
             mode "authored_clip".
         duration_seconds: Capture duration in seconds (0.1 to 10.0). Defaults to 2.0.
-        fps: Sampling frame rate (1 to 12). Every frame is returned as base64 in the payload, which is
-            what bounds this rate; use get_video_mp4 for higher frame rates. Defaults to 6.
+        fps: Sampling frame rate (1 to 12).
         width: Frame width in pixels. Defaults to 1280.
         height: Frame height in pixels. Defaults to 720.
-        enter_play_mode: If True, temporarily enters Play Mode during capture. Visora polls the bridge
-            to ensure domain reload completes before frames are captured. Ignored by "authored_clip",
-            which samples in Edit Mode and needs no domain reload.
+        enter_play_mode: If True, temporarily enters Play Mode during capture.
         include_motion_metrics: If True, computes delta motion metrics between adjacent frames.
 
     Returns:
-        A VideoFramesResult containing captured frame sequences, motion metrics, and interpretation guidance.
+        A tuple of (VideoFramesResult, Image) with captured frame metadata and a contact sheet image for vision,
+        or a VideoFramesResult on failure.
     """
     outcome = await _capture_frame_sequences(
         camera_names=camera_names or ["Main Camera"],
@@ -772,9 +779,21 @@ async def get_video_frames(  # noqa: PLR0913
             recommended_interpretation="No frames were captured because the request could not start.",
         )
 
-    return VideoFramesResult(
+    all_frames: list[VideoFrame] = []
+    for seq in outcome.sequences:
+        all_frames.extend(seq.frames)
+
+    contact_sheet_path: Path | None = None
+    if all_frames:
+        frame_imgs = [_load_image(f.file_path) for f in all_frames]
+        labels = [f"#{f.frame_index} t={f.timestamp_seconds:.2f}s" for f in all_frames]
+        sheet = _create_contact_sheet(frame_imgs, labels, cols=4)
+        contact_sheet_path = _save_image_artifact(sheet, prefix="video_frames_sheet", subfolder="frames")
+
+    result = VideoFramesResult(
         success=outcome.success,
         error=outcome.error,
+        contact_sheet_path=str(contact_sheet_path) if contact_sheet_path else None,
         sequences=outcome.sequences,
         warnings=[
             "Use sampled frames and motion_metrics for temporal reasoning when the model cannot inspect MP4 directly.",
@@ -786,6 +805,9 @@ async def get_video_frames(  # noqa: PLR0913
             "compare them against the requested fps before reading the sequence as real-time motion."
         ),
     )
+    if contact_sheet_path is not None:
+        return (result, Image(path=contact_sheet_path))
+    return result
 
 
 @mcp.tool()
@@ -800,6 +822,7 @@ async def get_video_mp4(  # noqa: PLR0913
     width: int = 1280,
     height: int = 720,
     enter_play_mode: bool = True,
+    include_video_base64: bool = False,
 ) -> VideoMp4Result:
     """
     Captures a short camera video and returns MP4 bytes for video-capable models.
@@ -820,9 +843,10 @@ async def get_video_mp4(  # noqa: PLR0913
         enter_play_mode: If True, temporarily enters Play Mode during capture. Visora polls the bridge
             to ensure domain reload completes before frames are captured. Ignored by "authored_clip",
             which samples in Edit Mode and needs no domain reload.
+        include_video_base64: If True, includes base64-encoded MP4 bytes in the text response (default False).
 
     Returns:
-        A VideoMp4Result containing base64-encoded MP4 bytes, saved artifact path, and video metadata.
+        A VideoMp4Result containing saved artifact path and video metadata.
         The MP4 is encoded at the frame rate actually achieved, so playback runs at real speed.
     """
     outcome = await _capture_frame_sequences(
@@ -859,7 +883,7 @@ async def get_video_mp4(  # noqa: PLR0913
 
     try:
         video_bytes, artifact_path = vision_pkg._encode_frames_to_mp4(
-            [frame.image_base64 for frame in sequence.frames], encode_fps, width, height
+            [frame.file_path for frame in sequence.frames], encode_fps, width, height
         )
     except Exception as exc:
         vision_pkg.logger.exception("MP4 export failed")
@@ -877,13 +901,14 @@ async def get_video_mp4(  # noqa: PLR0913
 
     return VideoMp4Result(
         success=True,
-        video_base64=base64.b64encode(video_bytes).decode("ascii"),
+        video_base64=base64.b64encode(video_bytes).decode("ascii") if include_video_base64 else None,
         artifact_path=str(artifact_path),
+        format="mp4",
         camera_name=camera_name,
         mode=mode,
         duration_seconds=duration_seconds,
         fps=fps,
-        actual_fps=sequence.actual_fps,
+        actual_fps=encode_fps,
         timing_source=sequence.timing_source,
         width=width,
         height=height,

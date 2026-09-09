@@ -6,7 +6,7 @@ from backend.schemas.base import BaseToolResult
 class ScreenshotResult(BaseToolResult):
     """Result schema for the screenshot capture tool."""
 
-    image_base64: str | None = Field(default=None, description="Base64 encoded PNG/JPEG image data")
+    file_path: str | None = Field(default=None, description="Absolute local path to saved screenshot PNG artifact")
     width: int | None = Field(default=None, description="Width of the captured screenshot in pixels")
     height: int | None = Field(default=None, description="Height of the captured screenshot in pixels")
     camera_name: str | None = Field(default=None, description="Unity camera used for the capture")
@@ -27,6 +27,10 @@ class VisualComparisonResult(BaseToolResult):
         default=None,
         description="Bounding rectangle for changed pixels as [min_x, min_y, max_x, max_y]",
     )
+    diff_image_path: str | None = Field(
+        default=None,
+        description="Absolute local path to difference visualization PNG artifact",
+    )
     warnings: list[str] = Field(default_factory=list, description="Non-blocking comparison warnings")
 
 
@@ -34,7 +38,7 @@ class VisualCapture(BaseModel):
     """Single visual inspection capture returned by a higher-level scene inspection workflow."""
 
     mode: str = Field(..., description="Capture mode, such as game_camera or diagnostic_lit")
-    image_base64: str = Field(..., description="Base64 encoded PNG image data")
+    file_path: str = Field(..., description="Absolute local path to saved capture image PNG artifact")
     width: int = Field(..., description="Capture width in pixels")
     height: int = Field(..., description="Capture height in pixels")
     camera_name: str = Field(..., description="Camera used for this capture")
@@ -46,6 +50,9 @@ class VisualInspectionResult(BaseToolResult):
     """Result schema for multi-pass visual scene inspection."""
 
     subject_path: str | None = Field(default=None, description="Optional inspected scene object path")
+    contact_sheet_path: str | None = Field(
+        default=None, description="Absolute local path to side-by-side comparison PNG artifact"
+    )
     captures: list[VisualCapture] = Field(default_factory=list, description="Ordered visual captures for inspection")
     warnings: list[str] = Field(default_factory=list, description="Workflow-level warnings for agents")
     recommended_interpretation: str = Field(..., description="Text guidance for how agents should inspect the captures")
@@ -118,7 +125,7 @@ class VideoFrame(BaseModel):
     timestamp_seconds: float = Field(..., description="Timestamp offset from capture start")
     camera_name: str = Field(..., description="Camera used for this frame")
     mode: str = Field(..., description="Capture mode, such as game_camera or diagnostic_lit")
-    image_base64: str = Field(..., description="Base64 encoded PNG frame")
+    file_path: str = Field(..., description="Absolute local path to saved frame PNG artifact")
     width: int = Field(..., description="Frame width in pixels")
     height: int = Field(..., description="Frame height in pixels")
     warnings: list[str] = Field(default_factory=list, description="Frame-specific warnings")
@@ -164,6 +171,9 @@ class VideoFrameSequence(BaseModel):
 class VideoFramesResult(BaseToolResult):
     """Result schema for sampled camera frame sequences."""
 
+    contact_sheet_path: str | None = Field(
+        default=None, description="Absolute local path to tiled contact sheet PNG artifact"
+    )
     sequences: list[VideoFrameSequence] = Field(default_factory=list, description="Captured camera frame sequences")
     warnings: list[str] = Field(default_factory=list, description="Workflow-level warnings")
     recommended_interpretation: str = Field(..., description="Text guidance for how agents should inspect frames")

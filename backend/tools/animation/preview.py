@@ -1,6 +1,8 @@
 import base64
 from typing import Any
 
+from mcp.server.mcpserver import Image
+
 import backend.tools.animation as animation_pkg
 import backend.tools.vision as vision_pkg
 from backend.app import mcp
@@ -74,8 +76,28 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     max_key_frames: int = 6,
     include_video_base64: bool = False,
     include_clip_diagnostics: bool = True,
-) -> AnimationPreviewResult:
-    """Capture and summarize an authored AnimationClip in one Edit Mode-only review call."""
+) -> tuple[AnimationPreviewResult, Image] | AnimationPreviewResult:
+    """
+    Capture and summarize an authored AnimationClip in one Edit Mode-only review call.
+
+    Args:
+        target_object_path: Hierarchy path of the GameObject to animate.
+        clip_path: AnimationClip asset path.
+        camera_name: Camera to render the preview through. Defaults to "Main Camera".
+        start_time: Start time of preview range in seconds.
+        end_time: End time of preview range in seconds.
+        fps: Sampling frame rate.
+        width: Frame width in pixels.
+        height: Frame height in pixels.
+        auto_frame: Whether to frame the subject automatically.
+        max_key_frames: Maximum number of keyframes in the contact sheet.
+        include_video_base64: Whether to include base64-encoded MP4 bytes.
+        include_clip_diagnostics: Whether to inspect curve anomalies.
+
+    Returns:
+        A tuple of (AnimationPreviewResult, Image) containing motion diagnostics, keyframes,
+        and contact sheet visualization, or AnimationPreviewResult on failure.
+    """
     requested_end = end_time if end_time is not None else start_time
     if fps < 1:
         return _failed_preview(
@@ -239,24 +261,42 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     result_width = int(payload.get("width") or width)
     result_height = int(payload.get("height") or height)
     range_duration = budget.end_time - budget.start_time
-    key_frames = [
-        AnimationPreviewKeyFrame(
-            frame_index=choice.frame_index,
-            timestamp_seconds=timestamps[choice.frame_index],
-            normalized_time=(timestamps[choice.frame_index] - budget.start_time) / range_duration
-            if range_duration > 0
-            else 0.0,
-            source=choice.source,
-            event_functions=choice.event_functions,
-            image_base64=images[choice.frame_index],
-            width=result_width,
-            height=result_height,
-            changed_pixel_ratio_from_previous=(
-                motion_timeline[choice.frame_index - 1] if choice.frame_index > 0 else None
-            ),
+
+    key_images: list[Any] = []
+    key_labels: list[str] = []
+    key_frames: list[AnimationPreviewKeyFrame] = []
+    for choice in choices:
+        frame_b64 = images[choice.frame_index]
+        saved_frame_path = vision_pkg._save_image_artifact(
+            frame_b64, prefix=f"keyframe_{choice.frame_index}", subfolder="animation_previews"
         )
-        for choice in choices
-    ]
+        key_images.append(vision_pkg._decode_image(frame_b64))
+        key_labels.append(f"#{choice.frame_index} t={timestamps[choice.frame_index]:.2f}s ({choice.source})")
+        key_frames.append(
+            AnimationPreviewKeyFrame(
+                frame_index=choice.frame_index,
+                timestamp_seconds=timestamps[choice.frame_index],
+                normalized_time=(timestamps[choice.frame_index] - budget.start_time) / range_duration
+                if range_duration > 0
+                else 0.0,
+                source=choice.source,
+                event_functions=choice.event_functions,
+                file_path=str(saved_frame_path),
+                width=result_width,
+                height=result_height,
+                changed_pixel_ratio_from_previous=(
+                    motion_timeline[choice.frame_index - 1] if choice.frame_index > 0 else None
+                ),
+            )
+        )
+
+    contact_sheet_path: str | None = None
+    if key_images:
+        contact_sheet = vision_pkg._create_contact_sheet(key_images, key_labels, cols=3)
+        saved_sheet = vision_pkg._save_image_artifact(
+            contact_sheet, prefix="preview_contact_sheet", subfolder="animation_previews"
+        )
+        contact_sheet_path = str(saved_sheet)
 
     warnings = _payload_warnings(payload)
     auto_frame_status = "disabled" if not auto_frame else str(payload.get("autoFrameStatus") or "unsupported")
@@ -297,7 +337,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             warnings.append(f"MP4 export failed: {exc}")
 
     preview_camera_created = bool(payload.get("previewCameraCreated", False))
-    return AnimationPreviewResult(
+    result = AnimationPreviewResult(
         success=True,
         clip_name=clip.clip_name,
         clip_path=clip.clip_path or clip_path,
@@ -320,6 +360,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         width=result_width,
         height=result_height,
         video_artifact_path=video_artifact_path,
+        contact_sheet_path=contact_sheet_path,
         video_base64=base64.b64encode(video_bytes).decode("ascii") if include_video_base64 and video_bytes else None,
         key_frames=key_frames,
         motion_timeline=motion_timeline,
@@ -341,6 +382,10 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             else "Review key frames in timestamp order; motion peaks mark the frames with the greatest visual change."
         ),
     )
+
+    if contact_sheet_path is not None:
+        return (result, Image(path=contact_sheet_path))
+    return result
 
 
 __all__ = ["preview_animation"]

@@ -103,16 +103,16 @@ class MotionSummaryData:
     is_static: bool
 
 
-def build_motion_timeline(frame_images_base64: list[str]) -> list[float]:
+def build_motion_timeline(frame_sources: list[str]) -> list[float]:
     """Changed-pixel ratio for every adjacent frame pair - the whole motion profile as plain floats."""
     return [
         _motion_metric_from_frames(
             from_frame=index,
             to_frame=index + 1,
-            before_base64=before,
-            after_base64=after,
+            before_source=before,
+            after_source=after,
         ).changed_pixel_ratio
-        for index, (before, after) in enumerate(pairwise(frame_images_base64))
+        for index, (before, after) in enumerate(pairwise(frame_sources))
     ]
 
 

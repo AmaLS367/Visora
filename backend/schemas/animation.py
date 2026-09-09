@@ -257,7 +257,7 @@ class AnimationPreviewKeyFrame(BaseModel):
         default_factory=list,
         description="Every AnimationEvent function at this frame; Unity permits several at one time",
     )
-    image_base64: str = Field(..., description="Base64 encoded PNG frame")
+    file_path: str = Field(..., description="Absolute local path to saved keyframe PNG artifact")
     width: int = Field(..., description="Frame width in pixels")
     height: int = Field(..., description="Frame height in pixels")
     changed_pixel_ratio_from_previous: float | None = Field(
@@ -324,6 +324,9 @@ class AnimationPreviewResult(BaseToolResult):
     height: int = Field(default=0, description="Frame height in pixels")
 
     video_artifact_path: str | None = Field(default=None, description="Local path of the encoded MP4, when written")
+    contact_sheet_path: str | None = Field(
+        default=None, description="Local path of the generated contact sheet PNG, when written"
+    )
     video_base64: str | None = Field(default=None, description="Base64 MP4 bytes; only when explicitly requested")
     key_frames: list[AnimationPreviewKeyFrame] = Field(default_factory=list, description="Frames worth inspecting")
     motion_timeline: list[float] = Field(

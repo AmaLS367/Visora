@@ -5,11 +5,13 @@ from pathlib import Path
 
 import httpx
 import pytest
+from mcp.server.mcpserver import Image
 
 from backend.schemas import (
     CameraFramingDiagnosticsResult,
     ListSceneCamerasResult,
     SceneCameraInfo,
+    ScreenshotResult,
     VideoFrame,
     VideoFrameSequence,
     VideoFramesResult,
@@ -137,11 +139,15 @@ async def test_screenshot_returns_unity_camera_capture(monkeypatch: pytest.Monke
     )
     monkeypatch.setattr(vision, "bridge", fake_bridge)
 
-    result = await vision.screenshot(camera_name="Scene Camera", width=4, height=3)
+    res = await vision.screenshot(camera_name="Scene Camera", width=4, height=3)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.error is None
-    assert result.image_base64 == image_base64
+    assert result.file_path is not None
+    assert Path(result.file_path).exists()
     assert result.width == 4
     assert result.height == 3
     assert result.camera_name == "Scene Camera"
@@ -157,15 +163,17 @@ async def test_screenshot_reports_unity_execution_error(monkeypatch: pytest.Monk
 
     result = await vision.screenshot(camera_name="Missing", width=16, height=16)
 
+    assert isinstance(result, ScreenshotResult)
     assert result.success is False
     assert result.error == "Camera not found: Missing"
-    assert result.image_base64 is None
+    assert result.file_path is None
 
 
 @pytest.mark.anyio
 async def test_screenshot_rejects_invalid_dimensions() -> None:
     result = await vision.screenshot(width=0, height=16)
 
+    assert isinstance(result, ScreenshotResult)
     assert result.success is False
     assert result.error == "width and height must be positive integers"
 
@@ -174,7 +182,10 @@ def test_compare_screenshots_reports_changed_area() -> None:
     before = _png_base64((0, 0, 0), (2, 2))
     after = _png_base64((0, 0, 0), (2, 2), changed_pixel=(1, 0, (255, 255, 255)))
 
-    result = vision.compare_screenshots(before_image_base64=before, after_image_base64=after, threshold=1)
+    res = vision.compare_screenshots(before_image_path=before, after_image_path=after, threshold=1)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert isinstance(result, VisualComparisonResult)
     assert result.success is True
@@ -185,14 +196,17 @@ def test_compare_screenshots_reports_changed_area() -> None:
     assert result.changed_bounds == [1, 0, 1, 0]
     assert result.max_delta == 255
     assert result.mean_delta > 0
+    assert result.diff_image_path is not None
+    assert Path(result.diff_image_path).exists()
 
 
 def test_compare_screenshots_reports_dimension_mismatch() -> None:
     result = vision.compare_screenshots(
-        before_image_base64=_png_base64((0, 0, 0), (2, 2)),
-        after_image_base64=_png_base64((0, 0, 0), (3, 2)),
+        before_image_path=_png_base64((0, 0, 0), (2, 2)),
+        after_image_path=_png_base64((0, 0, 0), (3, 2)),
     )
 
+    assert isinstance(result, VisualComparisonResult)
     assert result.success is False
     assert result.same_dimensions is False
     assert result.error == "screenshots must have matching dimensions"
@@ -402,14 +416,17 @@ async def test_inspect_scene_visual_returns_raw_and_diagnostic_captures(monkeypa
     )
     monkeypatch.setattr(vision, "bridge", fake_bridge)
 
-    result = await vision.inspect_scene_visual(subject_path="Avatar", camera_name="Main Camera", width=4, height=3)
+    res = await vision.inspect_scene_visual(subject_path="Avatar", camera_name="Main Camera", width=4, height=3)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert isinstance(result, VisualInspectionResult)
     assert result.success is True
     assert result.subject_path == "Avatar"
     assert [capture.mode for capture in result.captures] == ["game_camera", "diagnostic_lit"]
-    assert result.captures[0].image_base64 == game_image
-    assert result.captures[1].image_base64 == diagnostic_image
+    assert result.captures[0].file_path is not None
+    assert result.captures[1].file_path is not None
     assert result.captures[1].camera_name == "Visora Diagnostic Camera"
     assert any("diagnostic" in warning.lower() for warning in result.warnings)
     assert "Use diagnostic_lit" in result.recommended_interpretation
@@ -440,7 +457,10 @@ async def test_inspect_scene_visual_keeps_diagnostic_capture_when_game_camera_is
     )
     monkeypatch.setattr(vision, "bridge", fake_bridge)
 
-    result = await vision.inspect_scene_visual(width=4, height=3)
+    res = await vision.inspect_scene_visual(width=4, height=3)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert [capture.mode for capture in result.captures] == ["diagnostic_lit"]
@@ -490,13 +510,16 @@ async def test_get_video_frames_enters_and_restores_play_mode(monkeypatch: pytes
 
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(
+    res = await vision.get_video_frames(
         camera_names=["Main Camera"],
         duration_seconds=1.0,
         fps=3,
         width=4,
         height=3,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert isinstance(result, VideoFramesResult)
     assert result.success is True
@@ -536,7 +559,7 @@ async def test_get_video_frames_does_not_stop_existing_play_mode(monkeypatch: py
 
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(
+    res = await vision.get_video_frames(
         camera_names=["Main Camera"],
         mode="game_camera",
         duration_seconds=0.5,
@@ -544,6 +567,9 @@ async def test_get_video_frames_does_not_stop_existing_play_mode(monkeypatch: py
         width=2,
         height=2,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert fake_bridge.play_mode_changes == []
@@ -553,6 +579,7 @@ async def test_get_video_frames_does_not_stop_existing_play_mode(monkeypatch: py
 async def test_get_video_frames_rejects_invalid_limits() -> None:
     result = await vision.get_video_frames(duration_seconds=20.0, fps=60, width=4096, height=2160)
 
+    assert isinstance(result, VideoFramesResult)
     assert result.success is False
     assert "duration_seconds must be between 0.1 and 10.0" in (result.error or "")
 
@@ -567,6 +594,7 @@ async def test_get_video_frames_reports_restore_failure_as_warning(monkeypatch: 
 
     result = await vision.get_video_frames(duration_seconds=0.5, fps=1, width=2, height=2)
 
+    assert isinstance(result, VideoFramesResult)
     assert result.success is False
     assert any("failed to restore play mode" in warning.lower() for warning in result.warnings)
 
@@ -590,7 +618,7 @@ async def test_get_video_mp4_returns_base64_and_artifact_path(monkeypatch: pytes
 
     monkeypatch.setattr(vision, "_encode_frames_to_mp4", fake_encode)
 
-    result = await vision.get_video_mp4(duration_seconds=1.0, fps=2, width=2, height=2)
+    result = await vision.get_video_mp4(duration_seconds=1.0, fps=2, width=2, height=2, include_video_base64=True)
 
     assert isinstance(result, VideoMp4Result)
     assert result.success is True
@@ -625,6 +653,7 @@ async def test_get_video_mp4_accepts_fps_above_the_frame_payload_limit(monkeypat
 
     # The frame-sequence tool keeps its own lower ceiling, because it returns every frame as base64.
     frames_result = await vision.get_video_frames(duration_seconds=1.0, fps=24, width=2, height=2)
+    assert isinstance(frames_result, VideoFramesResult)
     assert frames_result.success is False
     assert frames_result.error == "fps must be between 1 and 12"
 
@@ -674,13 +703,16 @@ async def test_get_video_frames_handles_domain_reload_drop_and_reconnect(monkeyp
     monkeypatch.setattr(vision, "bridge", reload_bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(
+    res = await vision.get_video_frames(
         duration_seconds=0.5,
         fps=1,
         width=4,
         height=3,
         enter_play_mode=True,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert reload_bridge.set_play_mode_called is True
@@ -708,7 +740,10 @@ async def test_frame_capture_retries_transient_failure(monkeypatch: pytest.Monke
     monkeypatch.setattr(vision, "bridge", flaky)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(duration_seconds=1.0, fps=3, width=2, height=2)
+    res = await vision.get_video_frames(duration_seconds=1.0, fps=3, width=2, height=2)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert len(result.sequences[0].frames) == 3
@@ -731,7 +766,10 @@ async def test_frame_capture_gives_up_after_repeated_failures(monkeypatch: pytes
     monkeypatch.setattr(vision, "bridge", FailingBridge())
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(duration_seconds=1.0, fps=3, width=2, height=2)
+    res = await vision.get_video_frames(duration_seconds=1.0, fps=3, width=2, height=2)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert len(result.sequences[0].frames) == 1
     assert any("capture failed after 3 attempts" in warning for warning in result.sequences[0].warnings)
@@ -754,17 +792,20 @@ async def test_game_camera_discards_stale_pre_play_mode_frame(monkeypatch: pytes
     monkeypatch.setattr(vision, "bridge", fake_bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(
+    res = await vision.get_video_frames(
         mode="game_camera",
         duration_seconds=1.0,
         fps=2,
         width=4,
         height=3,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert len(result.sequences[0].frames) == 2
-    assert all(frame.image_base64 == live for frame in result.sequences[0].frames)
+    assert all(Path(frame.file_path).read_bytes() == base64.b64decode(live) for frame in result.sequences[0].frames)
 
 
 @pytest.mark.anyio
@@ -776,13 +817,16 @@ async def test_stale_frame_warns_when_view_never_changes(monkeypatch: pytest.Mon
     monkeypatch.setattr(vision, "bridge", FakeBridge([payload] * 6))
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(
+    res = await vision.get_video_frames(
         mode="game_camera",
         duration_seconds=1.0,
         fps=2,
         width=4,
         height=3,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert any("stale" in warning for warning in result.warnings)
@@ -796,7 +840,10 @@ async def test_diagnostic_lit_skips_stale_frame_warm_up(monkeypatch: pytest.Monk
     monkeypatch.setattr(vision, "bridge", fake_bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+    res = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     # Exactly two captures: no baseline and no warm-up renders were spent.
@@ -875,7 +922,10 @@ async def test_capture_uses_native_recorder_when_advertised(monkeypatch: pytest.
     monkeypatch.setattr(vision, "bridge", bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(mode="game_camera", duration_seconds=1.0, fps=12, width=4, height=3)
+    res = await vision.get_video_frames(mode="game_camera", duration_seconds=1.0, fps=12, width=4, height=3)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     sequence = result.sequences[0]
@@ -911,7 +961,10 @@ async def test_capture_falls_back_when_bridge_lacks_native_recording(monkeypatch
     monkeypatch.setattr(vision, "bridge", bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+    res = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.sequences[0].timing_source == "python_wallclock"
@@ -927,7 +980,10 @@ async def test_capture_falls_back_when_native_recording_fails(monkeypatch: pytes
     monkeypatch.setattr(vision, "bridge", bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+    res = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.sequences[0].timing_source == "python_wallclock"
@@ -945,7 +1001,10 @@ async def test_repeated_frame_warnings_are_reported_once(monkeypatch: pytest.Mon
     monkeypatch.setattr(vision, "bridge", FakeBridge([payload] * 4))
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(duration_seconds=1.0, fps=4, width=2, height=2)
+    res = await vision.get_video_frames(duration_seconds=1.0, fps=4, width=2, height=2)
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     lighting = [w for w in result.sequences[0].warnings if "temporary camera" in w]
     assert lighting == ["diagnostic_lit uses temporary camera (reported on 4 frames)"]
@@ -1011,7 +1070,7 @@ async def test_authored_clip_samples_in_edit_mode(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(vision, "bridge", bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(
+    res = await vision.get_video_frames(
         mode="authored_clip",
         clip_path="Assets/Animations/Punch.anim",
         target_object_path="Fighter",
@@ -1020,6 +1079,9 @@ async def test_authored_clip_samples_in_edit_mode(monkeypatch: pytest.MonkeyPatc
         width=4,
         height=3,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert result.sequences[0].timing_source == "edit_mode_sampled"
@@ -1037,6 +1099,7 @@ async def test_authored_clip_requires_clip_and_target(monkeypatch: pytest.Monkey
 
     result = await vision.get_video_frames(mode="authored_clip", duration_seconds=1.0, fps=2, width=4, height=3)
 
+    assert isinstance(result, VideoFramesResult)
     assert result.success is False
     assert result.error is not None
     assert "clip_path and target_object_path" in result.error
@@ -1059,6 +1122,7 @@ async def test_authored_clip_requires_the_native_package(monkeypatch: pytest.Mon
         height=3,
     )
 
+    assert isinstance(result, VideoFramesResult)
     assert result.success is False
     assert result.error is not None
     assert "animation_preview_sequence" in result.error
@@ -1071,7 +1135,7 @@ async def test_authored_clip_reports_scene_side_effects(monkeypatch: pytest.Monk
     bridge = AuthoredClipBridge(_authored_payload([frame], poseRestored=False, sceneDirtiedByPreview=True))
     monkeypatch.setattr(vision, "bridge", bridge)
 
-    result = await vision.get_video_frames(
+    res = await vision.get_video_frames(
         mode="authored_clip",
         clip_path="Punch",
         target_object_path="Fighter",
@@ -1080,6 +1144,9 @@ async def test_authored_clip_reports_scene_side_effects(monkeypatch: pytest.Monk
         width=4,
         height=3,
     )
+    assert isinstance(res, tuple)
+    result, img = res
+    assert isinstance(img, Image)
 
     assert result.success is True
     assert any("pose was restored" in warning for warning in result.warnings)
@@ -1090,10 +1157,11 @@ async def test_authored_clip_reports_scene_side_effects(monkeypatch: pytest.Monk
 async def test_unknown_capture_mode_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(vision, "bridge", FakeBridge([]))
 
-    result = await vision.get_video_frames(mode="cinematic", duration_seconds=1.0, fps=2, width=4, height=3)
+    res = await vision.get_video_frames(mode="cinematic", duration_seconds=1.0, fps=2, width=4, height=3)
 
-    assert result.success is False
-    assert result.error == "mode must be diagnostic_lit, game_camera, or authored_clip"
+    assert isinstance(res, VideoFramesResult)
+    assert res.success is False
+    assert res.error == "mode must be diagnostic_lit, game_camera, or authored_clip"
 
 
 @pytest.mark.anyio
@@ -1125,9 +1193,10 @@ async def test_failed_play_mode_transition_still_restores_edit_mode(monkeypatch:
     monkeypatch.setattr(vision, "bridge", bridge)
     monkeypatch.setattr(vision, "_sleep", _no_sleep)
 
-    result = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
+    res = await vision.get_video_frames(duration_seconds=1.0, fps=2, width=2, height=2)
 
-    assert result.success is False
+    assert isinstance(res, VideoFramesResult)
+    assert res.success is False
     # Entered, failed to confirm, and was still returned to Edit Mode.
     assert bridge.play_mode_changes == [True, False]
     assert bridge.waits == [True, False]

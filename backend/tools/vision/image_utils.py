@@ -3,14 +3,112 @@ import io
 import json
 import math
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
 import imageio.v2 as imageio
 import numpy as np
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageDraw, UnidentifiedImageError
 
 from backend.schemas import FrameMotionMetrics, VisualCapture, VisualComparisonResult
+
+
+def _save_image_artifact(
+    image: str | bytes | Image.Image,
+    prefix: str = "screenshot",
+    subfolder: str = "screenshots",
+) -> Path:
+    """
+    Saves an image (from base64 string, raw bytes, or PIL Image) as a PNG artifact on disk.
+
+    Returns:
+        The absolute Path to the saved image file.
+    """
+    artifacts_dir = Path("artifacts") / subfolder
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    file_path = (artifacts_dir / f"{prefix}_{uuid.uuid4().hex[:8]}.png").resolve()
+
+    if isinstance(image, str):
+        raw_bytes = base64.b64decode(image, validate=False)
+        file_path.write_bytes(raw_bytes)
+    elif isinstance(image, bytes):
+        file_path.write_bytes(image)
+    elif isinstance(image, Image.Image):
+        image.save(file_path, format="PNG")
+    else:
+        raise TypeError(f"Unsupported image type: {type(image)}")
+
+    return file_path
+
+
+def _create_side_by_side_comparison(
+    left_image: Image.Image,
+    right_image: Image.Image,
+    left_label: str = "Game Camera",
+    right_label: str = "Diagnostic Lit",
+) -> Image.Image:
+    """Stitches two images horizontally with clear label headers into a single comparison image."""
+    w = max(left_image.width, right_image.width)
+    h = max(left_image.height, right_image.height)
+    img1 = left_image.resize((w, h)) if left_image.size != (w, h) else left_image
+    img2 = right_image.resize((w, h)) if right_image.size != (w, h) else right_image
+
+    header_h = 28
+    pad = 8
+    total_w = w * 2 + pad * 3
+    total_h = h + header_h + pad * 2
+
+    canvas = Image.new("RGB", (total_w, total_h), color=(28, 28, 32))
+    draw = ImageDraw.Draw(canvas)
+    draw.text((pad + 4, pad + 4), left_label, fill=(230, 230, 230))
+    draw.text((pad * 2 + w + 4, pad + 4), right_label, fill=(230, 230, 230))
+
+    canvas.paste(img1, (pad, pad + header_h))
+    canvas.paste(img2, (pad * 2 + w, pad + header_h))
+    return canvas
+
+
+def _create_contact_sheet(
+    images: list[Image.Image],
+    labels: list[str],
+    cols: int = 3,
+) -> Image.Image:
+    """Assembles a list of images into a labelled grid contact sheet."""
+    if not images:
+        raise ValueError("Cannot create contact sheet from empty image list")
+    n = len(images)
+    cols = max(1, min(cols, n))
+    rows = math.ceil(n / cols)
+    w, h = images[0].width, images[0].height
+    pad = 8
+    header_h = 24
+    cell_w = w
+    cell_h = h + header_h
+    total_w = cols * cell_w + (cols + 1) * pad
+    total_h = rows * cell_h + (rows + 1) * pad
+    sheet = Image.new("RGB", (total_w, total_h), color=(25, 25, 28))
+    draw = ImageDraw.Draw(sheet)
+    for idx, (img, label) in enumerate(zip(images, labels, strict=False)):
+        r = idx // cols
+        c = idx % cols
+        x = pad + c * (cell_w + pad)
+        y = pad + r * (cell_h + pad)
+        draw.text((x + 4, y + 4), label, fill=(220, 220, 220))
+        resized = img.resize((w, h)) if img.size != (w, h) else img
+        sheet.paste(resized, (x, y + header_h))
+    return sheet
+
+
+def _load_image(source: str | Path | Image.Image) -> Image.Image:
+    """Loads a PIL RGB Image from a PIL Image, local file path, or base64 string."""
+    if isinstance(source, Image.Image):
+        return source.convert("RGB")
+    if isinstance(source, Path) or (isinstance(source, str) and Path(source).is_file()):
+        return Image.open(source).convert("RGB")
+    if isinstance(source, str):
+        return _decode_image(source)
+    raise ValueError(f"Cannot load image from {type(source)}")
 
 
 def _extract_result_payload(response: dict[str, Any]) -> dict[str, Any]:
@@ -115,12 +213,14 @@ def _frame_count(duration_seconds: float, fps: int) -> int:
     return max(1, math.ceil(duration_seconds * fps))
 
 
-def _encode_frames_to_mp4(frame_images_base64: list[str], fps: float, width: int, height: int) -> tuple[bytes, Path]:
+def _encode_frames_to_mp4(
+    frame_images: Sequence[str | Path], fps: float, width: int, height: int
+) -> tuple[bytes, Path]:
     """
-    Encodes a list of base64 image frames into an H.264 MP4 video file saved in artifacts/.
+    Encodes a list of image frames (file paths or base64 strings) into an H.264 MP4 video file saved in artifacts/.
 
     Args:
-        frame_images_base64: Ordered list of base64-encoded frame images.
+        frame_images: Ordered list of frame file paths or base64-encoded frame images.
         fps: Frames per second to encode at - the rate the capture actually achieved, not the requested one.
         width: Frame width in pixels.
         height: Frame height in pixels.
@@ -133,16 +233,16 @@ def _encode_frames_to_mp4(frame_images_base64: list[str], fps: float, width: int
     output_path = artifacts_dir / f"visora-video-{uuid.uuid4().hex}.mp4"
 
     with cast(Any, imageio.get_writer(output_path, fps=fps, codec="libx264", macro_block_size=None)) as writer:
-        for image_base64 in frame_images_base64:
-            image = _decode_image(image_base64).resize((width, height))
+        for frame_src in frame_images:
+            image = _load_image(frame_src).resize((width, height))
             writer.append_data(np.asarray(image))
 
     return output_path.read_bytes(), output_path.resolve()
 
 
-def _capture_from_payload(mode: str, payload: dict[str, Any], fallback_camera_name: str) -> VisualCapture:
+def _capture_from_payload(mode: str, payload: dict[str, Any], fallback_camera_name: str) -> tuple[VisualCapture, Path]:
     """
-    Constructs a VisualCapture model instance from a raw Unity capture payload.
+    Constructs a VisualCapture model instance from a raw Unity capture payload, saving the PNG artifact to disk.
 
     Args:
         mode: Visual inspection mode ('game_camera' or 'diagnostic_lit').
@@ -150,48 +250,55 @@ def _capture_from_payload(mode: str, payload: dict[str, Any], fallback_camera_na
         fallback_camera_name: Default camera name to assign if not present in the payload.
 
     Returns:
-        A validated VisualCapture schema object.
+        A tuple of (VisualCapture, Path).
     """
     image_base64 = payload.get("imageBase64") or payload.get("image_base64")
     if not isinstance(image_base64, str) or not image_base64:
         raise RuntimeError("Unity visual capture response did not include imageBase64")
-    return VisualCapture(
+
+    saved_path = _save_image_artifact(image_base64, prefix=mode, subfolder="screenshots")
+
+    capture = VisualCapture(
         mode=mode,
-        image_base64=image_base64,
+        file_path=str(saved_path),
         width=int(payload["width"]),
         height=int(payload["height"]),
         camera_name=str(payload.get("cameraName", fallback_camera_name)),
         warnings=_payload_warnings(payload),
     )
+    return capture, saved_path
 
 
 def compare_images_data(
-    before_image_base64: str,
-    after_image_base64: str,
+    before_image: str | Path | Image.Image,
+    after_image: str | Path | Image.Image,
     threshold: int = 8,
-) -> VisualComparisonResult:
+) -> tuple[VisualComparisonResult, Path | None]:
     """
-    Compares two base64-encoded images pixel-by-pixel to compute visual difference metrics and changed bounding box.
+    Compares two images pixel-by-pixel, computes visual difference metrics, and saves a difference visualization artifact.
 
     Args:
-        before_image_base64: Base64 string of the reference image.
-        after_image_base64: Base64 string of the target image.
+        before_image: Base64 string, Path, or PIL Image of reference.
+        after_image: Base64 string, Path, or PIL Image of target.
         threshold: Per-channel color delta threshold required to register a pixel change.
 
     Returns:
-        A VisualComparisonResult with changed pixel ratio, mean delta, max delta, and bounding box coordinates.
+        A tuple of (VisualComparisonResult, diff_image_path).
     """
     try:
-        before = _decode_image(before_image_base64)
-        after = _decode_image(after_image_base64)
-    except ValueError as exc:
-        return VisualComparisonResult(success=False, error=str(exc))
+        before = _load_image(before_image)
+        after = _load_image(after_image)
+    except (ValueError, OSError) as exc:
+        return VisualComparisonResult(success=False, error=str(exc)), None
 
     if before.size != after.size:
-        return VisualComparisonResult(
-            success=False,
-            error="screenshots must have matching dimensions",
-            same_dimensions=False,
+        return (
+            VisualComparisonResult(
+                success=False,
+                error="screenshots must have matching dimensions",
+                same_dimensions=False,
+            ),
+            None,
         )
 
     norm_threshold = _normalize_threshold(threshold)
@@ -209,13 +316,20 @@ def compare_images_data(
     changed_mask = pixel_max_delta > norm_threshold
     changed_pixels = int(np.count_nonzero(changed_mask))
 
+    diff_path: Path | None = None
     if changed_pixels:
         ys, xs = np.where(changed_mask)
         changed_bounds = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
+
+        # Generate difference overlay visualization
+        overlay = np.asarray(after, dtype=np.uint8).copy()
+        overlay[changed_mask] = [255, 60, 60]
+        diff_img = Image.fromarray(overlay)
+        diff_path = _save_image_artifact(diff_img, prefix="diff", subfolder="comparisons")
     else:
         changed_bounds = None
 
-    return VisualComparisonResult(
+    result = VisualComparisonResult(
         success=True,
         same_dimensions=True,
         width=width,
@@ -224,16 +338,18 @@ def compare_images_data(
         mean_delta=delta_sum / (total_pixels * 3) if total_pixels else 0.0,
         max_delta=max_delta,
         changed_bounds=changed_bounds,
+        diff_image_path=str(diff_path) if diff_path else None,
     )
+    return result, diff_path
 
 
 def _motion_metric_from_frames(
-    from_frame: int, to_frame: int, before_base64: str, after_base64: str
+    from_frame: int, to_frame: int, before_source: str, after_source: str
 ) -> FrameMotionMetrics:
     """
     Computes inter-frame motion metrics (pixel difference ratio, delta, changed bounds) between two frames.
     """
-    comparison = compare_images_data(before_base64, after_base64)
+    comparison, _ = compare_images_data(before_source, after_source)
     return FrameMotionMetrics(
         from_frame=from_frame,
         to_frame=to_frame,

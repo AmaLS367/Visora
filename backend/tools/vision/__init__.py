@@ -15,6 +15,7 @@ from backend.tools.vision.common import (
 )
 from backend.tools.vision.image_utils import (
     _capture_from_payload,
+    _create_contact_sheet,
     _decode_image,
     _encode_frames_to_mp4,
     _extract_result_payload,
@@ -23,6 +24,7 @@ from backend.tools.vision.image_utils import (
     _normalize_threshold,
     _payload_float,
     _payload_warnings,
+    _save_image_artifact,
     _validate_video_request,
     compare_images_data,
 )
@@ -45,6 +47,7 @@ __all__ = [
     "_camera_screenshot_code",
     "_capture_from_payload",
     "_capture_video_frame",
+    "_create_contact_sheet",
     "_decode_image",
     "_diagnostic_scene_capture_code",
     "_encode_frames_to_mp4",
@@ -57,6 +60,7 @@ __all__ = [
     "_payload_float",
     "_payload_warnings",
     "_project_world_points_code",
+    "_save_image_artifact",
     "_sleep",
     "_validate_video_request",
     "bridge",

@@ -1,5 +1,6 @@
 import inspect
-from typing import Any, get_type_hints
+import types
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 import pytest
 
@@ -37,6 +38,7 @@ TOOL_FUNCTIONS = [
     animation.sampling.sample_animation_clip,
     animation.skeleton.skeleton_mapper,
     animation.skeleton.find_bones,
+    animation.preview.preview_animation,
     # Mesh
     mesh.diagnostics.skinned_mesh_diagnostics,
     # Asset Web Search & Auto-Download
@@ -48,6 +50,22 @@ TOOL_FUNCTIONS = [
 ]
 
 
+def _extract_base_tool_result_subclasses(annotation: Any) -> list[type[BaseToolResult]]:
+    origin = get_origin(annotation)
+    if origin in (types.UnionType, Union):
+        results: list[type[BaseToolResult]] = []
+        for arg in get_args(annotation):
+            results.extend(_extract_base_tool_result_subclasses(arg))
+        return results
+    if origin is tuple:
+        args = get_args(annotation)
+        if args:
+            return _extract_base_tool_result_subclasses(args[0])
+    if isinstance(annotation, type) and issubclass(annotation, BaseToolResult):
+        return [annotation]
+    return []
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
@@ -55,12 +73,13 @@ def anyio_backend() -> str:
 
 @pytest.mark.parametrize("tool_fn", TOOL_FUNCTIONS)
 def test_tool_return_type_is_base_tool_result_subclass(tool_fn: Any) -> None:
-    """Every Visora tool must explicitly declare a return type inheriting from BaseToolResult."""
+    """Every Visora tool must explicitly declare a return type inheriting from BaseToolResult (or tuple containing it)."""
     hints = get_type_hints(tool_fn)
     return_type = hints.get("return")
     assert return_type is not None, f"Tool {tool_fn.__name__} has no return type annotation"
-    assert issubclass(return_type, BaseToolResult), (
-        f"Tool {tool_fn.__name__} returns {return_type}, which does not inherit from BaseToolResult"
+    result_classes = _extract_base_tool_result_subclasses(return_type)
+    assert result_classes, (
+        f"Tool {tool_fn.__name__} returns {return_type}, which does not inherit from or contain BaseToolResult"
     )
 
 
@@ -166,6 +185,7 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     monkeypatch.setattr(animation, "bridge", failing_bridge)
     monkeypatch.setattr(mesh, "bridge", failing_bridge)
 
+    raw_res: Any
     res: BaseToolResult
 
     # 1. get_bridge_status
@@ -210,7 +230,8 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.success is False
 
     # 8. screenshot
-    res = await vision.capture.screenshot()
+    raw_res = await vision.capture.screenshot()
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert isinstance(res, BaseToolResult)
     assert res.success is False
     assert res.error is not None
@@ -270,7 +291,8 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.error is not None
 
     # 18. get_video_frames
-    res = await vision.video.get_video_frames(duration_seconds=0.1)
+    raw_res = await vision.video.get_video_frames(duration_seconds=0.1)
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert isinstance(res, BaseToolResult)
     assert res.success is False
     assert res.error is not None
@@ -282,20 +304,29 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.error is not None
 
     # 20. compare_screenshots
-    res = vision.capture.compare_screenshots(before_image_base64="invalid", after_image_base64="invalid")
+    raw_res = vision.capture.compare_screenshots(before_image_path="invalid", after_image_path="invalid")
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert isinstance(res, BaseToolResult)
     assert res.success is False
     assert res.error is not None
 
     # 21. inspect_scene_visual
-    res = await vision.capture.inspect_scene_visual()
+    raw_res = await vision.capture.inspect_scene_visual()
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
+    # 22. preview_animation
+    raw_res = await animation.preview.preview_animation("Player", "Assets/Test.anim")
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert isinstance(res, BaseToolResult)
     assert res.success is False
     assert res.error is not None
 
 
 @pytest.mark.anyio
-async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
     """Verifies that when Unity returns an error payload, tools report success=False rather than fake success."""
     error_bridge = ErrorResponseBridge()
 
@@ -306,6 +337,7 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     monkeypatch.setattr(animation, "bridge", error_bridge)
     monkeypatch.setattr(mesh, "bridge", error_bridge)
 
+    raw_res: Any
     res: BaseToolResult
 
     # 1. safe_transaction with error C# code
@@ -314,7 +346,8 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     assert res.error is not None
 
     # 2. screenshot with error
-    res = await vision.capture.screenshot()
+    raw_res = await vision.capture.screenshot()
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert res.success is False
     assert res.error is not None
 
@@ -364,11 +397,18 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     assert res.error is not None
 
     # 12. get_video_frames with error
-    res = await vision.video.get_video_frames(duration_seconds=0.1)
+    raw_res = await vision.video.get_video_frames(duration_seconds=0.1)
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert res.success is False
     assert res.error is not None
 
     # 13. get_video_mp4 with error
     res = await vision.video.get_video_mp4(duration_seconds=0.1)
+    assert res.success is False
+    assert res.error is not None
+
+    # 14. preview_animation with error
+    raw_res = await animation.preview.preview_animation("Player", "Assets/Test.anim")
+    res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert res.success is False
     assert res.error is not None
