@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 from typing import Any
 
@@ -48,7 +49,7 @@ _SECTION_MARKERS = (
 def _compact_tool_description(description: str | None) -> str | None:
     if not description:
         return description
-    desc = description
+    desc = inspect.cleandoc(description)
     for marker in _SECTION_MARKERS:
         if marker in desc:
             desc = desc.split(marker)[0]

@@ -88,6 +88,30 @@ Raises:
     assert "Raises:" not in compact
 
 
+def test_compact_tool_description_handles_indented_docstring() -> None:
+    doc = """
+        Executes an atomic batch of animation clip modifications.
+
+        Supported operations:
+        - set_keyframe
+        - move_keyframe
+
+        Args:
+            operations: List of operation dictionaries.
+            transaction_id: Optional ID.
+
+        Returns:
+            AnimationTransactionResult.
+    """
+    compact = _compact_tool_description(doc)
+    assert compact is not None
+    assert "Executes an atomic batch of animation clip modifications." in compact
+    assert "Supported operations:" in compact
+    assert "Args:" not in compact
+    assert "operations: List of operation dictionaries." not in compact
+    assert "Returns:" not in compact
+
+
 def test_compact_json_schema_strips_titles() -> None:
     schema: dict[str, Any] = {
         "title": "ToolArguments",
