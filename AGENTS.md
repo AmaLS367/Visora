@@ -82,6 +82,16 @@ uv run python scripts/check_unity_package.py            # compile against real U
 uv run python scripts/check_unity_package.py --format   # also verify C# formatting
 ```
 
+Run the real Unity EditMode integration gate as well after animation-stack changes:
+
+```bash
+uv run python scripts/check_unity_tests.py
+```
+
+This runner creates a temporary project, loads the local package plus Unity Test Framework,
+and writes its NUnit XML and Editor log under the ignored `artifacts/` directory. It is a
+required local gate; CI does not run it until Unity licensing is configured there.
+
 The gate builds the package sources against the `UnityEngine`/`UnityEditor` assemblies of an
 installed Unity (auto-discovered, or `VISORA_UNITY_MANAGED_DIR`), with .NET analyzers and
 `Microsoft.Unity.Analyzers` enabled and `LangVersion` pinned to the C# version Unity accepts.
