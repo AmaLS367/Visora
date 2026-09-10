@@ -166,6 +166,16 @@ namespace Visora.Editor.Core
     }
 
     [Serializable]
+    public class PrefabOverridesInspectRequest
+    {
+        public string instancePath;
+        public string scenePath;
+        public bool includeDefaultOverrides;
+        public string scope = "nearest";
+        public int maxOverrides = 200;
+    }
+
+    [Serializable]
     public class ClipPathRequest
     {
         public string clipPath;
@@ -447,6 +457,7 @@ namespace Visora.Editor.Core
                             "asset_inspection",
                             "asset_instantiation",
                             "prefab_asset_inspection",
+                            "prefab_override_inspection",
                             "humanoid_avatar_diagnostics",
                             "humanoid_avatar_configuration",
                             "humanoid_contact_constraints",
@@ -823,6 +834,15 @@ namespace Visora.Editor.Core
                     var p = JsonUtility.FromJson<PrefabInspectRequest>(body) ?? new PrefabInspectRequest();
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         PrefabInspectionService.InspectPrefabAsset(p.assetPath, p.maxObjects));
+                    responseJson = VisoraJson.Serialize(result);
+                }
+                else if (method == "POST" && path == "/api/visora/prefab/overrides")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<PrefabOverridesInspectRequest>(body) ?? new PrefabOverridesInspectRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        PrefabOverrideInspectionService.InspectPrefabOverrides(
+                            p.instancePath, p.scenePath, p.includeDefaultOverrides, p.scope, p.maxOverrides));
                     responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/humanoid/validate")

@@ -29,7 +29,7 @@ These concerns are repetitive, stateful, and error-prone. Visora encapsulates th
 
 | Dimension | ⚠️ Traditional Ad-Hoc Scripting | ✨ Visora Typed MCP Workflow |
 | :--- | :--- | :--- |
-| **Agent Interface** | Guessing C# APIs & compiling strings | 47 validated, typed MCP tool contracts |
+| **Agent Interface** | Guessing C# APIs & compiling strings | 48 validated, typed MCP tool contracts |
 | **Diagnostics** | Grepping raw editor log output | Structured models with warnings & metrics |
 | **Visual Verification** | Manual camera placement & screenshots | Multi-camera framing, viewport projection, and preview MP4s |
 | **Scene Safety** | Risk of dirtying scenes or saving in Play Mode | Undo transactions, rollback groups, and Play Mode guards |

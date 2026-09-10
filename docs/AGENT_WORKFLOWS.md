@@ -1,6 +1,6 @@
 # 🤖 Visora Agent Workflows & Tool Recipes
 
-> Canonical guide to the 47 MCP tools, transport modes, and safe sequence recipes for AI agents operating inside Unity Editor.
+> Canonical guide to the 48 MCP tools, transport modes, and safe sequence recipes for AI agents operating inside Unity Editor.
 
 Visora is a typed MCP layer for Unity Editor diagnostics, character rigging, animation analysis, and safe scene operations. Every tool returns a structured Pydantic model with `success` and, on failure, an actionable `error`.
 
@@ -55,6 +55,7 @@ An asterisk (`*`) denotes a required parameter.
 | `inspect_animation_clip` | `clip_path`*, `path_filter`, `max_bindings` | `ClipInspectorResult` |
 | `inspect_imported_asset` | `asset_path`*, `max_hierarchy_nodes` | `InspectAssetResult` |
 | `inspect_prefab_asset` | `asset_path`* | `InspectPrefabAssetResult` |
+| `inspect_prefab_overrides` | `instance_path`*, `include_default_overrides`, `scope`, `max_overrides`, `scene_path` | `InspectPrefabOverridesResult` |
 | `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `BaseToolResult` |
 | `instantiate_scene_asset` | `asset_path`*, `parent_path`, `position`, `rotation`, `scale`, `name` | `InstantiateSceneAssetResult` |
 | `list_animation_backups` | `clip_path`* | `ListAnimationBackupsResult` |
@@ -127,6 +128,15 @@ Reason about reusable project content before touching a scene:
 - Nested instances whose source asset was deleted are reported with `connection_status='missing_asset'` and are deliberately excluded from `edit_target_asset_paths`.
 - Requires Edit Mode and the native Visora Unity package (`prefab_asset_inspection` capability); an AnkleBreaker bridge returns an explicit unsupported-capability error rather than emulating the isolated prefab lifecycle in ad hoc C#.
 - Deep Prefabs are capped at `PREFAB_MAX_HIERARCHY_NODES` (default 200) nodes; when capped, `truncated=true` while `total_object_count` / `total_component_count` still describe the whole asset.
+
+### 6️⃣.6 Prefab Override Inspection (Read-Only)
+See exactly how a scene instance differs from its Prefab before deciding what to keep:
+- Call `inspect_prefab_overrides('Level/Enemy/Weapon')` with a path to any object inside the instance. Use indexed segments such as `Arm[1]` for same-name siblings, and `scene_path` when several loaded scenes contain the same path; an ambiguous path fails with `path_candidates` to retry with.
+- `scope='nearest'` (default) diffs the closest instance root — a nested Prefab when the object lives in one; `scope='outermost'` diffs the whole top-level instance. Never assume the outermost Prefab is the right place for a change: read each override's `target_asset_paths` and `recommended_target_asset_path`.
+- Categories are `modified_property`, `added_component`, `removed_component`, `added_game_object`, and `removed_game_object`. Property overrides carry `source_value` and `instance_value`; object references carry asset path, GUID, and local file ID (or scene path and hierarchy path).
+- Default overrides (root position/rotation/name) are excluded unless `include_default_overrides=true` and are never applicable. Model Prefab and immutable sources are reported as `applicable=false` with a `not_applicable_reason`.
+- `override_id` values are deterministic for the same scene state, so they can identify exact changes across calls. The tool itself never applies or reverts anything; selective apply is not available yet.
+- Requires Edit Mode and the `prefab_override_inspection` capability. Large diffs are capped by `max_overrides` (default 200, max 1000) with `truncated=true`, while totals describe the whole diff.
 
 ### 7️⃣ Video Capture & Domain Reload Recovery
 Capture high-fidelity gameplay or Edit Mode timelines:

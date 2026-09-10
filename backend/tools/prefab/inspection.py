@@ -11,12 +11,11 @@ from backend.schemas.prefab import (
     PrefabNestedInstance,
     PrefabObjectNode,
 )
-from backend.tools.errors import bridge_error, bridge_retry_fields
-from backend.tools.payload import coerce_literal, warns
-from backend.tools.prefab.common import bridge_supports, logger
+from backend.tools.errors import bridge_retry_fields
+from backend.tools.payload import coerce_literal, safe_int, warns
+from backend.tools.prefab.common import logger, native_preflight, optional_asset_path
 
 _CAPABILITY = "prefab_asset_inspection"
-_READY_TIMEOUT_SECONDS = 15.0
 
 _PREFAB_KINDS = {"regular", "variant", "model"}
 _CONNECTION_STATUSES = {"connected", "missing_asset", "disconnected", "not_an_instance"}
@@ -30,19 +29,6 @@ _MODEL_EXTENSIONS = frozenset(
     {".fbx", ".obj", ".dae", ".blend", ".gltf", ".glb", ".3ds", ".dxf", ".max", ".c4d", ".ma", ".mb"}
 )
 _PROJECT_ROOTS = ("Assets/", "Packages/")
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    if isinstance(value, int) and not isinstance(value, bool):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return default
-    return default
 
 
 def _normalize_asset_path(asset_path: str) -> tuple[str, str | None]:
@@ -107,17 +93,15 @@ def _hierarchy(raw: Any, warnings: list[str]) -> list[PrefabObjectNode]:
             warnings.append("Ignored a malformed hierarchy entry from the Unity bridge.")
             continue
         relative_path = str(item.get("relativePath", ""))
-        nested_source = item.get("nestedSourceAssetPath")
-        nested_source_str = str(nested_source).replace("\\", "/").strip() if nested_source else None
         nodes.append(
             PrefabObjectNode(
                 relative_path=relative_path,
                 name=str(item.get("name", "")),
-                depth=_safe_int(item.get("depth"), 0),
+                depth=safe_int(item.get("depth"), 0),
                 active_self=bool(item.get("activeSelf", True)),
                 components=_components(item.get("components"), warnings, relative_path),
                 is_nested_prefab_instance_root=bool(item.get("isNestedPrefabInstanceRoot", False)),
-                nested_source_asset_path=nested_source_str,
+                nested_source_asset_path=optional_asset_path(item.get("nestedSourceAssetPath")),
             )
         )
     return nodes
@@ -133,16 +117,13 @@ def _nested_prefabs(raw: Any, warnings: list[str]) -> list[PrefabNestedInstance]
         if not isinstance(item, dict):
             warnings.append("Ignored a malformed nested prefab entry from the Unity bridge.")
             continue
-        source_path = item.get("sourceAssetPath")
-        source_path_str = str(source_path).replace("\\", "/").strip() if source_path else None
         source_guid = item.get("sourceGuid")
-        source_guid_str = str(source_guid).strip() if source_guid else None
         nested.append(
             PrefabNestedInstance(
                 relative_path=str(item.get("relativePath", "")),
                 name=str(item.get("name", "")),
-                source_asset_path=source_path_str,
-                source_guid=source_guid_str,
+                source_asset_path=optional_asset_path(item.get("sourceAssetPath")),
+                source_guid=str(source_guid).strip() if source_guid else None,
                 connection_status=coerce_literal(
                     item.get("connectionStatus"),
                     _CONNECTION_STATUSES,
@@ -185,21 +166,17 @@ def _build_result(asset_path: str, resp: dict[str, Any], limit: int) -> InspectP
             warnings=warnings,
         )
 
-    base_prefab = resp.get("basePrefabPath")
-    base_prefab_str = str(base_prefab).replace("\\", "/").strip() if base_prefab else None
-
     raw_targets = resp.get("editTargetAssetPaths")
     edit_targets: list[str] = []
     if isinstance(raw_targets, list):
         for p in raw_targets:
-            if p and str(p).strip():
-                clean_target = str(p).replace("\\", "/").strip()
-                if clean_target not in edit_targets:
-                    edit_targets.append(clean_target)
+            clean_target = optional_asset_path(p)
+            if clean_target and clean_target not in edit_targets:
+                edit_targets.append(clean_target)
         edit_targets.sort()
 
-    total_obj = _safe_int(resp.get("totalObjectCount"), len(hierarchy))
-    total_comp = _safe_int(resp.get("totalComponentCount"), sum(len(n.components) for n in hierarchy))
+    total_obj = safe_int(resp.get("totalObjectCount"), len(hierarchy))
+    total_comp = safe_int(resp.get("totalComponentCount"), sum(len(n.components) for n in hierarchy))
 
     return InspectPrefabAssetResult(
         success=True,
@@ -207,7 +184,7 @@ def _build_result(asset_path: str, resp: dict[str, Any], limit: int) -> InspectP
         prefab_name=str(resp.get("prefabName", "")),
         guid=str(resp.get("assetGuid", "")),
         prefab_kind=coerce_literal(resp.get("prefabKind"), _PREFAB_KINDS, warnings, field="prefab kind"),
-        base_prefab_path=base_prefab_str,
+        base_prefab_path=optional_asset_path(resp.get("basePrefabPath")),
         root_object_name=str(resp.get("rootObjectName", "")),
         root_connection_status=coerce_literal(
             resp.get("rootConnectionStatus"),
@@ -247,28 +224,9 @@ async def inspect_prefab_asset(asset_path: str) -> InspectPrefabAssetResult:
     if path_error is not None:
         return InspectPrefabAssetResult(success=False, error=path_error, asset_path=clean_path)
 
-    if not await bridge_supports(_CAPABILITY):
-        return InspectPrefabAssetResult(
-            success=False,
-            error=(
-                f"Unity bridge does not support capability '{_CAPABILITY}'. Prefab asset inspection "
-                "requires the Visora Unity package; update it or switch UNITY_BRIDGE_MODE to native."
-            ),
-            asset_path=clean_path,
-        )
-
-    try:
-        editor_state = await prefab_pkg.bridge.wait_for_editor_ready(timeout_seconds=_READY_TIMEOUT_SECONDS)
-    except Exception as exc:
-        logger.info("Unity did not become idle before prefab inspection: %s", exc)
-        return InspectPrefabAssetResult(**bridge_error(exc), asset_path=clean_path)
-
-    if bool(editor_state.get("isPlaying", False)):
-        return InspectPrefabAssetResult(
-            success=False,
-            error="Prefab asset inspection requires Edit Mode; exit Play Mode and retry.",
-            asset_path=clean_path,
-        )
+    failure = await native_preflight(_CAPABILITY, "Prefab asset inspection")
+    if failure is not None:
+        return InspectPrefabAssetResult(**failure, asset_path=clean_path)
 
     limit = max(1, get_settings().prefab_max_hierarchy_nodes)
     try:

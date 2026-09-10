@@ -17,7 +17,7 @@ This directory documents Visora from three complementary perspectives: the **ope
 | :--- | :--- | :--- |
 | 💡 **Understand Core Concepts** | [Concepts and Philosophy](CONCEPTS.md) | Problem formulation, design principles, benefits, and boundaries. |
 | 🛠️ **Install & Connect Client** | [Setup Guide](SETUP_GUIDE.md) | Local environment, MCP clients (Claude/Cursor), Docker, and verification. |
-| 🤖 **Agent Workflows & Recipes** | [Agent Workflows](AGENT_WORKFLOWS.md) | Complete 47-tool MCP catalog and task-specific recipes. |
+| 🤖 **Agent Workflows & Recipes** | [Agent Workflows](AGENT_WORKFLOWS.md) | Complete 48-tool MCP catalog and task-specific recipes. |
 | 🏗️ **Backend Architecture** | [Backend Architecture](backend/README.md) | Process boundaries, startup, dispatch, and request lifecycles. |
 | 🌐 **Bridge Transport & Retries** | [Bridge & Failure Semantics](backend/BRIDGE.md) | Native/legacy routing, domain-reload recovery, and error codes. |
 | 📐 **Tools & Result Schemas** | [Tools and Schemas](backend/TOOLS_AND_SCHEMAS.md) | Pydantic contracts, result compaction, and tool authoring. |
@@ -38,7 +38,7 @@ This directory documents Visora from three complementary perspectives: the **ope
 ### 🤖 Agent & Product Documentation
 
 - 💡 [Concepts and Philosophy](CONCEPTS.md) — Explains why Visora is a safety workflow layer rather than an ad-hoc C# snippet runner.
-- 🤖 [Agent Workflows](AGENT_WORKFLOWS.md) — Task-oriented guide featuring the verified 47-tool MCP catalog.
+- 🤖 [Agent Workflows](AGENT_WORKFLOWS.md) — Task-oriented guide featuring the verified 48-tool MCP catalog.
 - 🗺️ [Roadmap](ROADMAP.md) & 📜 [Changelog](CHANGELOG.md) — Release histories and planned evolution.
 
 ### 🏗️ Maintainer & Architecture Documentation

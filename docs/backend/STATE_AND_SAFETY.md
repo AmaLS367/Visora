@@ -117,13 +117,20 @@ Diagnostic tools may create temporary scene elements (preview cameras, neutral d
 - Nothing is created in the user's scene: the active scene, its `isDirty` flag, its root object count, the selection, and any open Prefab Stage are all left untouched (asserted by EditMode fixtures).
 - The operation is strictly read-only, so it deliberately opens **no** scene Undo transaction - there is nothing to roll back.
 
+### 🔎 Read-Only Override Inspection
+
+`inspect_prefab_overrides` only reads Unity's override bookkeeping for a Prefab instance in a loaded scene:
+- It never applies, reverts, or records overrides, never saves a scene or Prefab, and performs no AssetDatabase mutation.
+- Selection, the active scene, scene and object dirty flags, the Undo group, and any open Prefab Stage are untouched. The only objects it creates are `SerializedObject` readers, disposed before returning (asserted by EditMode fixtures across two back-to-back calls).
+- Edit Mode is required; a compiling or importing Editor is reported as retryable busy state. An open Prefab Stage with unsaved changes produces a warning, because the diff is computed against the assets as saved.
+
 ---
 
 ## ⏱️ Idempotency & Replay Decision Matrix
 
 | Request Type | Safe to Retry on Disconnect? | Safe to Retry on Read Timeout? | Policy |
 | :--- | :---: | :---: | :--- |
-| **Pure Read** (e.g. `list_scene_cameras`, `inspect_prefab_asset`) | ✅ Yes | ✅ Yes | Idempotent; safe to repeat across ports. |
+| **Pure Read** (e.g. `list_scene_cameras`, `inspect_prefab_asset`, `inspect_prefab_overrides`) | ✅ Yes | ✅ Yes | Idempotent; safe to repeat across ports. |
 | **Write with `operation_id`** | ✅ Yes | ⚠️ Inspect Server Guarantee | Deduplicated by native bridge if supported. |
 | **Arbitrary C# (`safe_transaction`)** | ❌ No | ❌ NEVER | Mutation may already have applied in Unity! |
 | **Play Mode Transitions** | ❌ No | ❌ No | Poll state with `get_editor_state` instead. |

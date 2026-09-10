@@ -73,7 +73,7 @@ Startup executes sequentially:
 | `backend/tools/animation/` | Rig inspection, keyframing, preview videos, IK, gaze, and motion QA | No generic HTTP handling |
 | `backend/tools/mesh/` | Skinned mesh diagnostics and issue classification | No material or transform mutations |
 | `backend/tools/asset/` | 3D asset search, quarantine staging, and Unity import | No bridge transport mechanics |
-| `backend/tools/prefab/` | Read-only Prefab asset, Variant, and nested Prefab inspection | No prefab mutation or Prefab Stage control |
+| `backend/tools/prefab/` | Read-only Prefab asset, Variant, and nested Prefab inspection; typed scene-instance override diffs | No override apply/revert, prefab mutation, or Prefab Stage control |
 | `backend/schemas/` | Typed Pydantic result vocabulary and nested models | No filesystem or HTTP side effects |
 
 ---
@@ -176,5 +176,5 @@ artifacts/
 - 📐 [Tools & Schemas](TOOLS_AND_SCHEMAS.md) — Schema design and context compaction rules.
 - 🛡️ [State & Safety](STATE_AND_SAFETY.md) — Play Mode invariants and transaction lifecycles.
 - 💻 [Backend Development](DEVELOPMENT.md) — Local testing and validation gates.
-- 🤖 [Agent Workflows](../AGENT_WORKFLOWS.md) — Task recipes and 47-tool MCP catalog.
+- 🤖 [Agent Workflows](../AGENT_WORKFLOWS.md) — Task recipes and 48-tool MCP catalog.
 

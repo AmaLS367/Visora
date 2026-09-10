@@ -56,7 +56,7 @@ Visora makes these distinctions part of the tool contract. Its core operating lo
 - 🔌 **Resilient HTTP Transport** — Multi-port discovery, bridge flavor selection (native vs legacy), domain-reload recovery, and typed retry hints.
 - ⚡ **Bundled Native Companion** — Native Unity package (`com.visora.editor`) plus full compatibility with the legacy AnkleBreaker bridge.
 
-The current MCP surface contains **47 registered tools**. The generated source-of-truth catalog is in [Agent workflows](docs/AGENT_WORKFLOWS.md#tool-catalog).
+The current MCP surface contains **48 registered tools**. The generated source-of-truth catalog is in [Agent workflows](docs/AGENT_WORKFLOWS.md#tool-catalog).
 
 ## 🧩 How It Fits Together
 
@@ -139,7 +139,7 @@ Explore the full documentation suite organized by workflow and architectural dom
 | 🧭 **Overview** | [Documentation Index](docs/README.md) | Central hub and roadmap of all documentation resources. |
 | 💡 **Philosophy** | [Concepts & Philosophy](docs/CONCEPTS.md) | The problem model, design principles, and intentional limits. |
 | 🛠️ **Installation** | [Setup Guide](docs/SETUP_GUIDE.md) | Python, Unity, MCP client, Docker, verification, and recovery. |
-| 🤖 **Agent Recipes** | [Agent Workflows](docs/AGENT_WORKFLOWS.md) | The complete 47-tool MCP catalog and task-oriented recipes. |
+| 🤖 **Agent Recipes** | [Agent Workflows](docs/AGENT_WORKFLOWS.md) | The complete 48-tool MCP catalog and task-oriented recipes. |
 | 🏗️ **Architecture** | [Backend Architecture](docs/backend/README.md) | Runtime layers, module boundaries, and request lifecycle. |
 | 🌐 **Networking** | [Bridge & Failure Semantics](docs/backend/BRIDGE.md) | Discovery, native/legacy dispatch, retries, and reloads. |
 | 📐 **Data Contracts** | [Tools & Schemas](docs/backend/TOOLS_AND_SCHEMAS.md) | MCP registration, Pydantic contracts, and context compaction. |

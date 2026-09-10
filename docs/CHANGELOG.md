@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> Work in progress toward v0.1.4 (Prefab-First Production Workflow). Only the item below has landed;
-> the remaining roadmap items (override inspection, selective apply, prefab authoring, Prefab Stage)
-> are not implemented.
+> Work in progress toward v0.1.4 (Prefab-First Production Workflow). Only roadmap items 1 and 2
+> below have landed; the remaining items (selective apply, prefab authoring, Prefab Stage, mutation
+> safety) are not implemented.
 
 ### Added
 
@@ -37,12 +37,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     unsupported-capability error rather than an improvised C# emulation.
   - Result size is bounded by `PREFAB_MAX_HIERARCHY_NODES` (default 200), enforced by Unity and
     re-checked by the Python layer.
+- **Typed Prefab Override Inspection (roadmap v0.1.4 item 2):** new read-only MCP tool
+  `inspect_prefab_overrides(instance_path, include_default_overrides=False, scope="nearest",
+  max_overrides=200, scene_path=None)` that diffs a Prefab instance in any loaded scene against its
+  source Prefab asset.
+  - Reports the resolved instance root (nearest or outermost), source asset path and GUID, Prefab
+    kind, connection status, totals and per-category counts, `truncated`, and typed overrides:
+    modified properties (source and instance values, structured object references with asset path,
+    GUID and local file ID), added and removed components (with type and same-type ordinal), and
+    added and removed child GameObjects.
+  - Each override has a deterministic `override_id` (SHA-256 of its canonical semantic identity,
+    never an InstanceID or traversal index), the editable target assets in source-chain order, a
+    recommended target, and `applicable` / `not_applicable_reason`. Default overrides are detected
+    by Unity, excluded by default, and never applicable; Model Prefab and immutable sources are
+    reported as non-applicable. ID collisions are flagged and reported, not merged.
+  - Strict hierarchy resolution across all loaded scenes: indexed `Name[k]` segments for same-name
+    siblings, explicit missing/ambiguous path errors with candidates, optional `scene_path`.
+  - Strictly read-only: nothing is applied, reverted, saved, selected, or dirtied, and no Undo is
+    recorded. Requires Edit Mode. An incomplete or inconsistent Unity payload is `success=false`.
+  - Canonical bridge method `UnityBridge.inspect_prefab_overrides_native`, native service
+    `PrefabOverrideInspectionService.cs`, endpoint `POST /api/visora/prefab/overrides`, and the
+    `prefab_override_inspection` capability flag. AnkleBreaker bridges receive an explicit
+    unsupported-capability error.
 
 ### Changed
 
 - **Shared payload normalization:** `warns` and `coerce_literal` moved from
   `backend/tools/animation/common.py` to `backend/tools/payload.py` so non-animation domains can
   reuse them. All callers were updated to the new canonical import; no compatibility alias remains.
+- **Shared prefab plumbing:** `safe_int` moved from `backend/tools/prefab/inspection.py` to
+  `backend/tools/payload.py`; the capability → editor-idle → Edit Mode preflight, asset-path cleanup,
+  and hierarchy-path normalization live in `backend/tools/prefab/common.py` and are used by both
+  prefab tools. On the Unity side, `HierarchyPaths.cs` now owns the `Name[k]` sibling-segment
+  convention for both prefab services.
 
 ---
 

@@ -65,9 +65,9 @@ namespace Visora.Editor.Services
     /// </summary>
     public static class PrefabInspectionService
     {
-        private const string ConnectionConnected = "connected";
-        private const string ConnectionMissingAsset = "missing_asset";
-        private const string ConnectionDisconnected = "disconnected";
+        internal const string ConnectionConnected = "connected";
+        internal const string ConnectionMissingAsset = "missing_asset";
+        internal const string ConnectionDisconnected = "disconnected";
 
         private const int DefaultMaxObjects = 200;
 
@@ -173,7 +173,7 @@ namespace Visora.Editor.Services
             }
         }
 
-        private static bool IsEditablePrefabAsset(string path)
+        internal static bool IsEditablePrefabAsset(string path)
         {
             if (string.IsNullOrEmpty(path)) return false;
             if (!path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)) return false;
@@ -183,7 +183,7 @@ namespace Visora.Editor.Services
             return type == PrefabAssetType.Regular || type == PrefabAssetType.Variant;
         }
 
-        private static string KindName(PrefabAssetType assetType)
+        internal static string KindName(PrefabAssetType assetType)
         {
             switch (assetType)
             {
@@ -320,29 +320,16 @@ namespace Visora.Editor.Services
                 result.truncated = true;
             }
 
-            var childNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-            for (int i = 0; i < current.childCount; i++)
+            var children = HierarchyPaths.Children(current);
+            var childSegments = HierarchyPaths.SiblingSegments(children);
+            for (int i = 0; i < children.Count; i++)
             {
-                var child = current.GetChild(i);
-                childNameCounts.TryGetValue(child.name, out int count);
-                childNameCounts[child.name] = count + 1;
-            }
-
-            var childNameOccurrences = new Dictionary<string, int>(StringComparer.Ordinal);
-            for (int i = 0; i < current.childCount; i++)
-            {
-                var child = current.GetChild(i);
-                string childSegment = child.name;
-                if (childNameCounts[child.name] > 1)
+                var child = children[i];
+                string childSegment = childSegments[i];
+                if (string.Equals(childSegment, HierarchyPaths.Indexed(child.name, 0), StringComparison.Ordinal))
                 {
-                    childNameOccurrences.TryGetValue(child.name, out int occurrence);
-                    childNameOccurrences[child.name] = occurrence + 1;
-                    childSegment = $"{child.name}[{occurrence.ToString(CultureInfo.InvariantCulture)}]";
-                    if (occurrence == 0)
-                    {
-                        result.warnings.Add(
-                            $"GameObject '{current.name}' has multiple children named '{child.name}'; paths are disambiguated with indices like '{childSegment}'.");
-                    }
+                    result.warnings.Add(
+                        $"GameObject '{current.name}' has multiple children named '{child.name}'; paths are disambiguated with indices like '{childSegment}'.");
                 }
 
                 string childPath = relativePath.Length == 0 ? childSegment : relativePath + "/" + childSegment;

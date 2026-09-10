@@ -49,6 +49,7 @@ When running in native mode, feature flags are queried from `GET /api/visora/inf
 - 🔍 **Strict Verification**: Flavor alone does not prove the presence of specialized services (e.g. IK solvers, preview comparison).
 - 🔄 **Transient Safety**: Failed capability probes are never cached, preventing temporary initialization drops from disabling optimized features permanently.
 - 🚫 **Native-Only Capabilities**: Some features have no legacy fallback at all. `prefab_asset_inspection` (`POST /api/visora/prefab/inspect`) is one: emulating Unity's isolated prefab-content lifecycle through arbitrary `execute_code` C# is the one path that could leak a loaded Prefab into the user's project, so a bridge that does not advertise the flag receives an explicit unsupported-capability error instead of an improvised result.
+- 🔎 **Override Inspection Is Native-Only Too**: `prefab_override_inspection` (`POST /api/visora/prefab/overrides`) has no `execute_code` fallback either. An improvised C# override walk is exactly what the typed diff replaces, and an ad hoc script carries no read-only guarantee, so a legacy AnkleBreaker bridge receives an explicit unsupported-capability error.
 
 ---
 

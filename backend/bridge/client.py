@@ -1081,6 +1081,33 @@ class UnityBridge:
         )
         return _decode_json(response)
 
+    async def inspect_prefab_overrides_native(
+        self,
+        instance_path: str,
+        scene_path: str | None,
+        include_default_overrides: bool,
+        scope: str,
+        max_overrides: int,
+    ) -> dict[str, Any]:
+        """
+        Read-only Prefab instance override diff via /api/visora/prefab/overrides.
+
+        A pure read, so it keeps the default replay-on-timeout policy. `maxOverrides` is enforced by
+        Unity so a heavily modified instance never ships its whole diff over HTTP.
+        """
+        response = await self._request(
+            "POST",
+            "/api/visora/prefab/overrides",
+            json={
+                "instancePath": instance_path,
+                "scenePath": scene_path or "",
+                "includeDefaultOverrides": include_default_overrides,
+                "scope": scope,
+                "maxOverrides": max_overrides,
+            },
+        )
+        return _decode_json(response)
+
     async def instantiate_asset_native(  # noqa: PLR0913
         self,
         asset_path: str,

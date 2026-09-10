@@ -13,7 +13,7 @@ Visora's public product boundary is its MCP tool registry. While Python modules 
 
 ## 🗂️ MCP Tool Families
 
-The 47 registered MCP tools are partitioned into focused domain packages:
+The 48 registered MCP tools are partitioned into focused domain packages:
 
 | Family | Python Package | Core Responsibilities |
 | :--- | :--- | :--- |
@@ -23,7 +23,7 @@ The 47 registered MCP tools are partitioned into focused domain packages:
 | 🎬 **Animation & Kinematics** | `backend.tools.animation` | Clips, skeletons, previews, IK solvers, gaze, contact baking, QA |
 | 📐 **Mesh Diagnostics** | `backend.tools.mesh` | Skinned mesh inspection and deformation issue classification |
 | 📦 **Asset Pipeline** | `backend.tools.asset` | 3D search, quarantine downloads, Unity import, instantiation |
-| 🧩 **Prefab Assets** | `backend.tools.prefab` | Read-only Prefab, Variant, and nested Prefab asset inspection |
+| 🧩 **Prefab Assets** | `backend.tools.prefab` | Read-only Prefab, Variant, and nested Prefab asset inspection; typed scene-instance override diffs |
 
 > [!NOTE]
 > The full parameter inventory is automatically maintained in [Agent Workflows](../AGENT_WORKFLOWS.md#tool-catalog).
@@ -145,6 +145,41 @@ To preserve context window tokens for LLM reasoning, `VisoraMCPServer` implement
 - Strips redundant duplicate `structured_content` blocks.
 - Recursively removes `null` / `None` fields from serialized JSON.
 - Minifies whitespace while keeping disk artifacts in `artifacts/` at full fidelity.
+
+---
+
+## 🔎 Prefab Override Inspection Contract
+
+`inspect_prefab_overrides(instance_path, include_default_overrides=False, scope="nearest", max_overrides=200, scene_path=None)` returns an `InspectPrefabOverridesResult`: a read-only, typed diff between a Prefab instance in any loaded scene and its source Prefab asset. **It never applies, reverts, or saves anything** — selective apply is a separate, not-yet-implemented roadmap item.
+
+**Addressing.** `instance_path` is a root-anchored hierarchy path to any GameObject inside the instance (`Level/Enemy/Weapon`). Same-name siblings use the indexed segment convention shared with `inspect_prefab_asset` (`Arm[0]`, `Arm[1]`). Resolution covers every loaded scene (optionally restricted by `scene_path`), never uses `GameObject.Find` or a terminal-name fallback, and reports a missing path (with the deepest existing prefix) or an ambiguous path (with `path_candidates`) as an explicit failure.
+
+**Scope.**
+
+| `scope` | Diff anchored to | Object paths are relative to | `recommended_target_asset_path` |
+| :--- | :--- | :--- | :--- |
+| `nearest` (default) | The closest Prefab instance root — a nested Prefab when the object lives in one | That root and its source asset | The nearest root's source asset |
+| `outermost` | The top-level Prefab instance root in the scene | The outermost root and its source asset | The outermost root's source asset |
+
+**Categories.**
+
+| `category` | Unity inspection API | `object_path` means | Category-specific fields |
+| :--- | :--- | :--- | :--- |
+| `modified_property` | `GetObjectOverrides` + `GetPropertyModifications`, kept only while `SerializedProperty.prefabOverride` | The affected GameObject | `component_type`, `component_ordinal`, `property_path`, `source_value`, `instance_value` |
+| `added_component` | `GetAddedComponents` | The GameObject that gained the component | `component_type`, `component_ordinal` |
+| `removed_component` | `GetRemovedComponents` | The instance GameObject that lost it | `component_type`, `source_object_path` |
+| `added_game_object` | `GetAddedGameObjects` | The added GameObject | `source_object_path` is `None` |
+| `removed_game_object` | `GetRemovedGameObjects` | The instance parent it was removed from | `source_object_path` of the removed object |
+
+Property values are typed (`integer`, `float`, `boolean`, `string`, `enum`, `array_size`, `object_reference`, `other`). Object references are never reduced to `ToString()`: they carry `type_name`, `name`, and either `asset_path` + `guid` + `local_file_id` (assets) or `scene_path` + `hierarchy_path` (scene objects).
+
+**Default overrides.** Unity (`PrefabUtility.IsDefaultOverride`) classifies the instance root's placement and name — position, rotation, name — as default overrides: every instance has them, Unity's Overrides window hides them, and Unity never applies them to an asset. They are excluded unless `include_default_overrides=true` (`excluded_default_override_count` says how many were left out) and are always `applicable=false`.
+
+**Targets and applicability.** `target_asset_paths` lists the editable Prefab assets a change could be written to, in source-chain order: the instance's immediate source first, inwards to the asset that introduced the object (outer Prefab → nested or base Prefab). Model Prefabs, immutable Prefabs (e.g. read-only packages), and assets that cannot hold a referenced scene object are excluded. `applicable=false` always comes with `not_applicable_reason`; the outermost Prefab is never assumed to be the right target.
+
+**Stable IDs.** `override_id = "ovr_" + the first 16 hex digits of SHA-256(canonical identity)`. The canonical identity is a versioned record of category, source asset GUID, target context (scope, scene, instance root path), instance-relative object path, source-relative object path, component full type name and ordinal, and property path. No InstanceID, random UUID, or traversal index is used, so identical scene state yields identical IDs, and the list is sorted deterministically on the same fields. Overrides that share an ID (a hash collision or a duplicated identity) are all flagged `id_collision=true`, made non-applicable, and reported in `warnings`.
+
+**Completeness.** `total_override_count` and `override_counts` describe the full filtered diff before `max_overrides` (1–1000) truncation. The Python layer re-validates Unity's payload: a malformed entry, missing totals, or counts that disagree with the listed overrides produce `success=false` rather than a silently partial diff.
 
 ---
 

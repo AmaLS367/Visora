@@ -62,6 +62,7 @@ TOOL_FUNCTIONS = [
     asset.instantiate_scene_asset,
     # Prefab assets
     prefab.inspect_prefab_asset,
+    prefab.inspect_prefab_overrides,
 ]
 
 
@@ -187,15 +188,18 @@ class ErrorResponseBridge:
         return {"isPlaying": False, "isCompiling": False}
 
     async def supports_feature(self, feature: str) -> bool:
-        # Only the native-only prefab capability is advertised here; every other tool keeps taking
+        # Only the native-only prefab capabilities are advertised here; every other tool keeps taking
         # the same path through this mock as before, so their assertions stay about Unity errors.
-        return feature == "prefab_asset_inspection"
+        return feature in {"prefab_asset_inspection", "prefab_override_inspection"}
 
     async def wait_for_editor_ready(self, timeout_seconds: float = 15.0) -> dict[str, Any]:
         del timeout_seconds
         return {"isPlaying": False, "isCompiling": False}
 
     async def inspect_prefab_asset_native(self, **_kwargs: Any) -> dict[str, Any]:
+        return {"success": False, "error": "Unity C# compilation or runtime error"}
+
+    async def inspect_prefab_overrides_native(self, **_kwargs: Any) -> dict[str, Any]:
         return {"success": False, "error": "Unity C# compilation or runtime error"}
 
     async def scan_available_ports(self) -> list[dict[str, Any]]:
@@ -370,6 +374,12 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.success is False
     assert res.error is not None
 
+    # 24. inspect_prefab_overrides
+    res = await prefab.inspect_prefab_overrides("Level/Enemy")
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
 
 @pytest.mark.anyio
 async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
@@ -461,3 +471,9 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     assert res.success is False
     assert res.error is not None
     assert res.hierarchy == []
+
+    # 16. inspect_prefab_overrides with error
+    res = await prefab.inspect_prefab_overrides("Level/Enemy")
+    assert res.success is False
+    assert res.error is not None
+    assert res.overrides == []

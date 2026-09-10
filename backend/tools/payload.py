@@ -12,6 +12,20 @@ def warns(resp: dict[str, Any]) -> list[str]:
     return [str(w) for w in raw]
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    """Coerce a raw bridge number (int, float, or numeric string) to `int`; anything else is `default`."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
 def coerce_literal(
     value: Any,
     allowed: set[str],
@@ -36,4 +50,4 @@ def coerce_literal(
     return fallback
 
 
-__all__ = ["coerce_literal", "warns"]
+__all__ = ["coerce_literal", "safe_int", "warns"]
