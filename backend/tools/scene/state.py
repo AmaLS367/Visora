@@ -4,6 +4,7 @@ from typing import Any, cast
 import backend.tools.scene as scene_pkg
 from backend.app import mcp
 from backend.schemas import EditorStateResult
+from backend.tools.errors import bridge_error
 from backend.tools.scene.scripts import _get_scene_details_code
 
 
@@ -62,8 +63,7 @@ async def _fetch_single_editor_state(include_scene_details: bool = True) -> Edit
     except Exception as exc:
         scene_pkg.logger.exception("get_editor_state failed")
         return EditorStateResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             is_idle=False,
             warnings=[f"Failed to communicate with bridge: {exc}"],
         )
@@ -126,11 +126,10 @@ async def get_editor_state(
         scene_pkg.logger.exception("get_editor_state with wait failed")
         waited = time.time() - start_time
         return EditorStateResult(
-            success=False,
+            **bridge_error(exc),
             is_idle=False,
             timed_out=False,
             waited_seconds=round(waited, 3),
-            error=str(exc),
             warnings=[f"Error during idle wait: {exc}"],
         )
 

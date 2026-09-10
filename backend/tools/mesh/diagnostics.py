@@ -4,6 +4,7 @@ import backend.tools.mesh as mesh_pkg
 from backend.app import mcp
 from backend.config import get_settings
 from backend.schemas.mesh import SkinnedMeshDiagnosticsResult
+from backend.tools.errors import bridge_error
 from backend.tools.mesh.analysis import (
     analyze_bones,
     analyze_bounds,
@@ -161,8 +162,7 @@ async def skinned_mesh_diagnostics(
     except Exception as e:
         mesh_pkg.logger.error(f"Error during skinned_mesh_diagnostics for '{mesh_renderer_path}': {e}")
         return SkinnedMeshDiagnosticsResult(
-            success=False,
-            error=str(e),
+            **bridge_error(e),
             mesh_renderer_path=mesh_renderer_path,
         )
 

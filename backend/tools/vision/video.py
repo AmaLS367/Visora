@@ -15,6 +15,7 @@ from backend.schemas import (
     VideoFrame,
     VideoFrameSequence,
 )
+from backend.tools.errors import bridge_retry_fields
 from backend.tools.vision.image_utils import (
     _create_contact_sheet,
     _downscale_for_inline,
@@ -68,10 +69,27 @@ class _CaptureOutcome:
     sequences: list[VideoFrameSequence] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    retryable: bool = False
+    unity_state: str | None = None
+    retry_after_seconds: float | None = None
 
     @property
     def success(self) -> bool:
         return any(sequence.frames for sequence in self.sequences)
+
+    def note_exception(self, exc: BaseException) -> None:
+        """Record a failure, carrying transient-retry hints when Unity was mid-reload."""
+        self.error = str(exc)
+        for key, value in bridge_retry_fields(exc).items():
+            setattr(self, key, value)
+
+    @property
+    def retry_kwargs(self) -> dict[str, Any]:
+        return {
+            "retryable": self.retryable,
+            "unity_state": self.unity_state,
+            "retry_after_seconds": self.retry_after_seconds,
+        }
 
 
 async def _capture_video_frame(  # noqa: PLR0913
@@ -506,7 +524,9 @@ async def _capture_authored_clip(  # noqa: PLR0913
         )
     except Exception as exc:
         vision_pkg.logger.exception("Authored clip preview failed")
-        return _CaptureOutcome(error=str(exc))
+        outcome = _CaptureOutcome()
+        outcome.note_exception(exc)
+        return outcome
 
     sequence = _sequence_from_native_payload(
         payload=payload,
@@ -711,7 +731,7 @@ async def _capture_frame_sequences(  # noqa: PLR0913
         return outcome
     except Exception as exc:
         vision_pkg.logger.exception("Video frame sequence capture failed")
-        outcome.error = str(exc)
+        outcome.note_exception(exc)
         return outcome
     finally:
         if started_play_mode:
@@ -726,6 +746,7 @@ def _build_frames_capture_result(
             success=False,
             output_format="frames",
             error=outcome.error,
+            **outcome.retry_kwargs,
             warnings=outcome.warnings,
             recommended_interpretation="No frames were captured because the request could not start.",
         )
@@ -745,6 +766,7 @@ def _build_frames_capture_result(
         success=outcome.success,
         output_format="frames",
         error=outcome.error,
+        **outcome.retry_kwargs,
         contact_sheet_path=str(contact_sheet_path) if contact_sheet_path else None,
         artifact_path=str(contact_sheet_path) if contact_sheet_path else None,
         sequences=outcome.sequences,
@@ -778,6 +800,7 @@ def _build_mp4_capture_result(  # noqa: PLR0913
             success=False,
             output_format="mp4",
             error=outcome.error or "no frames available for MP4 export",
+            **outcome.retry_kwargs,
             camera_name=camera_name,
             mode=mode,
             duration_seconds=duration_seconds,

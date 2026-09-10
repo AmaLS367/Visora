@@ -6,6 +6,7 @@ from backend.schemas import (
     PlayModeManagementResult,
     SaveSceneResult,
 )
+from backend.tools.errors import bridge_error
 from backend.tools.scene.scripts import _save_scene_code
 from backend.tools.scene.state import get_editor_state
 
@@ -59,8 +60,7 @@ async def playmode_management(
     except Exception as exc:
         scene_pkg.logger.exception("Play mode management failed")
         return PlayModeManagementResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             is_playing=not play,
             is_paused=False,
             previous_state=not play,
@@ -160,8 +160,7 @@ async def save_scene(
     except Exception as exc:
         scene_pkg.logger.exception("save_scene failed")
         return SaveSceneResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             is_saved=False,
             message="Scene save failed with exception.",
         )

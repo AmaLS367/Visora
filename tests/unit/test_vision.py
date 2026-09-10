@@ -54,9 +54,14 @@ class FakeBridge:
         return await self.execute_code(code)
 
     async def execute_capability(
-        self, code: str, *, native_path: str | None = None, native_payload: dict[str, object] | None = None
+        self,
+        code: str,
+        *,
+        native_path: str | None = None,
+        native_payload: dict[str, object] | None = None,
+        retry_on_timeout: bool = True,
     ) -> dict[str, object]:
-        del native_path
+        del native_path, retry_on_timeout
         self.native_payloads.append(native_payload)
         return await self.execute_code(code)
 

@@ -5,6 +5,7 @@ Provides HTTP transport, port discovery, retry mechanics, and structured excepti
 
 from backend.bridge.client import UnityBridge
 from backend.bridge.exceptions import (
+    BridgeBusyError,
     BridgeConnectionError,
     BridgeError,
     BridgeExecutionError,
@@ -15,6 +16,7 @@ from backend.bridge.exceptions import (
 )
 
 __all__ = [
+    "BridgeBusyError",
     "BridgeConnectionError",
     "BridgeError",
     "BridgeExecutionError",

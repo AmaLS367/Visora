@@ -66,14 +66,32 @@ def test_base_tool_result_defaults() -> None:
     res = BaseToolResult(success=True)
     assert res.success is True
     assert res.error is None
+    assert res.retryable is False
+    assert res.unity_state is None
+    assert res.retry_after_seconds is None
 
     res_err = BaseToolResult(success=False, error="Bridge disconnected")
     assert res_err.success is False
     assert res_err.error == "Bridge disconnected"
+    assert res_err.retryable is False
 
     dumped = res.model_dump()
     assert dumped["success"] is True
     assert dumped["error"] is None
+    assert dumped["retryable"] is False
+    assert dumped["unity_state"] is None
+    assert dumped["retry_after_seconds"] is None
+
+    res_retry = BaseToolResult(
+        success=False,
+        error="Unity is compiling",
+        retryable=True,
+        unity_state="compiling",
+        retry_after_seconds=3.0,
+    )
+    assert res_retry.retryable is True
+    assert res_retry.unity_state == "compiling"
+    assert res_retry.retry_after_seconds == 3.0
 
 
 def test_bridge_schemas_serialization() -> None:

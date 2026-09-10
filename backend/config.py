@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     unity_bridge_fallback_port: int = Field(default=7891, validation_alias="UNITY_BRIDGE_FALLBACK_PORT")
     unity_bridge_timeout_seconds: float = Field(default=10.0, validation_alias="UNITY_BRIDGE_TIMEOUT_SECONDS")
     unity_bridge_ping_timeout_seconds: float = Field(default=2.0, validation_alias="UNITY_BRIDGE_PING_TIMEOUT_SECONDS")
+    # Reload recovery: a healthy request costs nothing extra. Once a request fails with a connection
+    # drop or a mid-reload body, the bridge polls Unity's editor state (each probe bounded by
+    # state_probe_timeout, pinging only the last known-good port) until it is idle, then retries the
+    # request once. If Unity stays busy past ready_wait it raises BridgeBusyError instead of soaking
+    # the full per-request timeout and retry budget.
+    unity_bridge_state_probe_timeout_seconds: float = Field(
+        default=2.0, validation_alias="UNITY_BRIDGE_STATE_PROBE_TIMEOUT_SECONDS"
+    )
+    unity_bridge_ready_wait_seconds: float = Field(default=8.0, validation_alias="UNITY_BRIDGE_READY_WAIT_SECONDS")
     # NoDecode: pydantic-settings otherwise JSON-decodes list-typed env values before our
     # validator ever runs, so a plain comma-separated string (the documented .env format, e.g.
     # "7890,7891,7892,7893") crashes Settings() outright with a JSONDecodeError instead of being

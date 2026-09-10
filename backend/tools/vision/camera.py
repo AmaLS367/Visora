@@ -9,6 +9,7 @@ from backend.schemas import (
     SceneCameraInfo,
     ScreenPoint,
 )
+from backend.tools.errors import bridge_error
 from backend.tools.vision.image_utils import (
     _extract_result_payload,
     _payload_float,
@@ -78,8 +79,7 @@ async def list_scene_cameras() -> ListSceneCamerasResult:
     except Exception as exc:
         vision_pkg.logger.exception("Listing scene cameras failed")
         return ListSceneCamerasResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             camera_count=0,
             cameras=[],
             warnings=[],
@@ -149,7 +149,7 @@ async def project_world_points(
         )
     except Exception as exc:
         vision_pkg.logger.exception("World point projection failed")
-        return ProjectWorldPointsResult(success=False, error=str(exc))
+        return ProjectWorldPointsResult(**bridge_error(exc))
 
 
 @mcp.tool()
@@ -202,8 +202,7 @@ async def diagnose_camera_framing(
     except Exception as exc:
         vision_pkg.logger.exception("Camera framing diagnostics failed")
         return CameraFramingDiagnosticsResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             subject_path=subject_path,
             camera_name=camera_name,
             is_visible=False,

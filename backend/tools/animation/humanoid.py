@@ -11,6 +11,7 @@ from backend.schemas import (
 )
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger
 from backend.tools.animation.preview import preview_animation
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY_DIAGNOSTICS = "humanoid_avatar_diagnostics"
 _CAPABILITY_CONFIGURATION = "humanoid_avatar_configuration"
@@ -111,6 +112,7 @@ async def validate_humanoid_avatar(
         return HumanoidValidationResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             target_path=target_path,
             asset_path=asset_path,
         )
@@ -177,6 +179,7 @@ async def configure_humanoid_avatar(
         return HumanoidConfigurationResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             asset_path=asset_path,
         )
 

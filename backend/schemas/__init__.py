@@ -30,7 +30,7 @@ from backend.schemas.asset import (
     ModelImporterInfo,
     SearchAssetsResult,
 )
-from backend.schemas.base import BaseToolResult
+from backend.schemas.base import BaseToolResult, RetryHint
 from backend.schemas.bridge import (
     BridgeStatusResult,
     EditorStateInfo,
@@ -199,6 +199,7 @@ __all__ = [
     "QueueStatusResult",
     "RestoreAnimationClipResult",
     "RestoreSceneResult",
+    "RetryHint",
     "SafeTransactionResult",
     "SampleAnimationResult",
     "SaveSceneResult",

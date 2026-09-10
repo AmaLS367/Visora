@@ -10,6 +10,7 @@ from backend.schemas import (
 from backend.tools.animation.analysis import analyze_sampled_pose
 from backend.tools.animation.inspector import inspect_animation_clip
 from backend.tools.animation.scripts import _sample_clip_code
+from backend.tools.errors import bridge_error
 
 
 @mcp.tool()
@@ -134,8 +135,7 @@ async def sample_animation_clip(  # noqa: PLR0913
     except Exception as e:
         animation_pkg.logger.error(f"Error during sample_animation_clip: {e}")
         return SampleAnimationResult(
-            success=False,
-            error=str(e),
+            **bridge_error(e),
             clip_path=clip_path,
             target_game_object=target_game_object_path,
         )

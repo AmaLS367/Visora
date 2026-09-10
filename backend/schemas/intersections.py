@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.schemas.base import BaseToolResult
+
 
 class BodyPenetrationEvent(BaseModel):
     """Details of a single body mesh or capsule penetration event."""
@@ -20,15 +22,13 @@ class BodyPenetrationEvent(BaseModel):
     description: str = Field(..., description="Human-readable description of penetration")
 
 
-class SelfIntersectionResult(BaseModel):
+class SelfIntersectionResult(BaseToolResult):
     """Result of analyzing character mesh self-intersections and body clipping."""
 
     model_config = ConfigDict(extra="ignore")
 
-    success: bool = Field(..., description="True if analysis succeeded")
-    error: str | None = Field(default=None, description="Error message if analysis failed")
-    target_object_path: str = Field(..., description="Target character GameObject path")
-    clip_path: str = Field(..., description="Project-relative path to AnimationClip")
+    target_object_path: str = Field(default="", description="Target character GameObject path")
+    clip_path: str = Field(default="", description="Project-relative path to AnimationClip")
     intersections_found: int = Field(default=0, description="Total number of penetration events detected")
     sample_count: int = Field(default=0, description="Total sampled frames across animation")
     clean_interval_percent: float = Field(default=100.0, description="Percentage of sampled frames free of penetration")

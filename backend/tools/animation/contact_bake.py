@@ -4,6 +4,7 @@ import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas.contact_bake import BakeEffectorContactResult
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger, warns
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY = "effector_contact_baking"
 
@@ -99,7 +100,11 @@ async def bake_effector_contact(  # noqa: PLR0913
     except Exception as exc:
         logger.exception("Error executing bake_effector_contact")
         return BakeEffectorContactResult(
-            success=False, error=f"Bridge call failed: {exc}", clip_path=clip_path, effector=effector
+            success=False,
+            error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
+            clip_path=clip_path,
+            effector=effector,
         )
 
     return BakeEffectorContactResult(

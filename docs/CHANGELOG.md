@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Merged polling wrapper `wait_for_editor_idle` into `get_editor_state(wait=True)`.
   - Merged polling wrapper `wait_for_ticket` into `check_ticket_status(wait=True)`.
   - Merged `get_video_frames` and `get_video_mp4` into a unified `capture_video` tool with `output: Literal["frames", "mp4"]`.
+- **Reactive reload recovery for the bridge:** a healthy request costs exactly one round trip (no preemptive probe). Once a request fails with a connection drop or a mid-reload body, the bridge polls Unity's editor state — pinging only the last known-good port, one full rescan at most — until it is idle, then retries the request once. If Unity stays busy past `UNITY_BRIDGE_READY_WAIT_SECONDS` (default 8s) it raises `BridgeBusyError` (`reason` = `compiling` / `updating` / `reloading` / `unreachable`) instead of soaking the full per-request timeout and retry budget (minutes for `execute_code`). Tools surface it as `retryable=true` with `unity_state` and `retry_after_seconds` on the result. New settings: `UNITY_BRIDGE_STATE_PROBE_TIMEOUT_SECONDS`, `UNITY_BRIDGE_READY_WAIT_SECONDS`.
+- **Read timeouts on non-idempotent bridge calls are no longer retried:** a read timeout means the request already reached Unity, so replaying it could apply the edit twice. `execute_code`, asset import/instantiate, all bakes and IK/gaze solves, and transaction execute/commit/rollback now fail fast on a read timeout (`retry_on_timeout=False`); read-only and operation-id-keyed idempotent endpoints still retry. Recovery never re-sends a request that timed out mid-flight. The bridge also prefers the last working port on reconnect.
 
 ### Fixed
 

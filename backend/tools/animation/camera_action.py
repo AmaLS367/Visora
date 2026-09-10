@@ -4,6 +4,7 @@ import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas.camera_action import CameraSubjectContactResult
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger, warns
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY = "camera_subject_action"
 
@@ -82,7 +83,7 @@ async def solve_camera_subject_contact(  # noqa: PLR0913
         )
     except Exception as exc:
         logger.exception("Error executing solve_camera_subject_contact")
-        return CameraSubjectContactResult(success=False, error=f"Bridge call failed: {exc}")
+        return CameraSubjectContactResult(success=False, error=f"Bridge call failed: {exc}", **bridge_retry_fields(exc))
 
     return CameraSubjectContactResult(
         success=bool(resp.get("success", False)),

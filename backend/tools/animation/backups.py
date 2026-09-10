@@ -4,13 +4,19 @@ import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas import AnimationBackupInfo, ListAnimationBackupsResult, RestoreAnimationClipResult
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode
+from backend.tools.errors import bridge_error
 
 _UNSUPPORTED_ERROR = "animation_authoring requires the Visora Unity package installed in the Unity project."
 
 
 @mcp.tool()
 async def list_animation_backups(clip_path: str) -> ListAnimationBackupsResult:
-    """Lists VisoraBackups/ snapshots for one clip, newest first."""
+    """
+    Lists VisoraBackups/ snapshots for one clip, newest first.
+
+    Returns:
+        ListAnimationBackupsResult containing available backup metadata.
+    """
     try:
         if not await _bridge_supports("animation_authoring"):
             return ListAnimationBackupsResult(success=False, error=_UNSUPPORTED_ERROR, clip_path=clip_path)
@@ -35,7 +41,7 @@ async def list_animation_backups(clip_path: str) -> ListAnimationBackupsResult:
         )
     except Exception as e:
         animation_pkg.logger.error("Error during list_animation_backups for '%s': %s", clip_path, e)
-        return ListAnimationBackupsResult(success=False, error=str(e), clip_path=clip_path)
+        return ListAnimationBackupsResult(**bridge_error(e), clip_path=clip_path)
 
 
 @mcp.tool()
@@ -45,6 +51,9 @@ async def restore_animation_clip(
     """
     Restores a clip from a VisoraBackups/ snapshot returned by list_animation_backups. The
     state discarded by this call is itself backed up first, so a restore can be undone too.
+
+    Returns:
+        RestoreAnimationClipResult indicating restore outcome and pre-restore backup ID.
     """
     try:
         edit_mode_error = await _require_edit_mode()
@@ -69,7 +78,7 @@ async def restore_animation_clip(
         )
     except Exception as e:
         animation_pkg.logger.error("Error during restore_animation_clip for '%s': %s", clip_path, e)
-        return RestoreAnimationClipResult(success=False, error=str(e), clip_path=clip_path)
+        return RestoreAnimationClipResult(**bridge_error(e), clip_path=clip_path)
 
 
 __all__ = ["list_animation_backups", "restore_animation_clip"]

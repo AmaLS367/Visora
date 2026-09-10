@@ -333,9 +333,14 @@ class FakePreviewBridge:
         return feature != "animation_preview_autoframe" or self.supports_autoframe
 
     async def execute_capability(
-        self, code: str, *, native_path: str | None = None, native_payload: dict[str, Any] | None = None
+        self,
+        code: str,
+        *,
+        native_path: str | None = None,
+        native_payload: dict[str, Any] | None = None,
+        retry_on_timeout: bool = True,
     ) -> dict[str, Any]:
-        del code, native_path, native_payload
+        del code, native_path, native_payload, retry_on_timeout
         return {
             "result": {
                 "success": True,

@@ -7,6 +7,7 @@ from backend.schemas import (
     ViewportEffectorPlacementResult,
 )
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY_IK = "inverse_kinematics"
 _CAPABILITY_VIEWPORT = "viewport_placement"
@@ -137,6 +138,7 @@ async def solve_two_bone_ik(  # noqa: PLR0911, PLR0913
         return TwoBoneIKSolveResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             target_object_path=target_object_path,
         )
 
@@ -293,6 +295,7 @@ async def place_effector_in_viewport(  # noqa: PLR0913
         return ViewportEffectorPlacementResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             camera_name=camera_name,
             target_object_path=target_object_path,
         )

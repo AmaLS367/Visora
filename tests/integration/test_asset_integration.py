@@ -62,6 +62,7 @@ class FakeAssetBridge:
         *,
         native_path: str | None = None,
         native_payload: dict[str, Any] | None = None,
+        retry_on_timeout: bool = True,
     ) -> dict[str, Any]:
         if self.should_fail:
             raise BridgeError("Bridge connection refused")
@@ -71,6 +72,7 @@ class FakeAssetBridge:
                 "legacy_code": legacy_code,
                 "native_path": native_path,
                 "native_payload": native_payload,
+                "retry_on_timeout": retry_on_timeout,
             }
         )
         return self.execute_result

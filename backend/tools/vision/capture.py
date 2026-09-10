@@ -12,6 +12,7 @@ from backend.schemas import (
     VisualComparisonResult,
     VisualInspectionResult,
 )
+from backend.tools.errors import bridge_error
 from backend.tools.vision.image_utils import (
     _capture_from_payload,
     _create_side_by_side_comparison,
@@ -84,7 +85,7 @@ async def screenshot(
         return (result, Image(data=_downscale_for_inline(saved_path), format="png"))
     except Exception as exc:
         vision_pkg.logger.exception("Screenshot capture failed")
-        return ScreenshotResult(success=False, error=str(exc))
+        return ScreenshotResult(**bridge_error(exc))
 
 
 @mcp.tool()

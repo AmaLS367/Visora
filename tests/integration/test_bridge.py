@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from backend.bridge import (
+    BridgeBusyError,
     BridgeConnectionError,
     BridgeError,
     BridgeHTTPError,
@@ -16,6 +17,7 @@ from backend.bridge import (
 from backend.config import Settings
 from backend.tools.bridge.health import get_bridge_status
 from backend.tools.bridge.queue import check_ticket_status
+from backend.tools.errors import bridge_error
 
 
 @pytest.fixture(autouse=True)
@@ -41,6 +43,8 @@ def mock_settings() -> Settings:
         unity_bridge_ping_timeout_seconds=1.0,
         unity_bridge_max_retries=2,
         unity_bridge_retry_backoff=0.01,
+        unity_bridge_state_probe_timeout_seconds=0.2,
+        unity_bridge_ready_wait_seconds=1.0,
     )
 
 
@@ -271,8 +275,10 @@ async def test_request_timeout_error(mock_settings: Settings) -> None:
         patch.object(bridge.client, "request", side_effect=httpx.ReadTimeout("Timeout")),
         patch.object(bridge.client, "get", return_value=ping_resp),
     ):
+        # ensure_ready=False isolates the retry/timeout path from the readiness guard, which would
+        # otherwise intercept the same ReadTimeout during its editor-state probe.
         with pytest.raises(BridgeTimeoutError) as excinfo:
-            await bridge._request("POST", "/api/editor/execute-code")
+            await bridge._request("POST", "/api/editor/execute-code", ensure_ready=False)
         assert excinfo.value.timeout_seconds == 5.0
 
 
@@ -292,43 +298,238 @@ async def test_unity_bridge_methods(mock_settings: Settings) -> None:
             "/api/editor/execute-code",
             json={"code": "Debug.Log(1);", "timeoutSeconds": 60.0},
             timeout=60.0,
+            retry_on_timeout=False,
         )
 
         # get_editor_state
         mock_request.return_value = httpx.Response(200, json={"isPlaying": False}, request=mock_req)
         res = await bridge.get_editor_state()
         assert res == {"isPlaying": False}
-        mock_request.assert_called_with("POST", "/api/editor/state")
+        mock_request.assert_called_with("POST", "/api/editor/state", recover=False)
 
         # set_play_mode
         mock_request.return_value = httpx.Response(200, json={"isPlaying": True}, request=mock_req)
         res = await bridge.set_play_mode(True)
         assert res == {"isPlaying": True}
-        mock_request.assert_called_with("POST", "/api/editor/play-mode", json={"action": "play"})
+        mock_request.assert_called_with(
+            "POST", "/api/editor/play-mode", json={"action": "play"}, recover=False, retry_on_timeout=False
+        )
 
         # save_scene
         mock_request.return_value = httpx.Response(200, json={"saved": True}, request=mock_req)
         res = await bridge.save_scene()
         assert res == {"saved": True}
-        mock_request.assert_called_with("POST", "/api/scene/save")
+        mock_request.assert_called_with("POST", "/api/scene/save", retry_on_timeout=False)
 
         # get_compilation_errors
         mock_request.return_value = httpx.Response(200, json={"errors": []}, request=mock_req)
         res = await bridge.get_compilation_errors()
         assert res == {"errors": []}
-        mock_request.assert_called_with("GET", "/api/compilation/errors")
+        mock_request.assert_called_with("GET", "/api/compilation/errors", recover=False)
 
         # get_queue_status
         mock_request.return_value = httpx.Response(200, json={"status": "completed"}, request=mock_req)
         res = await bridge.get_queue_status("t-1")
         assert res == {"status": "completed"}
-        mock_request.assert_called_with("GET", "/api/queue/status", params={"ticketId": "t-1"})
+        mock_request.assert_called_with("GET", "/api/queue/status", params={"ticketId": "t-1"}, recover=False)
 
         # cancel_queue_ticket
         mock_request.return_value = httpx.Response(200, json={"cancelled": True}, request=mock_req)
         res = await bridge.cancel_queue_ticket("t-1")
         assert res == {"cancelled": True}
-        mock_request.assert_called_with("POST", "/api/queue/cancel", json={"ticketId": "t-1"})
+        mock_request.assert_called_with("POST", "/api/queue/cancel", json={"ticketId": "t-1"}, recover=False)
+
+
+@pytest.mark.anyio
+async def test_healthy_request_makes_no_extra_probe(mock_settings: Settings) -> None:
+    """A healthy call costs exactly one request - the reactive guard never probes preemptively."""
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = 7890
+    urls: list[str] = []
+
+    def side_effect(method: str, url: str, **_kwargs: Any) -> httpx.Response:
+        urls.append(url)
+        return httpx.Response(200, json={"success": True, "result": 1}, request=httpx.Request(method, url))
+
+    with patch.object(bridge.client, "request", side_effect=side_effect):
+        result = await bridge.execute_code("return 1;")
+
+    assert result == {"success": True, "result": 1}
+    assert urls == ["http://127.0.0.1:7890/api/editor/execute-code"]
+    assert not any("/api/editor/state" in u for u in urls)
+
+
+@pytest.mark.anyio
+async def test_connection_drop_recovers_and_retries_once(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = 7890
+    bridge._last_good_port = 7890
+    work_calls = 0
+
+    def side_effect(method: str, url: str, **_kwargs: Any) -> httpx.Response:
+        nonlocal work_calls
+        req = httpx.Request(method, url)
+        if "/api/editor/state" in url:
+            return httpx.Response(200, json={"isCompiling": False, "isUpdating": False}, request=req)
+        work_calls += 1
+        if work_calls == 1:
+            raise httpx.ConnectError("socket dropped mid-reload", request=req)
+        return httpx.Response(200, json={"success": True}, request=req)
+
+    with patch.object(bridge.client, "request", side_effect=side_effect):
+        result = await bridge.execute_code("return 1;")
+
+    assert result == {"success": True}
+    assert work_calls == 2  # 1 initial dropped attempt + 1 post-recovery retry
+
+
+@pytest.mark.anyio
+async def test_recovery_gives_up_with_reason_compiling(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings.model_copy(update={"unity_bridge_ready_wait_seconds": 0.05}))
+    bridge._active_port = 7890
+    bridge._last_good_port = 7890
+
+    def side_effect(method: str, url: str, **_kwargs: Any) -> httpx.Response:
+        req = httpx.Request(method, url)
+        if "/api/editor/state" in url:
+            return httpx.Response(200, json={"isCompiling": True, "isUpdating": False}, request=req)
+        raise httpx.ConnectError("socket dropped", request=req)
+
+    with patch.object(bridge.client, "request", side_effect=side_effect):
+        with pytest.raises(BridgeBusyError) as excinfo:
+            await bridge.execute_code("return 1;")
+
+    assert excinfo.value.reason == "compiling"
+    assert excinfo.value.retry_after_seconds == 3.0
+
+
+@pytest.mark.anyio
+async def test_recovery_reason_is_reloading_when_bridge_stays_down(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings.model_copy(update={"unity_bridge_ready_wait_seconds": 0.05}))
+    bridge._active_port = 7890
+    bridge._last_good_port = 7890
+
+    with (
+        patch.object(bridge.client, "request", side_effect=httpx.ConnectError("still down")),
+        patch.object(bridge.client, "get", side_effect=httpx.ConnectError("still down")),
+    ):
+        with pytest.raises(BridgeBusyError) as excinfo:
+            await bridge.execute_code("return 1;")
+
+    # A known port that went quiet reads as a reload, not an outright unreachable bridge.
+    assert excinfo.value.reason == "reloading"
+
+
+@pytest.mark.anyio
+async def test_unusable_reload_body_triggers_recovery(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = 7890
+    bridge._last_good_port = 7890
+    work_calls = 0
+
+    def side_effect(method: str, url: str, **_kwargs: Any) -> httpx.Response:
+        nonlocal work_calls
+        req = httpx.Request(method, url)
+        if "/api/editor/state" in url:
+            return httpx.Response(200, json={"isCompiling": False, "isUpdating": False}, request=req)
+        work_calls += 1
+        if work_calls == 1:
+            return httpx.Response(200, text="", request=req)  # mid-reload empty body
+        return httpx.Response(200, json={"success": True}, request=req)
+
+    with patch.object(bridge.client, "request", side_effect=side_effect):
+        result = await bridge.execute_code("return 1;")
+
+    assert result == {"success": True}
+    assert work_calls == 2
+
+
+@pytest.mark.anyio
+async def test_execute_code_read_timeout_is_not_retried_or_recovered(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = 7890
+    urls: list[str] = []
+
+    def side_effect(method: str, url: str, **_kwargs: Any) -> httpx.Response:
+        urls.append(url)
+        raise httpx.ReadTimeout("no response", request=httpx.Request(method, url))
+
+    with patch.object(bridge.client, "request", side_effect=side_effect):
+        with pytest.raises(BridgeTimeoutError):
+            await bridge.execute_code("DestroyImmediate(go);")
+
+    # Exactly one send, and no editor-state probe: the request may have landed, so we never resend.
+    assert urls == ["http://127.0.0.1:7890/api/editor/execute-code"]
+
+
+@pytest.mark.anyio
+async def test_last_good_port_is_preferred_on_reconnect(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    assert bridge.candidate_ports == [7890, 7891, 7892, 7893]
+
+    bridge._last_good_port = 7892
+    assert bridge.candidate_ports[0] == 7892
+    assert sorted(bridge.candidate_ports) == [7890, 7891, 7892, 7893]
+
+
+@pytest.mark.anyio
+async def test_unreachable_bridge_never_triggers_recovery(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = None
+    bridge._last_good_port = None
+
+    with (
+        patch.object(bridge.client, "request", side_effect=httpx.ConnectError("refused")),
+        patch.object(bridge.client, "get", side_effect=httpx.ConnectError("refused")),
+    ):
+        with pytest.raises(BridgeConnectionError):
+            await bridge.execute_code("return 1;")
+
+
+def test_bridge_error_never_marks_unreachable_as_retryable() -> None:
+    unreachable_busy = BridgeBusyError(reason="unreachable")
+    fields = bridge_error(unreachable_busy)
+    assert fields["success"] is False
+    assert fields.get("retryable") is not True
+
+    compiling_busy = BridgeBusyError(reason="compiling", retry_after_seconds=3.0)
+    comp_fields = bridge_error(compiling_busy)
+    assert comp_fields["success"] is False
+    assert comp_fields["retryable"] is True
+    assert comp_fields["unity_state"] == "compiling"
+    assert comp_fields["retry_after_seconds"] == 3.0
+
+
+@pytest.mark.anyio
+async def test_execute_capability_forwards_retry_on_timeout(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings.model_copy(update={"unity_bridge_mode": "native"}))
+    bridge._active_port = 7890
+    bridge._bridge_flavor = "visora-native"
+
+    with patch.object(bridge, "_request", new_callable=AsyncMock) as mock_req:
+        mock_req.return_value = httpx.Response(
+            200, json={"success": True}, request=httpx.Request("POST", "http://127.0.0.1:7890/api/test")
+        )
+        await bridge.execute_capability(
+            "return 1;", native_path="/api/test", native_payload={"k": "v"}, retry_on_timeout=False
+        )
+        mock_req.assert_called_with("POST", "/api/test", json={"k": "v"}, retry_on_timeout=False)
+
+
+@pytest.mark.anyio
+async def test_timeout_message_reflects_actual_timeout(mock_settings: Settings) -> None:
+    bridge = UnityBridge(settings=mock_settings)
+    bridge._active_port = 7890
+
+    def side_effect(method: str, url: str, **_kwargs: Any) -> httpx.Response:
+        raise httpx.ReadTimeout("read timed out", request=httpx.Request(method, url))
+
+    with patch.object(bridge.client, "request", side_effect=side_effect):
+        with pytest.raises(BridgeTimeoutError) as excinfo:
+            await bridge.execute_code("return 1;")
+
+    assert "60.0s" in str(excinfo.value)
+    assert excinfo.value.timeout_seconds == 60.0
 
 
 @pytest.mark.anyio

@@ -129,6 +129,7 @@ async def import_in_unity(
         _import_asset_code(asset_path, allow_unitypackage=allow_unitypackage),
         native_path="/api/visora/asset/import",
         native_payload={"assetPath": asset_path, "allowUnityPackage": allow_unitypackage},
+        retry_on_timeout=False,
     )
     if not result.get("success"):
         raise AssetError(result.get("error", "Unity asset import failed"))
@@ -155,6 +156,7 @@ async def instantiate_imported_asset(
         _instantiate_asset_code(asset_path, position=pos, rotation=rot, scale=scl),
         native_path="/api/visora/asset/instantiate",
         native_payload={"assetPath": asset_path, "position": pos, "rotation": rot, "scale": scl},
+        retry_on_timeout=False,
     )
     if not result.get("success"):
         raise AssetError(result.get("error", "Scene instantiation failed"))

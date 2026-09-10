@@ -10,6 +10,7 @@ from backend.schemas import (
     EffectorContactPhase,
 )
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY_CONTACT = "humanoid_contact_constraints"
 
@@ -146,6 +147,7 @@ async def analyze_contact_constraints(  # noqa: PLR0913
         return ContactAnalysisResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             clip_path=clip_path,
             target_object_path=target_object_path,
         )
@@ -231,6 +233,7 @@ async def bake_contact_constraints(  # noqa: PLR0913
         return BakeContactConstraintsResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             source_clip_path=clip_path,
             output_clip_path=output_clip_path,
         )

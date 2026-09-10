@@ -43,6 +43,7 @@ from backend.tools.asset.scripts import (
     _instantiate_asset_code,
 )
 from backend.tools.asset.websearch import find_sketchfab_models_via_web_search
+from backend.tools.errors import bridge_error
 
 bridge = common.bridge
 logger = common.logger
@@ -362,9 +363,7 @@ async def download_and_import_asset(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             )
         except Exception as exc:
             logger.warning("Asset download/import failed: %s", exc)
-            return DownloadAndImportAssetResult(
-                success=False, error=str(exc), file_size_bytes=bytes_written, warnings=warnings
-            )
+            return DownloadAndImportAssetResult(**bridge_error(exc), file_size_bytes=bytes_written, warnings=warnings)
 
 
 @mcp.tool()
@@ -445,7 +444,7 @@ async def import_local_asset(  # noqa: PLR0913
             )
         except Exception as exc:
             logger.warning("Local asset import failed: %s", exc)
-            return ImportLocalAssetResult(success=False, error=str(exc), warnings=warnings)
+            return ImportLocalAssetResult(**bridge_error(exc), warnings=warnings)
 
 
 @mcp.tool()
@@ -522,8 +521,7 @@ async def inspect_imported_asset(
     except Exception as exc:
         logger.exception("inspect_asset_op failed")
         return InspectAssetResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             asset_path=clean_path,
         )
 
@@ -576,6 +574,7 @@ async def instantiate_scene_asset(  # noqa: PLR0913
                 "scale": scl,
                 "name": name or "",
             },
+            retry_on_timeout=False,
         )
         if not inst_res.get("success"):
             return InstantiateSceneAssetResult(
@@ -594,6 +593,5 @@ async def instantiate_scene_asset(  # noqa: PLR0913
     except Exception as exc:
         logger.exception("instantiate_scene_asset_op failed")
         return InstantiateSceneAssetResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
         )

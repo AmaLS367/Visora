@@ -2,6 +2,7 @@ import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas.intersections import BodyPenetrationEvent, SelfIntersectionResult
 from backend.tools.animation.common import _bridge_supports, coerce_literal, logger, warns
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY = "self_intersection_analysis"
 _SEVERITY = {"critical", "warning"}
@@ -67,6 +68,7 @@ async def analyze_self_intersections(
         return SelfIntersectionResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             target_object_path=target_object_path,
             clip_path=clip_path,
         )

@@ -7,6 +7,7 @@ from backend.schemas import (
     ListAnimationKeyframesResult,
 )
 from backend.tools.animation.common import _bridge_supports
+from backend.tools.errors import bridge_error
 
 _UNSUPPORTED_ERROR = "animation_authoring requires the Visora Unity package installed in the Unity project."
 
@@ -23,6 +24,9 @@ async def list_animation_keyframes(
     Lists every keyframe of one logical property (e.g. "m_LocalPosition") across all its
     resolved channels. Read `channels`/`keyframes` before calling any write tool on this
     property, since move/remove address a key by time, not index.
+
+    Returns:
+        ListAnimationKeyframesResult containing resolved keyframes and channel mappings.
     """
     try:
         if not await _authoring_supported():
@@ -53,7 +57,7 @@ async def list_animation_keyframes(
         )
     except Exception as e:
         animation_pkg.logger.error("Error during list_animation_keyframes for '%s': %s", clip_path, e)
-        return ListAnimationKeyframesResult(success=False, error=str(e), clip_path=clip_path)
+        return ListAnimationKeyframesResult(**bridge_error(e), clip_path=clip_path)
 
 
 __all__ = [

@@ -7,6 +7,7 @@ from backend.schemas import (
     RestoreSceneResult,
     SafeTransactionResult,
 )
+from backend.tools.errors import bridge_error
 from backend.tools.scene.lifecycle import save_scene
 from backend.tools.scene.scripts import (
     _reload_scene_code,
@@ -139,8 +140,7 @@ async def safe_transaction(  # noqa: PLR0913
             rolled_back = await _execute_undo_rollback(scene_pkg.bridge, undo_group, warnings)
 
         return SafeTransactionResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             transaction_id=transaction_id,
             scene_saved=scene_saved,
             undo_group=undo_group,
@@ -225,8 +225,7 @@ async def restore_scene_state(
     except Exception as exc:
         scene_pkg.logger.exception("restore_scene_state failed")
         return RestoreSceneResult(
-            success=False,
-            error=str(exc),
+            **bridge_error(exc),
             reverted_undo=reverted_undo,
             reloaded_scene=reloaded_scene,
             active_scene_name=active_scene_name,

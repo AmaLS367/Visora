@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from backend.bridge.exceptions import (
+    BridgeBusyError,
     BridgeConnectionError,
     BridgeHTTPError,
     BridgeProtocolError,
@@ -61,11 +62,31 @@ def _decode_json(response: httpx.Response) -> dict[str, Any]:
     return payload
 
 
+def _looks_like_reload_body(response: httpx.Response) -> bool:
+    """
+    Whether a 200 response carries the empty / non-JSON body Unity returns mid-domain-reload.
+
+    The HTTP listener answers before the managed side can serialise anything. A leading `{` or `[`
+    means real content (a JSON array is still a genuine protocol error, not a reload artefact, and
+    is left for `_decode_json` to reject); anything else is treated as a transient reload.
+    """
+    body = response.text.lstrip()
+    return not body or body[0] not in "{["
+
+
+class _MidReloadError(Exception):
+    """Internal marker: the bridge answered, but in a way that means Unity is mid-reload."""
+
+
 class UnityBridge:
     """
     HTTP Client bridge for AnkleBreaker Unity Editor plugin.
     Implements dynamic multi-port discovery, fallback, retry mechanics, and typed exceptions.
     """
+
+    # Poll cadence while waiting for Unity to leave compilation / domain reload. Short enough to
+    # catch a typical 2-5s reload almost as soon as it clears.
+    _READY_POLL_INTERVAL_SECONDS: float = 0.3
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -73,6 +94,9 @@ class UnityBridge:
         self.default_port = self.settings.unity_bridge_port
         self.fallback_port = self.settings.unity_bridge_fallback_port
         self._active_port: int | None = None
+        # Last port that actually served a request. Tried first on reconnect so a domain reload that
+        # drops _active_port does not trigger a full multi-port rescan on the next call.
+        self._last_good_port: int | None = None
         self._bridge_flavor: str | None = None
         self._supported_features: frozenset[str] | None = None
         self.client = httpx.AsyncClient(timeout=self.settings.unity_bridge_timeout_seconds)
@@ -81,6 +105,9 @@ class UnityBridge:
     def candidate_ports(self) -> list[int]:
         """Ordered list of candidate ports to scan or connect to."""
         ports: list[int] = []
+        # Priority 0: Last port that served a request (skips a full rescan after a reload drop)
+        if self._last_good_port is not None:
+            ports.append(self._last_good_port)
         # Priority 1: Default port
         if self.default_port not in ports:
             ports.append(self.default_port)
@@ -214,12 +241,129 @@ class UnityBridge:
             logger.debug(f"Ping failed on port {target_port}: {e}")
             return False, None
 
-    async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+    async def _probe_editor_state(self, port: int | None = None) -> dict[str, Any]:
         """
-        Sends HTTP requests to AnkleBreaker using the active port with automatic retry and error mapping.
+        One direct, un-retried editor-state read used by the reload-recovery loop.
+
+        Bypasses `_request` entirely: it targets a single known port with a short timeout and never
+        triggers recovery itself, so it cannot recurse and never pays a multi-port scan.
+        """
+        target = port or self._active_port or self._last_good_port
+        if target is None:
+            raise BridgeConnectionError(
+                message="No known Unity bridge port to probe for editor state.",
+                ports=self.candidate_ports,
+            )
+        url = f"{self.base_url}:{target}/api/editor/state"
+        response = await self.client.request(
+            "POST", url, timeout=self.settings.unity_bridge_state_probe_timeout_seconds
+        )
+        response.raise_for_status()
+        state = _decode_json(response)
+        self._active_port = target
+        self._last_good_port = target
+        return state
+
+    def _busy_message(self, reason: str) -> str:
+        waited = self.settings.unity_bridge_ready_wait_seconds
+        descriptions = {
+            "compiling": "is compiling scripts",
+            "updating": "is importing assets",
+            "reloading": "is finishing a domain reload and the bridge is briefly unavailable",
+            "unreachable": "is not reachable",
+        }
+        if reason == "unreachable":
+            return (
+                "Unity Editor is not reachable on any configured port. "
+                "Verify that the Unity Editor is running and the bridge package is active."
+            )
+        return (
+            f"Unity Editor {descriptions.get(reason, 'is busy')} and did not settle within "
+            f"{waited:.0f}s. This is usually transient - retry once the editor is idle."
+        )
+
+    async def _await_editor_recovery(self, *, triggered_by: Exception | None = None) -> None:
+        """
+        Polls Unity back to readiness after a request already failed with a reload signal.
+
+        Called reactively - only once a real request hit a connection drop or a mid-reload body -
+        so a healthy call never runs this. Pings only the last known-good port each iteration (one
+        full rescan at most, in case the bridge genuinely moved), and raises BridgeBusyError with a
+        `reason` if the editor stays busy past `unity_bridge_ready_wait_seconds`.
+        """
+        deadline = time.monotonic() + self.settings.unity_bridge_ready_wait_seconds
+        known_port = self._active_port or self._last_good_port
+        had_known_port = known_port is not None
+        reason = "reloading" if had_known_port else "unreachable"
+        last_error: Exception | None = triggered_by
+        consecutive_probe_failures = 0
+        did_full_rescan = False
+
+        while True:
+            try:
+                state = await self._probe_editor_state(known_port)
+                is_compiling = bool(state.get("isCompiling", False))
+                is_updating = bool(state.get("isUpdating", False))
+                if not is_compiling and not is_updating:
+                    return
+                reason = "compiling" if is_compiling else "updating"
+                consecutive_probe_failures = 0
+            except (BridgeConnectionError, BridgeTimeoutError, BridgeProtocolError, httpx.HTTPError) as exc:
+                last_error = exc
+                consecutive_probe_failures += 1
+                reason = "reloading" if had_known_port else "unreachable"
+                # Only perform a full candidate rescan if known_port is unknown or repeatedly failed
+                # (at least 3 probes), so a normal 1-2s domain reload on the same port never burns
+                # the ready_wait_seconds budget on candidate pings.
+                if not did_full_rescan and (not had_known_port or consecutive_probe_failures >= 3):
+                    did_full_rescan = True
+                    try:
+                        known_port = await self.get_active_port(force_refresh=True)
+                        had_known_port = True
+                        reason = "reloading"
+                        consecutive_probe_failures = 0
+                        continue
+                    except BridgeConnectionError:
+                        known_port = None
+
+            if time.monotonic() >= deadline:
+                raise BridgeBusyError(
+                    message=self._busy_message(reason),
+                    reason=reason,
+                    retry_after_seconds=3.0 if reason != "unreachable" else None,
+                ) from last_error
+
+            await asyncio.sleep(self._READY_POLL_INTERVAL_SECONDS)
+
+    async def _request(  # noqa: PLR0912, PLR0915
+        self,
+        method: str,
+        path: str,
+        *,
+        recover: bool = True,
+        retry_on_timeout: bool = True,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """
+        Sends an HTTP request to the bridge on the active port, with retry and typed error mapping.
+
+        No preemptive editor-state probe: a healthy call costs exactly one request. `recover=True`
+        means that once a request fails with a connection drop or a mid-reload body, the bridge
+        polls Unity back to readiness (`_await_editor_recovery`) and then retries the request once;
+        callers whose own poll loop already handles transience (state / health / queue reads) pass
+        `recover=False`. `retry_on_timeout=False` makes a read timeout fail immediately - the request
+        already reached Unity, so replaying a non-idempotent call could apply it twice.
         """
         max_attempts = max(1, self.settings.unity_bridge_max_retries + 1)
         last_exception: Exception | None = None
+        saw_reload_signal = False
+        timeout_budget = kwargs.get("timeout", self.settings.unity_bridge_timeout_seconds)
+        if isinstance(timeout_budget, httpx.Timeout):
+            timeout_seconds = timeout_budget.read or self.settings.unity_bridge_timeout_seconds
+        elif isinstance(timeout_budget, (int, float)):
+            timeout_seconds = float(timeout_budget)
+        else:
+            timeout_seconds = self.settings.unity_bridge_timeout_seconds
 
         for attempt in range(max_attempts):
             try:
@@ -227,6 +371,9 @@ class UnityBridge:
                 url = f"{self.base_url}:{port}/{path.lstrip('/')}"
                 response = await self.client.request(method, url, **kwargs)
                 response.raise_for_status()
+                if recover and _looks_like_reload_body(response):
+                    raise _MidReloadError
+                self._last_good_port = port
                 return response
             except httpx.HTTPStatusError as e:
                 logger.error(f"Bridge HTTP status error {e.response.status_code} for {path}: {e}")
@@ -235,21 +382,50 @@ class UnityBridge:
                     status_code=e.response.status_code,
                     response_body=e.response.text,
                 ) from e
-            except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
-                logger.warning(f"Bridge timeout on attempt {attempt + 1}/{max_attempts}: {e}")
+            except _MidReloadError:
+                logger.warning(f"Bridge answered with a mid-reload body for {path}; will wait for the editor")
+                self._active_port = None
+                last_exception = BridgeProtocolError(
+                    message=f"Bridge returned an unusable body for '{path}' during a probable domain reload.",
+                    status_code=200,
+                )
+                saw_reload_signal = True
+                break
+            except httpx.ReadTimeout as e:
+                logger.warning(f"Bridge read timeout on attempt {attempt + 1}/{max_attempts} for {path}: {e}")
                 last_exception = e
+                if not retry_on_timeout:
+                    break
             except (httpx.RequestError, BridgeConnectionError) as e:
-                logger.warning(f"Bridge connection error on attempt {attempt + 1}/{max_attempts}: {e}")
+                logger.warning(f"Bridge connection error on attempt {attempt + 1}/{max_attempts} for {path}: {e}")
                 self._active_port = None
                 last_exception = e
+                # Hand over to recovery immediately when dropping from a known working port
+                if recover and self._last_good_port is not None:
+                    break
 
             if attempt < max_attempts - 1:
                 await asyncio.sleep(self.settings.unity_bridge_retry_backoff * (attempt + 1))
 
-        if isinstance(last_exception, (httpx.ReadTimeout, httpx.ConnectTimeout)):
+        # A read timeout already reached Unity - never recover-and-resend (double-apply risk).
+        if isinstance(last_exception, httpx.ReadTimeout):
             raise BridgeTimeoutError(
-                message=f"Bridge request to '{path}' timed out after {self.settings.unity_bridge_timeout_seconds}s.",
-                timeout_seconds=self.settings.unity_bridge_timeout_seconds,
+                message=f"Bridge request to '{path}' timed out after {timeout_seconds:.1f}s.",
+                timeout_seconds=timeout_seconds,
+            ) from last_exception
+
+        connection_dropped = saw_reload_signal or isinstance(
+            last_exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.NetworkError, BridgeConnectionError)
+        )
+        has_prior_connection = (self._last_good_port is not None) or saw_reload_signal
+        if recover and connection_dropped and has_prior_connection:
+            await self._await_editor_recovery(triggered_by=last_exception)
+            return await self._request(method, path, recover=False, retry_on_timeout=retry_on_timeout, **kwargs)
+
+        if isinstance(last_exception, httpx.ConnectTimeout):
+            raise BridgeTimeoutError(
+                message=f"Bridge request to '{path}' timed out after {timeout_seconds:.1f}s.",
+                timeout_seconds=timeout_seconds,
             ) from last_exception
 
         msg = f"Bridge request to '{path}' failed after {max_attempts} attempts."
@@ -266,6 +442,9 @@ class UnityBridge:
             "/api/editor/execute-code",
             json={"code": code, "timeoutSeconds": self.settings.unity_bridge_execution_timeout_seconds},
             timeout=self.settings.unity_bridge_execution_timeout_seconds,
+            # Arbitrary C# with no idempotency key: a replay after a read timeout could double-apply
+            # the edit, so a timed-out execute fails immediately rather than retrying.
+            retry_on_timeout=False,
         )
         return _decode_json(response)
 
@@ -275,10 +454,13 @@ class UnityBridge:
         *,
         native_path: str | None = None,
         native_payload: dict[str, Any] | None = None,
+        retry_on_timeout: bool = True,
     ) -> dict[str, Any]:
         """Runs a capability through native HTTP when available, otherwise through the compatible executor."""
         if native_path is not None and await self.is_native_bridge():
-            response = await self._request("POST", native_path, json=native_payload or {})
+            response = await self._request(
+                "POST", native_path, json=native_payload or {}, retry_on_timeout=retry_on_timeout
+            )
             return _decode_json(response)
         return await self.execute_code(legacy_code)
 
@@ -299,14 +481,22 @@ class UnityBridge:
 
     async def get_editor_state(self) -> dict[str, Any]:
         """Returns current Unity editor state including play mode, compilation, and active scene."""
-        response = await self._request("POST", "/api/editor/state")
+        # recover=False: wait_for_play_mode / wait_for_editor_ready poll this and handle transient
+        # reload failures themselves; it must return or raise promptly, not block on recovery.
+        response = await self._request("POST", "/api/editor/state", recover=False)
         return _decode_json(response)
 
     async def set_play_mode(self, active: bool) -> dict[str, Any]:
         """
         Sets the Unity Editor Play Mode state (active=True to play, active=False to stop).
         """
-        response = await self._request("POST", "/api/editor/play-mode", json={"action": "play" if active else "stop"})
+        response = await self._request(
+            "POST",
+            "/api/editor/play-mode",
+            json={"action": "play" if active else "stop"},
+            recover=False,
+            retry_on_timeout=False,
+        )
         return _decode_json(response)
 
     async def wait_for_play_mode(
@@ -391,21 +581,23 @@ class UnityBridge:
         """
         Forces the Unity Editor to save the currently active scene.
         """
-        response = await self._request("POST", "/api/scene/save")
+        response = await self._request("POST", "/api/scene/save", retry_on_timeout=False)
         return _decode_json(response)
 
     async def get_compilation_errors(self) -> dict[str, Any]:
         """
         Retrieves active compiler errors and warnings from the Unity project.
         """
-        response = await self._request("GET", "/api/compilation/errors")
+        # recover=False: this read must stay answerable during a reload rather than block on it.
+        response = await self._request("GET", "/api/compilation/errors", recover=False)
         return _decode_json(response)
 
     async def get_queue_status(self, ticket_id: str) -> dict[str, Any]:
         """
         Checks the status of a long-running ticket in the AnkleBreaker task queue.
         """
-        response = await self._request("GET", "/api/queue/status", params={"ticketId": ticket_id})
+        # recover=False: queue polling has its own wait loop and must not stall on editor readiness.
+        response = await self._request("GET", "/api/queue/status", params={"ticketId": ticket_id}, recover=False)
         return _decode_json(response)
 
     async def get_bridge_flavor(self, force_refresh: bool = False) -> str:
@@ -447,7 +639,7 @@ class UnityBridge:
         # endpoint fails, and caching a synthesized answer would pin this client to the slow capture
         # path for its whole lifetime over one transient failure. An unanswered probe caches nothing.
         try:
-            response = await self._request("GET", "/api/visora/info")
+            response = await self._request("GET", "/api/visora/info", recover=False)
             features = _decode_json(response).get("supportedFeatures", [])
         except Exception as exc:
             logger.warning("Bridge capabilities could not be read and were not cached: %s", exc)
@@ -466,7 +658,7 @@ class UnityBridge:
         """
         if await self.is_native_bridge():
             try:
-                response = await self._request("GET", "/api/visora/info")
+                response = await self._request("GET", "/api/visora/info", recover=False)
                 return _decode_json(response)
             except Exception as e:
                 logger.warning(f"Failed to fetch native bridge info, falling back: {e}")
@@ -829,7 +1021,9 @@ class UnityBridge:
 
     async def begin_transaction_native(self, description: str = "Visora Agent Operation") -> dict[str, Any]:
         """Direct native scene transaction begin via /api/visora/transaction/begin."""
-        response = await self._request("POST", "/api/visora/transaction/begin", json={"description": description})
+        response = await self._request(
+            "POST", "/api/visora/transaction/begin", json={"description": description}, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def commit_transaction_native(self, transaction_id: str, save_scene: bool = False) -> dict[str, Any]:
@@ -838,6 +1032,7 @@ class UnityBridge:
             "POST",
             "/api/visora/transaction/commit",
             json={"transactionId": transaction_id, "saveScene": save_scene},
+            retry_on_timeout=False,
         )
         return _decode_json(response)
 
@@ -847,6 +1042,7 @@ class UnityBridge:
             "POST",
             "/api/visora/transaction/rollback",
             json={"transactionId": transaction_id},
+            retry_on_timeout=False,
         )
         return _decode_json(response)
 
@@ -861,6 +1057,7 @@ class UnityBridge:
             "POST",
             "/api/visora/asset/import",
             json={"assetPath": asset_path, "allowUnityPackage": allow_unitypackage},
+            retry_on_timeout=False,
         )
         return _decode_json(response)
 
@@ -887,7 +1084,7 @@ class UnityBridge:
             "scale": scale or [1.0, 1.0, 1.0],
             "name": name or "",
         }
-        response = await self._request("POST", "/api/visora/asset/instantiate", json=payload)
+        response = await self._request("POST", "/api/visora/asset/instantiate", json=payload, retry_on_timeout=False)
         return _decode_json(response)
 
     async def validate_humanoid_avatar(
@@ -917,7 +1114,7 @@ class UnityBridge:
         if bone_mapping_overrides:
             payload["boneOverrideKeys"] = list(bone_mapping_overrides.keys())
             payload["boneOverrideValues"] = list(bone_mapping_overrides.values())
-        response = await self._request("POST", "/api/visora/humanoid/configure", json=payload)
+        response = await self._request("POST", "/api/visora/humanoid/configure", json=payload, retry_on_timeout=False)
         return _decode_json(response)
 
     async def analyze_contact_constraints(  # noqa: PLR0913
@@ -965,7 +1162,9 @@ class UnityBridge:
             "fixPenetration": fix_penetration,
             "operationId": operation_id or "",
         }
-        response = await self._request("POST", "/api/visora/humanoid/contact/bake", json=payload)
+        response = await self._request(
+            "POST", "/api/visora/humanoid/contact/bake", json=payload, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def solve_two_bone_ik_native(  # noqa: PLR0913
@@ -1003,7 +1202,9 @@ class UnityBridge:
             "sampleTime": sample_time if sample_time is not None else 0.0,
             "hasSampleTime": sample_time is not None,
         }
-        response = await self._request("POST", "/api/visora/animation/ik/two-bone", json=payload)
+        response = await self._request(
+            "POST", "/api/visora/animation/ik/two-bone", json=payload, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def place_effector_in_viewport_native(  # noqa: PLR0913
@@ -1045,7 +1246,9 @@ class UnityBridge:
             "sampleTime": sample_time if sample_time is not None else 0.0,
             "hasSampleTime": sample_time is not None,
         }
-        response = await self._request("POST", "/api/visora/animation/viewport-placement", json=payload)
+        response = await self._request(
+            "POST", "/api/visora/animation/viewport-placement", json=payload, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def solve_character_gaze_native(  # noqa: PLR0913
@@ -1077,7 +1280,7 @@ class UnityBridge:
             "sampleTime": sample_time if sample_time is not None else 0.0,
             "hasSampleTime": sample_time is not None,
         }
-        response = await self._request("POST", "/api/visora/animation/gaze/solve", json=payload)
+        response = await self._request("POST", "/api/visora/animation/gaze/solve", json=payload, retry_on_timeout=False)
         return _decode_json(response)
 
     async def analyze_joint_motion_native(  # noqa: PLR0913
@@ -1113,7 +1316,9 @@ class UnityBridge:
             "filterCurves": filter_curves or [],
             "autoFix": auto_fix,
         }
-        response = await self._request("POST", "/api/visora/animation/qa/discontinuities", json=payload)
+        response = await self._request(
+            "POST", "/api/visora/animation/qa/discontinuities", json=payload, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def execute_animation_transaction_native(
@@ -1128,7 +1333,9 @@ class UnityBridge:
             "description": description or "",
             "operations": operations,
         }
-        response = await self._request("POST", "/api/visora/animation/transaction/execute", json=payload)
+        response = await self._request(
+            "POST", "/api/visora/animation/transaction/execute", json=payload, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def bake_effector_contact_native(  # noqa: PLR0913
@@ -1166,7 +1373,9 @@ class UnityBridge:
             "poleVector": pole_vector or [],
             "targetRotation": target_rotation or [],
         }
-        response = await self._request("POST", "/api/visora/animation/contact/bake-effector", json=payload)
+        response = await self._request(
+            "POST", "/api/visora/animation/contact/bake-effector", json=payload, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def solve_camera_subject_contact_native(  # noqa: PLR0913
@@ -1197,7 +1406,9 @@ class UnityBridge:
             "hitStopDuration": hit_stop_duration,
             "cameraRecoilImpulse": camera_recoil_impulse or [0.0, -0.15, -0.4],
         }
-        response = await self._request("POST", "/api/visora/animation/action/camera-subject-contact", json=payload)
+        response = await self._request(
+            "POST", "/api/visora/animation/action/camera-subject-contact", json=payload, retry_on_timeout=False
+        )
         return _decode_json(response)
 
     async def analyze_self_intersections_native(
@@ -1221,7 +1432,7 @@ class UnityBridge:
         """
         Attempts to cancel a long-running ticket in the AnkleBreaker task queue.
         """
-        response = await self._request("POST", "/api/queue/cancel", json={"ticketId": ticket_id})
+        response = await self._request("POST", "/api/queue/cancel", json={"ticketId": ticket_id}, recover=False)
         return _decode_json(response)
 
     async def close(self) -> None:

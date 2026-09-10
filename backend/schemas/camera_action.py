@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from backend.schemas.base import BaseToolResult
 
 
-class CameraSubjectContactResult(BaseModel):
+class CameraSubjectContactResult(BaseToolResult):
     """Result of solving coordinated camera recoil, hit-stop, and lens impact."""
 
     model_config = ConfigDict(extra="ignore")
 
-    success: bool = Field(..., description="True if composite action solving succeeded")
-    error: str | None = Field(default=None, description="Error message if solving failed")
     character_backup_id: str | None = Field(default=None, description="Backup ID for character clip")
     camera_backup_id: str | None = Field(default=None, description="Backup ID for camera clip")
     impact_world_position: list[float] = Field(

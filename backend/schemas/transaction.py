@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.schemas.base import BaseToolResult
+
 
 class AnimationTransactionOperationModel(BaseModel):
     """Single operation within an atomic animation transaction."""
@@ -33,14 +35,12 @@ class AnimationTransactionOperationModel(BaseModel):
     string_parameter: str = Field(default="", description="String parameter for animation event")
 
 
-class AnimationTransactionResult(BaseModel):
+class AnimationTransactionResult(BaseToolResult):
     """Result of an atomic multi-operation animation transaction."""
 
     model_config = ConfigDict(extra="ignore")
 
-    success: bool = Field(..., description="True if all operations succeeded and were committed")
-    error: str | None = Field(default=None, description="Failure reason if rolled back")
-    transaction_id: str = Field(..., description="Unique identifier of the transaction")
+    transaction_id: str = Field(default="", description="Unique identifier of the transaction")
     applied_operations_count: int = Field(default=0, description="Number of operations successfully executed")
     keyframes_modified_count: int = Field(default=0, description="Total keyframe channels written or altered")
     rollback_performed: bool = Field(

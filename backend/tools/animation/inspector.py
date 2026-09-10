@@ -10,6 +10,7 @@ from backend.schemas import (
 )
 from backend.tools.animation.analysis import detect_dangerous_curves
 from backend.tools.animation.scripts import _inspect_clip_code
+from backend.tools.errors import bridge_error
 
 
 @mcp.tool()
@@ -131,8 +132,7 @@ async def inspect_animation_clip(
     except Exception as e:
         animation_pkg.logger.error(f"Error during inspect_animation_clip for '{clip_path}': {e}")
         return ClipInspectorResult(
-            success=False,
-            error=str(e),
+            **bridge_error(e),
             clip_path=clip_path,
         )
 

@@ -7,6 +7,7 @@ from backend.schemas import (
     GazeJointRotation,
 )
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY_GAZE = "character_gaze"
 
@@ -136,6 +137,7 @@ async def solve_character_gaze(  # noqa: PLR0911, PLR0913
         return CharacterGazeResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             target_object_path=target_object_path,
         )
 

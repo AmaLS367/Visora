@@ -24,6 +24,8 @@ def test_default_settings() -> None:
     assert settings.unity_bridge_fallback_port == 7891
     assert settings.unity_bridge_timeout_seconds == 10.0
     assert settings.unity_bridge_ping_timeout_seconds == 2.0
+    assert settings.unity_bridge_state_probe_timeout_seconds == 2.0
+    assert settings.unity_bridge_ready_wait_seconds == 8.0
     assert settings.unity_bridge_ports_to_scan == [7890, 7891, 7892, 7893]
     assert settings.unity_bridge_max_retries == 2
     assert settings.unity_bridge_retry_backoff == 0.5
@@ -103,6 +105,8 @@ def test_env_variable_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("UNITY_BRIDGE_FALLBACK_PORT", "9998")
     monkeypatch.setenv("UNITY_BRIDGE_TIMEOUT_SECONDS", "25.5")
     monkeypatch.setenv("UNITY_BRIDGE_PING_TIMEOUT_SECONDS", "3.5")
+    monkeypatch.setenv("UNITY_BRIDGE_STATE_PROBE_TIMEOUT_SECONDS", "4.5")
+    monkeypatch.setenv("UNITY_BRIDGE_READY_WAIT_SECONDS", "12.0")
     monkeypatch.setenv("UNITY_BRIDGE_PORTS_TO_SCAN", "[9999, 9998, 9997]")
     monkeypatch.setenv("UNITY_BRIDGE_MAX_RETRIES", "5")
     monkeypatch.setenv("UNITY_BRIDGE_RETRY_BACKOFF", "1.5")
@@ -116,6 +120,8 @@ def test_env_variable_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.unity_bridge_fallback_port == 9998
     assert settings.unity_bridge_timeout_seconds == 25.5
     assert settings.unity_bridge_ping_timeout_seconds == 3.5
+    assert settings.unity_bridge_state_probe_timeout_seconds == 4.5
+    assert settings.unity_bridge_ready_wait_seconds == 12.0
     assert settings.unity_bridge_ports_to_scan == [9999, 9998, 9997]
     assert settings.unity_bridge_max_retries == 5
     assert settings.unity_bridge_retry_backoff == 1.5

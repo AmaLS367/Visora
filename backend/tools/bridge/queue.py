@@ -6,6 +6,7 @@ from typing import Any
 from backend.app import mcp
 from backend.bridge import BridgeError, UnityBridge
 from backend.schemas.queue import QueueStatusResult
+from backend.tools.errors import bridge_error
 
 logger = logging.getLogger("backend.tools.bridge.queue")
 bridge = UnityBridge()
@@ -101,12 +102,11 @@ async def check_ticket_status(
         except Exception as e:
             logger.error(f"Unexpected error checking ticket {ticket_id}: {e}")
             return QueueStatusResult(
-                success=False,
+                **bridge_error(e),
                 ticket_id=ticket_id,
                 status="error",
                 progress=0.0,
                 result=None,
-                error=str(e),
             )
 
     start_time = time.perf_counter()

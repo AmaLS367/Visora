@@ -12,6 +12,7 @@ from backend.tools.animation.analysis import (
     match_bones_fuzzy,
 )
 from backend.tools.animation.scripts import _skeleton_hierarchy_code
+from backend.tools.errors import bridge_error
 
 
 async def _fetch_bone_hierarchy(root_transform_path: str) -> tuple[list[BoneNode], dict[str, Any]]:
@@ -126,8 +127,7 @@ async def skeleton_mapper(root_transform_path: str, max_bones: int | None = None
     except Exception as e:
         animation_pkg.logger.error(f"Error during skeleton_mapper for '{root_transform_path}': {e}")
         return SkeletonMapperResult(
-            success=False,
-            error=str(e),
+            **bridge_error(e),
             root_transform_path=root_transform_path,
         )
 
@@ -163,8 +163,7 @@ async def find_bones(
     except Exception as e:
         animation_pkg.logger.error(f"Error during find_bones for '{root_transform_path}' query='{query}': {e}")
         return BoneSearchResult(
-            success=False,
-            error=str(e),
+            **bridge_error(e),
             root_transform_path=root_transform_path,
             query=query,
         )

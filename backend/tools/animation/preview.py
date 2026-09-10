@@ -35,6 +35,7 @@ from backend.tools.animation.preview_store import (
     generate_preview_id,
     save_preview_record,
 )
+from backend.tools.errors import bridge_retry_fields
 from backend.tools.vision.image_utils import _downscale_for_inline
 
 # The established bridge contract uses endTime=0 as "to the clip end". Preserve that external
@@ -61,10 +62,16 @@ def _failed_preview(  # noqa: PLR0913
     fps: int,
     width: int,
     height: int,
+    retryable: bool = False,
+    unity_state: str | None = None,
+    retry_after_seconds: float | None = None,
 ) -> AnimationPreviewResult:
     return AnimationPreviewResult(
         success=False,
         error=error,
+        retryable=retryable,
+        unity_state=unity_state,
+        retry_after_seconds=retry_after_seconds,
         clip_path=clip_path,
         target_object_path=target_object_path,
         camera_name=camera_name,
@@ -158,6 +165,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     except Exception as exc:
         return _failed_preview(
             error=str(exc),
+            **bridge_retry_fields(exc),
             target_object_path=target_object_path,
             clip_path=clip_path,
             camera_name=camera_name,
@@ -223,6 +231,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     except Exception as exc:
         return _failed_preview(
             error=str(exc),
+            **bridge_retry_fields(exc),
             target_object_path=target_object_path,
             clip_path=clip_path,
             camera_name=camera_name,

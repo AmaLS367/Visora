@@ -4,6 +4,7 @@ import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas.transaction import AnimationTransactionResult
 from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger, warns
+from backend.tools.errors import bridge_retry_fields
 
 _CAPABILITY = "animation_transactions"
 
@@ -13,11 +14,12 @@ _VALID_TANGENT_MODES = {"smooth", "linear", "step", "ease_in", "ease_out", "ease
 _TANGENT_OP_TYPES = {"set_keyframe", "set_keyframe_hold"}
 
 
-def _fail(message: str, transaction_id: str | None) -> AnimationTransactionResult:
+def _fail(message: str, transaction_id: str | None, *, exc: BaseException | None = None) -> AnimationTransactionResult:
     return AnimationTransactionResult(
         success=False,
         error=message,
         transaction_id=transaction_id or "",
+        **(bridge_retry_fields(exc) if exc is not None else {}),
     )
 
 
@@ -122,7 +124,7 @@ async def edit_animation_transaction(
         )
     except Exception as exc:
         logger.exception("Error executing edit_animation_transaction")
-        return _fail(f"Bridge call failed: {exc}", transaction_id)
+        return _fail(f"Bridge call failed: {exc}", transaction_id, exc=exc)
 
     return AnimationTransactionResult(
         success=bool(resp.get("success", False)),

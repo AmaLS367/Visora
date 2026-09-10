@@ -21,6 +21,7 @@ from backend.tools.animation.common import (
 )
 from backend.tools.animation.preview_compare import compare_records
 from backend.tools.animation.preview_store import get_preview_record
+from backend.tools.errors import bridge_retry_fields
 from backend.tools.vision.image_utils import _downscale_for_inline
 
 _CAPABILITY_MOTION_QA = "animation_motion_qa"
@@ -165,6 +166,7 @@ async def analyze_joint_motion(  # noqa: PLR0913
         return JointMotionAnalysisResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             clip_path=clip_path,
             target_object_path=target_object_path,
         )
@@ -238,6 +240,7 @@ async def detect_curve_discontinuities(
         return CurveDiscontinuityResult(
             success=False,
             error=f"Bridge call failed: {exc}",
+            **bridge_retry_fields(exc),
             clip_path=clip_path,
         )
 

@@ -80,6 +80,29 @@ class BridgeProtocolError(BridgeError):
         self.body_preview = body_preview
 
 
+class BridgeBusyError(BridgeError):
+    """
+    Raised when a bridge request failed transiently (connection drop or mid-reload body) and Unity
+    did not return to an idle state within `unity_bridge_ready_wait_seconds`.
+
+    Surfaced instead of a bare timeout so the caller - and, via the tool layer, the agent - knows
+    the failure is transient and worth retrying. `reason` is one of "compiling", "updating",
+    "reloading" (domain reload, bridge briefly down), or "unreachable" (no bridge port ever
+    resolved). `retry_after_seconds` is a suggested wait before retrying.
+    """
+
+    def __init__(
+        self,
+        message: str = "Unity Editor is busy (compiling or reloading) and did not settle in time.",
+        reason: str = "reloading",
+        retry_after_seconds: float | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details)
+        self.reason = reason
+        self.retry_after_seconds = retry_after_seconds
+
+
 class BridgeExecutionError(BridgeError):
     """Raised when Unity Editor dynamic script compilation or C# execution fails."""
 

@@ -36,6 +36,22 @@ TOOL_FUNCTIONS = [
     animation.preview.preview_animation,
     animation.records.get_animation_preview_record,
     animation.records.list_animation_preview_records,
+    animation.authoring.list_animation_keyframes,
+    animation.backups.list_animation_backups,
+    animation.backups.restore_animation_clip,
+    animation.camera_action.solve_camera_subject_contact,
+    animation.contact.analyze_contact_constraints,
+    animation.contact.bake_contact_constraints,
+    animation.contact_bake.bake_effector_contact,
+    animation.gaze.solve_character_gaze,
+    animation.humanoid.validate_humanoid_avatar,
+    animation.humanoid.configure_humanoid_avatar,
+    animation.ik.solve_two_bone_ik,
+    animation.ik.place_effector_in_viewport,
+    animation.intersections.analyze_self_intersections,
+    animation.qa.analyze_joint_motion,
+    animation.qa.detect_curve_discontinuities,
+    animation.transaction.edit_animation_transaction,
     # Mesh
     mesh.diagnostics.skinned_mesh_diagnostics,
     # Asset Web Search & Auto-Download
@@ -105,9 +121,14 @@ class FailingBridge:
         raise BridgeError("Bridge connection refused")
 
     async def execute_capability(
-        self, _code: str, *, native_path: str | None = None, native_payload: dict[str, Any] | None = None
+        self,
+        _code: str,
+        *,
+        native_path: str | None = None,
+        native_payload: dict[str, Any] | None = None,
+        retry_on_timeout: bool = True,
     ) -> dict[str, Any]:
-        del native_path, native_payload
+        del native_path, native_payload, retry_on_timeout
         raise BridgeError("Bridge connection refused")
 
     async def get_editor_state(self) -> dict[str, Any]:
@@ -143,9 +164,14 @@ class ErrorResponseBridge:
         return {"success": False, "error": "Unity C# compilation or runtime error"}
 
     async def execute_capability(
-        self, _code: str, *, native_path: str | None = None, native_payload: dict[str, Any] | None = None
+        self,
+        _code: str,
+        *,
+        native_path: str | None = None,
+        native_payload: dict[str, Any] | None = None,
+        retry_on_timeout: bool = True,
     ) -> dict[str, Any]:
-        del native_path, native_payload
+        del native_path, native_payload, retry_on_timeout
         return {"success": False, "error": "Unity C# compilation or runtime error"}
 
     async def get_editor_state(self) -> dict[str, Any]:
