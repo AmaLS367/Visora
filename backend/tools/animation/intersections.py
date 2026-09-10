@@ -1,8 +1,9 @@
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas.intersections import BodyPenetrationEvent, SelfIntersectionResult
-from backend.tools.animation.common import _bridge_supports, coerce_literal, logger, warns
+from backend.tools.animation.common import _bridge_supports, logger
 from backend.tools.errors import bridge_retry_fields
+from backend.tools.payload import coerce_literal, warns
 
 _CAPABILITY = "self_intersection_analysis"
 _SEVERITY = {"critical", "warning"}

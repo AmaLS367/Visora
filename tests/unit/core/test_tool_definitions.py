@@ -136,7 +136,7 @@ def test_compact_json_schema_strips_titles() -> None:
 @pytest.mark.anyio
 async def test_list_tools_compacted_by_default() -> None:
     tools = await mcp.list_tools()
-    assert len(tools) == 46
+    assert len(tools) == 47
 
     # 1. Output schema must be None for all tools
     for tool in tools:

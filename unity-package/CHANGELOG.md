@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## 🧩 [Unreleased]
+
+### ✨ Added
+- **Read-Only Prefab Asset Inspection:** new `PrefabInspectionService` and `POST /api/visora/prefab/inspect`, advertising the `prefab_asset_inspection` capability flag. Reports Prefab kind (regular / variant / model), Variant base asset, depth-first hierarchy with stable prefab-relative paths, per-object components and `activeSelf`, nested Prefab instances with their source asset paths, GUIDs, and connection status, plus deterministic ordering, `maxObjects` truncation, and real object/component totals.
+- **Guaranteed Isolated Content Cleanup:** the endpoint loads Prefabs via `PrefabUtility.LoadPrefabContents` and always unloads them in a `finally` block, so no prefab content scene can leak even when inspection throws. The active scene, its dirty state, the selection, and any open Prefab Stage are never modified, and the service refuses to run in Play Mode or while Unity is compiling or importing.
+
+---
+
 ## 🚀 [1.2.0] — 2026-09-03
 
 ### ✨ Added

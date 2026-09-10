@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+> Work in progress toward v0.1.4 (Prefab-First Production Workflow). Only the item below has landed;
+> the remaining roadmap items (override inspection, selective apply, prefab authoring, Prefab Stage)
+> are not implemented.
+
+### Added
+
+- **Prefab Asset and Variant Inspection (roadmap v0.1.4 item 1):** new read-only MCP tool
+  `inspect_prefab_asset(asset_path)` that inspects a Prefab asset directly on disk.
+  - Reports the normalized project-relative path, Prefab name and GUID, Prefab kind
+    (`regular` / `variant` / `model`), the base Prefab of a Variant, the root GameObject, a
+    depth-first hierarchy with stable prefab-relative paths, per-object components (including
+    unresolved MonoBehaviour scripts) and `activeSelf`, every nested Prefab instance with its source
+    asset path, GUID and connection status, the unique sorted set of Prefab assets a future edit
+    could target, full object/component totals, and a `truncated` flag with warnings.
+  - **Never instantiates anything in the active scene.** Unity loads the Prefab through
+    `PrefabUtility.LoadPrefabContents` and always unloads it in a `finally` block, so the active
+    scene, its dirty state, the selection, and any open Prefab Stage are untouched. No scene Undo
+    transaction is opened - the operation is strictly read-only.
+  - Distinguishes missing assets, non-Prefab assets, broken Prefab sources, a Play Mode / busy
+    Editor, and bridge failures as separate explicit errors; a partially failed inspection never
+    returns `success=true`.
+  - New domain package `backend/tools/prefab/`, typed models in `backend/schemas/prefab.py`,
+    canonical bridge method `UnityBridge.inspect_prefab_asset_native`, native Unity service
+    `PrefabInspectionService.cs`, endpoint `POST /api/visora/prefab/inspect`, and the
+    `prefab_asset_inspection` capability flag. An AnkleBreaker bridge receives an explicit
+    unsupported-capability error rather than an improvised C# emulation.
+  - Result size is bounded by `PREFAB_MAX_HIERARCHY_NODES` (default 200), enforced by Unity and
+    re-checked by the Python layer.
+
+### Changed
+
+- **Shared payload normalization:** `warns` and `coerce_literal` moved from
+  `backend/tools/animation/common.py` to `backend/tools/payload.py` so non-animation domains can
+  reuse them. All callers were updated to the new canonical import; no compatibility alias remains.
+
+---
+
 ## [0.1.3] - 2026-09-10
 
 ### Added

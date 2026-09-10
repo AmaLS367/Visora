@@ -15,13 +15,12 @@ from backend.schemas import (
 from backend.tools.animation.common import (
     _bridge_supports,
     _require_edit_mode,
-    coerce_literal,
     logger,
-    warns,
 )
 from backend.tools.animation.preview_compare import compare_records
 from backend.tools.animation.preview_store import get_preview_record
 from backend.tools.errors import bridge_retry_fields
+from backend.tools.payload import coerce_literal, warns
 from backend.tools.vision.image_utils import _downscale_for_inline
 
 _CAPABILITY_MOTION_QA = "animation_motion_qa"

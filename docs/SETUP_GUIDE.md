@@ -235,6 +235,7 @@ Once the Unity project has finished compiling, verify the connection by asking t
 | `DIAGNOSTIC_MAX_BONES` | `16` | Default bone hierarchy bound |
 | `DIAGNOSTIC_MAX_BONE_BINDINGS` | `16` | Default SkinnedMeshRenderer bone binding bound |
 | `DIAGNOSTIC_MAX_HIERARCHY_NODES` | `24` | Default imported asset hierarchy node bound |
+| `PREFAB_MAX_HIERARCHY_NODES` | `200` | Maximum GameObjects listed by `inspect_prefab_asset` (Unity truncates server-side) |
 
 ### 📦 Asset Pipeline & Security Bounds
 

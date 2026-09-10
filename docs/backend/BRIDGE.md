@@ -48,6 +48,7 @@ When running in native mode, feature flags are queried from `GET /api/visora/inf
 - 🛡️ **Prevents API Drift**: An older package version may share an endpoint name with divergent parameter semantics.
 - 🔍 **Strict Verification**: Flavor alone does not prove the presence of specialized services (e.g. IK solvers, preview comparison).
 - 🔄 **Transient Safety**: Failed capability probes are never cached, preventing temporary initialization drops from disabling optimized features permanently.
+- 🚫 **Native-Only Capabilities**: Some features have no legacy fallback at all. `prefab_asset_inspection` (`POST /api/visora/prefab/inspect`) is one: emulating Unity's isolated prefab-content lifecycle through arbitrary `execute_code` C# is the one path that could leak a loaded Prefab into the user's project, so a bridge that does not advertise the flag receives an explicit unsupported-capability error instead of an improvised result.
 
 ---
 

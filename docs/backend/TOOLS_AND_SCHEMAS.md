@@ -13,7 +13,7 @@ Visora's public product boundary is its MCP tool registry. While Python modules 
 
 ## 🗂️ MCP Tool Families
 
-The 46 registered MCP tools are partitioned into focused domain packages:
+The 47 registered MCP tools are partitioned into focused domain packages:
 
 | Family | Python Package | Core Responsibilities |
 | :--- | :--- | :--- |
@@ -23,6 +23,7 @@ The 46 registered MCP tools are partitioned into focused domain packages:
 | 🎬 **Animation & Kinematics** | `backend.tools.animation` | Clips, skeletons, previews, IK solvers, gaze, contact baking, QA |
 | 📐 **Mesh Diagnostics** | `backend.tools.mesh` | Skinned mesh inspection and deformation issue classification |
 | 📦 **Asset Pipeline** | `backend.tools.asset` | 3D search, quarantine downloads, Unity import, instantiation |
+| 🧩 **Prefab Assets** | `backend.tools.prefab` | Read-only Prefab, Variant, and nested Prefab asset inspection |
 
 > [!NOTE]
 > The full parameter inventory is automatically maintained in [Agent Workflows](../AGENT_WORKFLOWS.md#tool-catalog).

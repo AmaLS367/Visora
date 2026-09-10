@@ -8,7 +8,7 @@ from backend.bridge import BridgeError
 from backend.schemas.base import BaseToolResult
 
 # Import tools to ensure registration
-from backend.tools import animation, asset, bridge, mesh, scene, vision
+from backend.tools import animation, asset, bridge, mesh, prefab, scene, vision
 
 TOOL_FUNCTIONS = [
     # Bridge & Queue
@@ -60,6 +60,8 @@ TOOL_FUNCTIONS = [
     asset.import_local_asset,
     asset.inspect_imported_asset,
     asset.instantiate_scene_asset,
+    # Prefab assets
+    prefab.inspect_prefab_asset,
 ]
 
 
@@ -134,6 +136,13 @@ class FailingBridge:
     async def get_editor_state(self) -> dict[str, Any]:
         raise BridgeError("Bridge connection refused")
 
+    async def supports_feature(self, _feature: str) -> bool:
+        raise BridgeError("Bridge connection refused")
+
+    async def wait_for_editor_ready(self, timeout_seconds: float = 15.0) -> dict[str, Any]:
+        del timeout_seconds
+        raise BridgeError("Bridge connection refused")
+
     async def scan_available_ports(self) -> list[dict[str, Any]]:
         raise BridgeError("Bridge connection refused")
 
@@ -177,6 +186,18 @@ class ErrorResponseBridge:
     async def get_editor_state(self) -> dict[str, Any]:
         return {"isPlaying": False, "isCompiling": False}
 
+    async def supports_feature(self, feature: str) -> bool:
+        # Only the native-only prefab capability is advertised here; every other tool keeps taking
+        # the same path through this mock as before, so their assertions stay about Unity errors.
+        return feature == "prefab_asset_inspection"
+
+    async def wait_for_editor_ready(self, timeout_seconds: float = 15.0) -> dict[str, Any]:
+        del timeout_seconds
+        return {"isPlaying": False, "isCompiling": False}
+
+    async def inspect_prefab_asset_native(self, **_kwargs: Any) -> dict[str, Any]:
+        return {"success": False, "error": "Unity C# compilation or runtime error"}
+
     async def scan_available_ports(self) -> list[dict[str, Any]]:
         return [{"port": 7890, "is_open": True, "latency_ms": 1.2}]
 
@@ -207,6 +228,7 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     monkeypatch.setattr(vision, "bridge", failing_bridge)
     monkeypatch.setattr(animation, "bridge", failing_bridge)
     monkeypatch.setattr(mesh, "bridge", failing_bridge)
+    monkeypatch.setattr(prefab, "bridge", failing_bridge)
 
     raw_res: Any
     res: BaseToolResult
@@ -342,6 +364,12 @@ async def test_all_tools_gracefully_handle_bridge_outage(monkeypatch: pytest.Mon
     assert res.success is False
     assert res.error is not None
 
+    # 23. inspect_prefab_asset
+    res = await prefab.inspect_prefab_asset("Assets/Prefabs/Enemy.prefab")
+    assert isinstance(res, BaseToolResult)
+    assert res.success is False
+    assert res.error is not None
+
 
 @pytest.mark.anyio
 async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: PLR0915
@@ -354,6 +382,7 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     monkeypatch.setattr(vision, "bridge", error_bridge)
     monkeypatch.setattr(animation, "bridge", error_bridge)
     monkeypatch.setattr(mesh, "bridge", error_bridge)
+    monkeypatch.setattr(prefab, "bridge", error_bridge)
 
     raw_res: Any
     res: BaseToolResult
@@ -426,3 +455,9 @@ async def test_all_tools_prevent_fake_success_on_unity_errors(monkeypatch: pytes
     res = raw_res[0] if isinstance(raw_res, tuple) else raw_res
     assert res.success is False
     assert res.error is not None
+
+    # 15. inspect_prefab_asset with error
+    res = await prefab.inspect_prefab_asset("Assets/Prefabs/Enemy.prefab")
+    assert res.success is False
+    assert res.error is not None
+    assert res.hierarchy == []

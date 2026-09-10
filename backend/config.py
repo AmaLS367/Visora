@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     diagnostic_max_bones: int = Field(default=16, validation_alias="DIAGNOSTIC_MAX_BONES")
     diagnostic_max_bone_bindings: int = Field(default=16, validation_alias="DIAGNOSTIC_MAX_BONE_BINDINGS")
     diagnostic_max_hierarchy_nodes: int = Field(default=24, validation_alias="DIAGNOSTIC_MAX_HIERARCHY_NODES")
+    # Prefab hierarchies are structural (paths + component names), not per-node numeric dumps, so a
+    # far higher cap than diagnostic_max_hierarchy_nodes stays agent-readable while still bounding
+    # a deep character or environment Prefab that holds thousands of GameObjects.
+    prefab_max_hierarchy_nodes: int = Field(default=200, validation_alias="PREFAB_MAX_HIERARCHY_NODES")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     sketchfab_api_token: str = Field(default="", validation_alias="SKETCHFAB_API_TOKEN")
     poly_pizza_api_key: str = Field(default="", validation_alias="POLY_PIZZA_API_KEY")

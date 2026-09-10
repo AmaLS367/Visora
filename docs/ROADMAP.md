@@ -12,8 +12,9 @@
 ## 🚀 Planned for v0.1.4 — Prefab-First Production Workflow
 
 ### 1. 📦 Prefab Asset and Variant Inspection
-* **Status:** 🟡 Planned
+* **Status:** 🟢 Implemented (unreleased)
 * **Scope:** Add typed prefab inspection that identifies the source asset, prefab kind (regular, variant, model, or nested), hierarchy, components, nesting relationships, connection status, and candidate target assets for future edits. Keep results compact and asset-focused so agents can reason about reusable project content without first instantiating it into the active scene.
+* **Delivered:** `inspect_prefab_asset(asset_path)` (`backend/tools/prefab/`, `backend/schemas/prefab.py`) reads a Prefab through Unity's isolated prefab-content lifecycle — `PrefabUtility.LoadPrefabContents` with a `finally`-guaranteed unload — so nothing is instantiated in the active scene, no Prefab Stage is opened, and scene dirty state and selection are untouched. Returns Prefab kind, Variant base path, depth-first hierarchy with stable relative paths, per-object components and activity, nested instances with source paths/GUIDs/connection status, the unique sorted edit-target set, real object/component totals, and bounded `truncated` results. Native-only via `POST /api/visora/prefab/inspect` behind the `prefab_asset_inspection` capability; legacy bridges get an explicit unsupported-capability error. Covered by Python unit/contract tests and 10 Unity EditMode fixtures (regular, variant, nested, missing nested source, non-prefab, missing asset, truncation, determinism, exception cleanup, scene preservation).
 
 ### 2. 🔎 Typed Prefab Override Inspection
 * **Status:** 🟡 Planned

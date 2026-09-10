@@ -3,8 +3,9 @@ from typing import Literal
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas.camera_action import CameraSubjectContactResult
-from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger, warns
+from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger
 from backend.tools.errors import bridge_retry_fields
+from backend.tools.payload import warns
 
 _CAPABILITY = "camera_subject_action"
 

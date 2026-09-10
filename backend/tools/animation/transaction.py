@@ -3,8 +3,9 @@ from typing import Any
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas.transaction import AnimationTransactionResult
-from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger, warns
+from backend.tools.animation.common import _bridge_supports, _require_edit_mode, logger
 from backend.tools.errors import bridge_retry_fields
+from backend.tools.payload import warns
 
 _CAPABILITY = "animation_transactions"
 

@@ -1,6 +1,6 @@
 # 🤖 Visora Agent Workflows & Tool Recipes
 
-> Canonical guide to the 46 MCP tools, transport modes, and safe sequence recipes for AI agents operating inside Unity Editor.
+> Canonical guide to the 47 MCP tools, transport modes, and safe sequence recipes for AI agents operating inside Unity Editor.
 
 Visora is a typed MCP layer for Unity Editor diagnostics, character rigging, animation analysis, and safe scene operations. Every tool returns a structured Pydantic model with `success` and, on failure, an actionable `error`.
 
@@ -54,6 +54,7 @@ An asterisk (`*`) denotes a required parameter.
 | `import_local_asset` | `source_path`*, `target_folder`, `allow_unitypackage`, `instantiate_in_scene`, `position`, `rotation`, `scale` | `ImportLocalAssetResult` |
 | `inspect_animation_clip` | `clip_path`*, `path_filter`, `max_bindings` | `ClipInspectorResult` |
 | `inspect_imported_asset` | `asset_path`*, `max_hierarchy_nodes` | `InspectAssetResult` |
+| `inspect_prefab_asset` | `asset_path`* | `InspectPrefabAssetResult` |
 | `inspect_scene_visual` | `subject_path`, `camera_name`, `width`, `height` | `BaseToolResult` |
 | `instantiate_scene_asset` | `asset_path`*, `parent_path`, `position`, `rotation`, `scale`, `name` | `InstantiateSceneAssetResult` |
 | `list_animation_backups` | `clip_path`* | `ListAnimationBackupsResult` |
@@ -117,6 +118,15 @@ Download, quarantine, and instantiate 3D assets securely:
 - Download and register via `download_and_import_asset`.
 - Verify the imported hierarchy and materials with `inspect_imported_asset`.
 - Place into the active scene with Undo tracking via `instantiate_scene_asset`.
+
+### 6️⃣.5 Prefab Asset Inspection (Read-Only)
+Reason about reusable project content before touching a scene:
+- Call `inspect_prefab_asset('Assets/Prefabs/Enemy.prefab')` to read the Prefab's kind (`regular`, `variant`, `model`), hierarchy with stable relative paths, per-object components, nested Prefab instances, and their source assets.
+- Prefer this over `instantiate_scene_asset` + `inspect_scene_visual` when the question is about the asset itself: the tool never creates a GameObject in the active scene, never opens a Prefab Stage, and never dirties the current scene.
+- Use `base_prefab_path` to see which Prefab a Variant derives from, and `edit_target_asset_paths` for the unique set of assets a later edit could legitimately target.
+- Nested instances whose source asset was deleted are reported with `connection_status='missing_asset'` and are deliberately excluded from `edit_target_asset_paths`.
+- Requires Edit Mode and the native Visora Unity package (`prefab_asset_inspection` capability); an AnkleBreaker bridge returns an explicit unsupported-capability error rather than emulating the isolated prefab lifecycle in ad hoc C#.
+- Deep Prefabs are capped at `PREFAB_MAX_HIERARCHY_NODES` (default 200) nodes; when capped, `truncated=true` while `total_object_count` / `total_component_count` still describe the whole asset.
 
 ### 7️⃣ Video Capture & Domain Reload Recovery
 Capture high-fidelity gameplay or Edit Mode timelines:

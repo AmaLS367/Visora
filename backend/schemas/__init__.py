@@ -71,6 +71,14 @@ from backend.schemas.mesh import (
     SkinnedMeshDiagnosticsResult,
     SubMeshInfo,
 )
+from backend.schemas.prefab import (
+    InspectPrefabAssetResult,
+    PrefabComponentInfo,
+    PrefabConnectionStatus,
+    PrefabKind,
+    PrefabNestedInstance,
+    PrefabObjectNode,
+)
 from backend.schemas.preview_record import (
     AnimationPreviewComparisonResult,
     AnimationPreviewInputsDiff,
@@ -177,6 +185,7 @@ __all__ = [
     "HumanoidValidationResult",
     "ImportLocalAssetResult",
     "InspectAssetResult",
+    "InspectPrefabAssetResult",
     "InstantiateSceneAssetResult",
     "JointMotionAnalysisResult",
     "ListAnimationBackupsResult",
@@ -188,6 +197,11 @@ __all__ = [
     "MotionAnomaly",
     "PlayModeManagementResult",
     "PortScanResult",
+    "PrefabComponentInfo",
+    "PrefabConnectionStatus",
+    "PrefabKind",
+    "PrefabNestedInstance",
+    "PrefabObjectNode",
     "PreviewActionMarker",
     "PreviewArtifactFiles",
     "PreviewCameraInfo",

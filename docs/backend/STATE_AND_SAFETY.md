@@ -110,13 +110,20 @@ Diagnostic tools may create temporary scene elements (preview cameras, neutral d
 - All temporary objects (`Visora Preview Camera`, temporary lights) are guaranteed to be destroyed in `finally` blocks.
 - Poses sampled via `sample_animation_clip` restore original transforms upon exit (`restore_pose_after=true`).
 
+### 🧩 Isolated Prefab Contents
+
+`inspect_prefab_asset` reads a Prefab through Unity's own prefab-content lifecycle (`PrefabUtility.LoadPrefabContents` / `UnloadPrefabContents`) instead of instantiating it:
+- The load and unload are wrapped in `try` / `finally`, so an exception mid-inspection can never leak a hidden prefab content scene for the rest of the Editor session.
+- Nothing is created in the user's scene: the active scene, its `isDirty` flag, its root object count, the selection, and any open Prefab Stage are all left untouched (asserted by EditMode fixtures).
+- The operation is strictly read-only, so it deliberately opens **no** scene Undo transaction - there is nothing to roll back.
+
 ---
 
 ## ⏱️ Idempotency & Replay Decision Matrix
 
 | Request Type | Safe to Retry on Disconnect? | Safe to Retry on Read Timeout? | Policy |
 | :--- | :---: | :---: | :--- |
-| **Pure Read** (e.g. `list_scene_cameras`) | ✅ Yes | ✅ Yes | Idempotent; safe to repeat across ports. |
+| **Pure Read** (e.g. `list_scene_cameras`, `inspect_prefab_asset`) | ✅ Yes | ✅ Yes | Idempotent; safe to repeat across ports. |
 | **Write with `operation_id`** | ✅ Yes | ⚠️ Inspect Server Guarantee | Deduplicated by native bridge if supported. |
 | **Arbitrary C# (`safe_transaction`)** | ❌ No | ❌ NEVER | Mutation may already have applied in Unity! |
 | **Play Mode Transitions** | ❌ No | ❌ No | Poll state with `get_editor_state` instead. |

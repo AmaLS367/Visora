@@ -159,6 +159,13 @@ namespace Visora.Editor.Core
     }
 
     [Serializable]
+    public class PrefabInspectRequest
+    {
+        public string assetPath;
+        public int maxObjects = 200;
+    }
+
+    [Serializable]
     public class ClipPathRequest
     {
         public string clipPath;
@@ -439,6 +446,7 @@ namespace Visora.Editor.Core
                             "asset_import",
                             "asset_inspection",
                             "asset_instantiation",
+                            "prefab_asset_inspection",
                             "humanoid_avatar_diagnostics",
                             "humanoid_avatar_configuration",
                             "humanoid_contact_constraints",
@@ -808,6 +816,14 @@ namespace Visora.Editor.Core
                     var result = await MainThreadDispatcher.EnqueueAsync(() =>
                         AssetManagementService.InstantiateAsset(p.assetPath, p.parentPath, p.position, p.rotation, p.scale, p.name));
                     responseJson = JsonUtility.ToJson(result);
+                }
+                else if (method == "POST" && path == "/api/visora/prefab/inspect")
+                {
+                    var body = ReadBody(req);
+                    var p = JsonUtility.FromJson<PrefabInspectRequest>(body) ?? new PrefabInspectRequest();
+                    var result = await MainThreadDispatcher.EnqueueAsync(() =>
+                        PrefabInspectionService.InspectPrefabAsset(p.assetPath, p.maxObjects));
+                    responseJson = VisoraJson.Serialize(result);
                 }
                 else if (method == "POST" && path == "/api/visora/humanoid/validate")
                 {

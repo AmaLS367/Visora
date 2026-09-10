@@ -1066,6 +1066,21 @@ class UnityBridge:
         response = await self._request("POST", "/api/visora/asset/inspect", json={"assetPath": asset_path})
         return _decode_json(response)
 
+    async def inspect_prefab_asset_native(self, asset_path: str, max_objects: int) -> dict[str, Any]:
+        """
+        Read-only Prefab asset inspection via /api/visora/prefab/inspect.
+
+        `maxObjects` is sent to Unity rather than trimmed here on purpose: a deep Prefab can hold
+        thousands of GameObjects, and capping on the Unity side keeps the whole response bounded
+        instead of shipping a giant payload only to discard most of it.
+        """
+        response = await self._request(
+            "POST",
+            "/api/visora/prefab/inspect",
+            json={"assetPath": asset_path, "maxObjects": max_objects},
+        )
+        return _decode_json(response)
+
     async def instantiate_asset_native(  # noqa: PLR0913
         self,
         asset_path: str,
