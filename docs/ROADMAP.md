@@ -1,11 +1,10 @@
 # Visora — Roadmap
 
-> **Current Release:** 🚀 **v0.1.2 (Completed)**<br>
-> **Next Target:** 🔮 **v0.1.3 — Animation Authoring & Temporal Verification**
+> **Current Release:** 🚀 **v0.1.3 (Completed)**
 
 ---
 
-## 🔮 Planned for v0.1.3 — Animation Authoring & Temporal Verification
+## 🚀 Released in v0.1.3 — Animation Authoring & Temporal Verification
 
 ### 1. 🎥 Reliable High-FPS Animation Preview
 * **Status:** ✅ Completed

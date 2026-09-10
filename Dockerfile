@@ -34,7 +34,7 @@ FROM python AS runtime
 
 ARG APP_UID=10001
 ARG APP_GID=10001
-ARG VERSION=0.1.2
+ARG VERSION=0.1.3
 
 LABEL org.opencontainers.image.title="Visora" \
       org.opencontainers.image.description="High-level Model Context Protocol server for Unity Editor" \
