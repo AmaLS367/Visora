@@ -9,6 +9,42 @@
 
 ---
 
+## 🚀 Planned for v0.1.4 — Prefab-First Production Workflow
+
+### 1. 📦 Prefab Asset and Variant Inspection
+* **Status:** 🟡 Planned
+* **Scope:** Add typed prefab inspection that identifies the source asset, prefab kind (regular, variant, model, or nested), hierarchy, components, nesting relationships, connection status, and candidate target assets for future edits. Keep results compact and asset-focused so agents can reason about reusable project content without first instantiating it into the active scene.
+
+### 2. 🔎 Typed Prefab Override Inspection
+* **Status:** 🟡 Planned
+* **Scope:** Add `inspect_prefab_overrides` for scene instances. Report property overrides, added and removed components, added and removed GameObjects, object references, default overrides, and the prefab asset each change can target. Assign stable override identifiers so an agent can select exact changes instead of relying on an opaque Apply All operation.
+
+### 3. 🎯 Selective and Explicit Override Application
+* **Status:** 🟡 Planned
+* **Scope:** Add `apply_prefab_overrides` with selective override IDs, an explicit target asset path, dry-run previews, operation IDs, and source-version checks. Require deliberate opt-in for Apply All, handle nested Prefabs and Prefab Variants without silently choosing the wrong asset, and return a structured summary of applied, skipped, and rejected changes.
+
+### 4. 🧩 Atomic Prefab Asset Authoring
+* **Status:** 🟡 Planned
+* **Scope:** Provide an asset-scoped prefab transaction that loads a Prefab into an isolated editing context, applies typed mutations, saves it to disk, and always unloads temporary contents. Keep this lifecycle separate from scene Undo transactions because prefab writes are persistent project-wide mutations that can affect every instance of the asset.
+
+### 5. 🏛️ Prefab Stage Lifecycle
+* **Status:** 🟡 Planned
+* **Scope:** Add `open_prefab_stage` and `save_prefab_stage`, plus prefab-stage state inspection and an explicit close operation with save or discard behavior. Support isolation and in-context modes, return a stage token tied to the opened asset, reject stale or mismatched save requests, and restore the previously active Unity stage after agent work completes.
+
+### 6. 🛡️ Prefab Mutation Safety and Recovery
+* **Status:** 🟡 Planned
+* **Scope:** Enforce Edit Mode and Unity-idle preflight checks, create a recoverable snapshot before every prefab write, never replay ambiguous mutations after a timeout, and verify the saved asset by reloading and re-inspecting it. Report project-wide impact warnings, preserve scene dirty state where possible, and surface all AssetDatabase, serialization, compilation, and Unity execution failures directly.
+
+### 7. 🧪 Native Bridge Coverage and Production Fixtures
+* **Status:** 🟡 Planned
+* **Scope:** Add typed Python schemas and tools, dedicated native Unity prefab services and HTTP endpoints, explicit unsupported-capability errors for bridges that cannot provide prefab authoring, and deterministic EditMode integration fixtures for regular Prefabs, nested Prefabs, Prefab Variants, model Prefabs, default overrides, selective apply, rollback, and stage cleanup.
+
+### 8. 🧭 Prefab-First Agent Workflow
+* **Status:** 🟡 Planned
+* **Scope:** Document and encode the production workflow `inspect → dry-run diff → selective apply or asset edit → save → re-inspect → verify`. Prefer direct prefab asset authoring for reusable content, use Prefab Stage when visual or human-in-the-loop inspection is required, and avoid polluting scenes with temporary editing instances.
+
+---
+
 ## 🚀 Released in v0.1.3 — Animation Authoring & Temporal Verification
 
 ### 1. 🎥 Reliable High-FPS Animation Preview
