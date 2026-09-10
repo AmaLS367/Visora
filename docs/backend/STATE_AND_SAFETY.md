@@ -1,169 +1,137 @@
-# State and safety
+# 🛡️ State Management & Scene Safety
 
-Unity Editor is a stateful process. A request can trigger script compilation, domain reload, asset import, Play Mode transition, scene dirtiness, Animation Mode, temporary cameras, or modified global render settings. Visora treats those transitions as part of the operation rather than incidental side effects.
+> Architectural policies protecting Unity Editor state: transaction boundaries, Undo groups, Play Mode guards, pre-mutation backups, and evidence verification.
+
+Unity Editor is an intensely stateful execution environment. A single operation can trigger script compilation, domain reloads, asset re-imports, Play Mode physics initialization, scene dirty flags, temporary diagnostic cameras, or modified global render settings. Visora treats state preservation and cleanup as core operational requirements rather than incidental afterthoughts.
 
 <p align="center">
   <img src="../assets/state-safety.jpg" alt="A Unity scene is enclosed by a protective transaction boundary with preflight, scoped change, rollback, and visual verification" width="100%">
 </p>
-<p align="center"><em>Safety is a lifecycle: preflight, scoped mutation, recovery handle, restoration, and proof.</em></p>
+<p align="center"><em>Safety is an unbroken lifecycle: preflight checks, scoped mutation, recovery handles, restoration, and verification.</em></p>
 
-## Safety model
+---
 
-Safety is layered:
+## 🛡️ Multi-Layered Safety Model
 
-1. **Preflight:** verify bridge, editor mode, compilation/import state, target paths, and capability.
-2. **Scope:** change the smallest set of objects and use explicit operation IDs where supported.
-3. **Recovery handle:** create an Undo group, backup, or state snapshot before mutation.
-4. **Execution:** avoid automatic replay when the request may already have reached Unity.
-5. **Restoration:** restore temporary state in `finally`/failure paths.
-6. **Verification:** re-inspect the result before saving or declaring success.
+Safety in Visora is architected across six defensive layers:
 
-No layer makes arbitrary editor code risk-free. Together they make failure observable and recovery practical.
+1. 🩺 **Preflight Checks**: Verify bridge readiness, editor mode, active script compilation, target paths, and native capabilities.
+2. 🎯 **Scoped Scope**: Limit modifications to the minimal required set of GameObjects and utilize unique `operation_id` handles.
+3. ↩️ **Recovery Handles**: Instantiate an Undo group, pre-mutation clip backup (`VisoraBackups/`), or scene snapshot before writing.
+4. 🚫 **No Blind Replay**: Prevent automatic re-execution when a mutation may already have reached Unity's main thread.
+5. 🔄 **Guaranteed Restoration**: Revert temporary cameras, diagnostic lights, and preview poses in strict `finally` clauses.
+6. 👁️ **Evidence Verification**: Verify the updated state using structured diagnostics and visual comparisons before persisting.
 
-## Editor state
+---
 
-`get_editor_state` reports:
+## 🩺 Editor State Lifecycle & Polling
 
-- Play and pause state;
-- script compilation and asset-update state;
-- whether the Editor is idle;
-- active scene name/path and dirty state where available;
-- loaded scene count;
-- wait duration and timeout state when polling.
+`get_editor_state` continuously tracks Unity's internal operating modes:
+- ▶️ **Play & Pause Status**: `isPlaying`, `isPaused`.
+- ⚙️ **Compilation & Updates**: `isCompiling` (scripts compiling) and `isUpdating` (assets importing).
+- 🟢 **Editor Idle Flag**: `is_idle=true` confirms the editor is ready to receive requests.
+- 📁 **Active Scene Details**: Scene name, asset path, loaded scene count, and dirty state.
 
-Use `wait=true` before a mutation when compilation or import is expected. A bridge connection can temporarily disappear during domain reload; the polling and transport layers are designed to treat that as a transient state rather than immediate proof that Unity is gone.
+> [!TIP]
+> Always pass `wait=true` when invoking `get_editor_state` prior to a mutation if recent script or asset changes might have triggered compilation.
 
-## Edit Mode and Play Mode
+---
 
-Play Mode is not a harmless rendering toggle. Entering or leaving it can reload the scripting domain, destroy runtime objects, restore serialized scene state, and interrupt the HTTP bridge.
+## ⏸️ Edit Mode vs. ▶️ Play Mode Boundaries
 
-Rules enforced by the backend include:
+Play Mode is not a lightweight visual toggle; entering Play Mode reloads the C# scripting domain, instantiates temporary runtime GameObjects, and resets modified non-serialized state upon exit.
 
-- clip authoring requires Edit Mode;
-- `preview_animation` samples authored clips in Edit Mode and rejects Play Mode;
-- general `game_camera` capture may enter Play Mode temporarily and must return to the original mode;
-- scene reload from disk is blocked in Play Mode;
-- scene save is blocked in Play Mode unless the caller uses the explicit dangerous override;
-- automatic transaction saves are skipped in Play Mode and returned as warnings.
+### 🚫 Rules Enforced by Visora
 
-Use `playmode_management` instead of toggling the Editor through arbitrary C#. It waits around the transition and tolerates bridge rebinding.
+| Action | Allowed in Edit Mode | Allowed in Play Mode | Rationale |
+| :--- | :---: | :---: | :--- |
+| **AnimationClip Authoring** | ✅ | ❌ | Writing curves in Play Mode would corrupt animation state. |
+| **`preview_animation`** | ✅ | ❌ | Samples authoring timeline deterministically in Edit Mode. |
+| **`save_scene`** | ✅ | ❌ | Saving in Play Mode serializes runtime instances into disk assets! |
+| **Scene Reload from Disk** | ✅ | ❌ | Scene discards in Play Mode trigger runtime state corruption. |
+| **`capture_video` (Game Camera)** | ✅ | ✅ | Safely enters Play Mode and automatically restores Edit Mode. |
 
-## Generic scene transaction
+> [!CAUTION]
+> `force_during_play_mode=true` in `save_scene` is an intentional dangerous override. Never use it in autonomous agent workflows unless explicitly ordered to persist runtime modifications.
 
-`safe_transaction` is the escape hatch for editor work without a dedicated tool. Its normal lifecycle is:
+---
+
+## 🔄 Generic Scene Transactions & Scoped Undo
+
+`safe_transaction` serves as the controlled escape hatch for editor operations that lack a dedicated typed MCP tool:
 
 ```text
-read editor state
-  -> wait for compilation when necessary
-  -> optional pre-save in Edit Mode
-  -> optional named Undo group
-  -> execute statement-body C#
-  -> inspect outer execution and compiler diagnostics
-  -> rollback Undo group on failure when requested
-  -> optional post-save in Edit Mode
-  -> return transaction_id, undo_group, logs, diagnostics, and recovery status
+1. 🩺 Preflight Editor State (verify is_idle)
+2. 💾 Optional Pre-Save in Edit Mode
+3. ↩️ Register Named Undo Group (Undo.GetCurrentGroup)
+4. ⚡ Execute C# Statement Body on Main Thread
+5. 🔍 Evaluate Execution Output & Compiler Diagnostics
+6. ↩️ Auto-Rollback Undo Group if Errors Occurred
+7. 💾 Optional Post-Save in Edit Mode
+8. 📊 Return transaction_id, undo_group, and logs
 ```
 
-Important limitations:
+### ⚠️ Critical Transaction Boundaries
 
-- The caller’s C# must register affected Unity objects with Undo for rollback to be complete.
-- A registered group is a recovery boundary, not a database transaction.
-- File writes and external side effects are not reverted by Unity Undo.
-- If the HTTP read times out, the backend does not replay the code because Unity may already have executed it.
-- `auto_save=true` can persist unrelated dirty scene changes; it should be used only when that is intentional.
+- Script operations must explicitly register affected Unity objects with `Undo.RecordObject` or `Undo.RegisterCreatedObjectUndo`.
+- File writes on disk and external network calls cannot be undone by Unity's Undo stack.
+- If an HTTP request times out, Visora does **not** replay the transaction, as Unity may have already executed it.
 
-The returned `transaction_id` identifies the Visora operation. `undo_group` is the Unity recovery handle. `rolled_back=true` confirms that Visora invoked its rollback path, not that every arbitrary external effect was reversed.
+---
 
-## Restore choices
+## ↩️ Recovery Handles & Restoration Options
 
-`restore_scene_state` exposes two different mechanisms:
+`restore_scene_state` provides two distinct recovery strategies:
 
-| Mechanism | Scope | Risk |
-| --- | --- | --- |
-| `undo_group` | Reverts Unity changes recorded in or after the group | Depends on correct Undo registration |
-| `reload_active_scene=true` | Discards all unsaved changes by reopening the scene from disk | Destructive to unrelated unsaved work |
+| Mechanism | Scope | Risk Profile |
+| :--- | :--- | :--- |
+| `undo_group` | Reverts all Unity changes recorded under that group ID | Safe and targeted; relies on proper Undo registration. |
+| `reload_active_scene=true` | Discards all unsaved changes and reloads scene from disk | Destructive to all unsaved changes across the active scene! |
 
-Prefer targeted Undo. Scene reload is a deliberate recovery action, is blocked in Play Mode, and should only be used when discarding all unsaved scene changes is acceptable.
+> [!NOTE]
+> Always prefer targeted `undo_group` rollbacks. Scene reloads should be reserved for catastrophic corruption recovery in Edit Mode.
 
-## Saving
+---
 
-`save_scene` first verifies editor state.
+## 🎬 Animation Mutation & Automatic Backups
 
-- In Play Mode, it fails by default because runtime objects could be serialized unintentionally.
-- During compilation, it fails rather than racing the domain reload.
-- `force_during_play_mode=true` bypasses the first guard and produces a warning. It is not a routine workflow option.
-- A requested Save As path is executed through Unity’s scene APIs; the backend returns the resulting scene path and dirty/saved state.
+Authoring AnimationClips follows strict safety invariants:
+- **Mandatory Edit Mode**: Mutations are rejected if Unity is in Play Mode.
+- **Pre-Mutation Snapshots**: Before overwriting keys, Visora duplicates the clip into `Assets/VisoraBackups/<timestamp>_<clip>.anim`.
+- **Atomic File Rollback**: Cloned backups can be restored at any time using `restore_animation_clip`.
+- **Temporal Verification**: Never verify animations using static screenshots; evaluate motion metrics across time with `preview_animation`.
 
-Saving is persistence, not verification. Run the relevant diagnostic before saving.
+---
 
-## Animation mutation
+## 👁️ Temporary Preview State Lifecycle
 
-Animation authoring has stricter behavior than generic scene editing:
+Diagnostic tools may create temporary scene elements (preview cameras, neutral diagnostic light rigs, or sampled poses):
+- Stepped native preview routines execute sequentially, preventing concurrent tools from overwriting each other's state.
+- All temporary objects (`Visora Preview Camera`, temporary lights) are guaranteed to be destroyed in `finally` blocks.
+- Poses sampled via `sample_animation_clip` restore original transforms upon exit (`restore_pose_after=true`).
 
-- require Edit Mode before writing;
-- operate through typed transaction operations;
-- use operation IDs for idempotent native writes;
-- create pre-mutation clip backups for supported authoring operations;
-- keep backups under `VisoraBackups/` in the Unity project;
-- expose `list_animation_backups` and `restore_animation_clip`;
-- use non-destructive output clips for contact baking where applicable;
-- verify changes over time with `preview_animation`, not a static screenshot.
+---
 
-`edit_animation_transaction` groups multiple typed operations so related keys, holds, and events can share an atomic workflow and authoritative timing. For action beats, use one impact timestamp for character pose, hit-stop, camera response, and events.
+## ⏱️ Idempotency & Replay Decision Matrix
 
-## Preview and capture state
+| Request Type | Safe to Retry on Disconnect? | Safe to Retry on Read Timeout? | Policy |
+| :--- | :---: | :---: | :--- |
+| **Pure Read** (e.g. `list_scene_cameras`) | ✅ Yes | ✅ Yes | Idempotent; safe to repeat across ports. |
+| **Write with `operation_id`** | ✅ Yes | ⚠️ Inspect Server Guarantee | Deduplicated by native bridge if supported. |
+| **Arbitrary C# (`safe_transaction`)** | ❌ No | ❌ NEVER | Mutation may already have applied in Unity! |
+| **Play Mode Transitions** | ❌ No | ❌ No | Poll state with `get_editor_state` instead. |
+| **Asset Import & Instantiation** | ❌ No | ❌ NEVER | Re-inspect asset path and scene before retrying. |
 
-Visual diagnostics may temporarily change:
+---
 
-- camera selection or create an auto-framing camera;
-- target pose or Animation Mode;
-- render texture and camera target;
-- ambient lighting or a temporary diagnostic light rig;
-- Play Mode;
-- sampled frame time.
+## 🔍 Verification Patterns by Change Type
 
-Native stepped routines run one at a time to prevent two captures from interleaving state snapshots. Services should restore all temporary state on completion and exception. Tool results surface restoration evidence such as pose restoration, scene dirtiness, dropped frames, or auto-frame cleanup.
-
-Treat missing restoration confirmation as a warning that requires inspection. Do not save a scene dirtied only by a diagnostic preview.
-
-## Asset mutations
-
-Asset import changes both the filesystem and Unity’s `AssetDatabase`. The asset pipeline therefore:
-
-- stages remote content outside `Assets`;
-- proves the destination remains inside the target project’s `Assets` directory;
-- never overwrites an existing file, using a suffixed destination instead;
-- disables timeout replay for import and instantiation calls;
-- removes the newly copied path and `.meta` sidecar after a failed import;
-- requires Unity to report concrete imported objects;
-- recommends a follow-up `inspect_imported_asset` before scene use.
-
-See [Asset pipeline](ASSET_PIPELINE.md) for the full security model.
-
-## Idempotency and retry decisions
-
-Before adding a write operation, classify it:
-
-| Operation property | Retry after connection failure | Retry after read timeout |
-| --- | --- | --- |
-| Pure read | Usually safe | Usually safe if the caller owns the timeout policy |
-| Write with server-side operation ID | Safe only if the server guarantees deduplication | Possibly, but inspect the guarantee explicitly |
-| Write without idempotency | Only when failure proves it did not reach Unity | No |
-| Play Mode transition | Use state polling, not blind replay | Inspect current mode first |
-| Asset import/instantiate | Re-inspect asset/scene first | No automatic replay |
-
-The shared bridge defaults are not a substitute for this classification. Pass `retry_on_timeout=False` for non-idempotent requests.
-
-## Verification patterns
-
-| Change | Minimum verification |
-| --- | --- |
-| Scene transform/material edit | Re-query state plus screenshot or framing diagnostic |
-| Camera edit | `diagnose_camera_framing` and `project_world_points`, then screenshot |
-| Imported model | `inspect_imported_asset`; require a real asset type and geometry |
-| Rig/Avatar change | `skeleton_mapper` or `validate_humanoid_avatar` |
-| Clip key/event edit | `inspect_animation_clip` plus `preview_animation` |
-| Contact/IK change | Contact analysis across the affected time range plus preview |
-| Mesh repair | Re-run `skinned_mesh_diagnostics` and compare issue categories |
-
-The [Agent workflows](../AGENT_WORKFLOWS.md) provide complete sequences.
+| Mutation Type | Mandatory Verification Steps |
+| :--- | :--- |
+| 📐 **Transform / Material Edit** | Re-query transform state + screenshot (`inspect_scene_visual`) |
+| 🎥 **Camera Position Edit** | `diagnose_camera_framing` + `project_world_points` + screenshot |
+| 📦 **3D Model Import** | `inspect_imported_asset` (verify geometry and non-empty mesh bounds) |
+| 🦴 **Rig / Avatar Setup** | `skeleton_mapper` + `validate_humanoid_avatar` |
+| 🎬 **Keyframe / Hold Edit** | `inspect_animation_clip` + `preview_animation` (verify non-static motion) |
+| 🦶 **Contact IK Baking** | `analyze_contact_constraints` + `preview_animation` (verify zero sliding) |
+| 📐 **Mesh Deformation Fix** | Re-run `skinned_mesh_diagnostics` (verify issue categories resolved) |

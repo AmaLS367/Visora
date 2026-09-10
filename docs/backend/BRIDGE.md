@@ -1,94 +1,108 @@
-# Bridge and failure semantics
+# 🌐 Bridge Transport & Failure Semantics
 
-`backend.bridge.UnityBridge` is the only general-purpose HTTP client for Unity. It hides port discovery and transport differences from tools while preserving enough detail for an agent to decide whether to retry, repair configuration, or change project state.
+> Comprehensive guide to HTTP transport discovery, connection caching, domain-reload recovery, typed error taxonomy, and capability negotiation.
+
+The `backend.bridge.UnityBridge` class serves as Visora's unified HTTP client. It isolates low-level port discovery, transient domain-reload drops, and bridge flavor differences from higher-level tools, while surfacing structured diagnostic metadata for agents to decide whether to wait, retry, or adjust scene state.
 
 <p align="center">
   <img src="../assets/bridge-recovery.jpg" alt="Multiple bridge candidates converge on a connection that recovers cleanly after a temporary domain reload" width="100%">
 </p>
 <p align="center"><em>Discovery finds the route; recovery keeps transient Unity reloads from becoming false hard failures.</em></p>
 
-## Connection model
+---
 
-The bridge base URL does not include the port. Candidate ports are assembled in this order, with duplicates removed:
+## 🔌 Connection & Multi-Port Discovery Model
 
-1. the last port that successfully served a request;
-2. `UNITY_BRIDGE_PORT`;
-3. `UNITY_BRIDGE_FALLBACK_PORT`;
-4. each value in `UNITY_BRIDGE_PORTS_TO_SCAN`.
+Candidate connection ports are evaluated in the following deterministic sequence (duplicates removed):
+1. 🎯 **Last-Good Port**: The most recent port that successfully served a request.
+2. 🥇 **Primary Configured Port**: `UNITY_BRIDGE_PORT` (default `7890`).
+3. 🥈 **Fallback Configured Port**: `UNITY_BRIDGE_FALLBACK_PORT` (default `7891`).
+4. 📋 **Candidate Scan List**: Each candidate port specified in `UNITY_BRIDGE_PORTS_TO_SCAN`.
 
-The active port is cached. The last-good port is stored separately so a domain reload can clear the active selection without losing the most likely reconnect target.
+> [!NOTE]
+> The active port is cached during standard operation. If a domain reload disconnects the socket, the active selection is cleared, but the *last-good port* is retained as the first candidate for automatic reconnect.
 
-Each candidate is identified through `GET /api/ping`. A successful HTTP status with an empty or malformed body during domain reload is remembered as an unidentified live port; the client does not guess the flavor and permanently disable native features.
+Candidates are probed via `GET /api/ping`. A 200 OK response with an empty or non-JSON body during reload is recorded as an unidentified live listener, preventing false negatives from permanently locking out native capabilities.
 
-## Bridge mode and flavor selection
+---
 
-`UNITY_BRIDGE_MODE` accepts:
+## 🏷️ Bridge Flavor Selection & Modes
 
-| Mode | Accepted bridge | Selection behavior |
-| --- | --- | --- |
-| `legacy` | Any responding bridge not identified as `visora-native` | First match; this is the Python default |
-| `native` | Only `flavor: visora-native` | First native match |
-| `auto` | Either | Returns the first legacy match; remembers native as a fallback |
+The `UNITY_BRIDGE_MODE` environment setting controls bridge discovery:
 
-Invalid configuration values normalize to `auto`. Use an explicit mode in stable environments; it makes accidental connection to the wrong Editor or bridge flavor easier to diagnose.
+| Mode | Accepted Bridge | Selection Behavior |
+| :--- | :--- | :--- |
+| `legacy` | Any responding bridge without `flavor: visora-native` | Selects first responding legacy bridge (Python default). |
+| `native` | Strictly requires `flavor: visora-native` | Selects first verified native companion package. |
+| `auto` | Accepts either | Prefers legacy if both respond; retains native as fallback. |
 
-## Capability negotiation
+> [!TIP]
+> In production and test environments, specify `native` or `legacy` explicitly rather than relying on `auto`. This makes accidental connections to an unexpected Unity instance immediately obvious.
 
-Native bridge features are read from `GET /api/visora/info` and cached as a `frozenset`. Version-sensitive and native-only tool paths should be chosen only when their named feature is advertised. Stable compatibility routes may dispatch from the verified native flavor through `execute_capability`.
+---
 
-This distinction prevents three problems:
+## 🤝 Dynamic Capability Negotiation
 
-- an older native package may use the same route with different semantics;
-- bridge flavor alone does not prove a particular endpoint exists;
-- caching an empty feature set after one transient failure would disable optimized paths for the rest of the process.
+When running in native mode, feature flags are queried from `GET /api/visora/info` and cached as a `frozenset`. Tools verify these flags before routing to version-sensitive endpoints:
 
-For that reason, failed or malformed capability probes are not cached. Legacy mode receives a synthesized bridge-info response containing only the stable compatibility capabilities.
+- 🛡️ **Prevents API Drift**: An older package version may share an endpoint name with divergent parameter semantics.
+- 🔍 **Strict Verification**: Flavor alone does not prove the presence of specialized services (e.g. IK solvers, preview comparison).
+- 🔄 **Transient Safety**: Failed capability probes are never cached, preventing temporary initialization drops from disabling optimized features permanently.
 
-## Request policy
+---
 
-Healthy requests have no preflight state probe. They perform one HTTP request.
+## 📡 Request Dispatch & Idempotency Rules
 
-The generic request path then follows these rules:
+Idempotent and safe requests follow strict dispatch rules:
 
-| Observation | Behavior | Reason |
-| --- | --- | --- |
-| 2xx with usable JSON-shaped body | Return response and remember the port | Normal success |
-| 4xx/5xx | Raise `BridgeHTTPError` immediately | The peer answered; changing ports is unlikely to help |
-| Connect/network failure before a known connection | Retry with backoff and rescan candidates | The selected port may be stale |
-| Connection drop after a known-good request | Enter editor-recovery loop, then replay once | Common during Unity domain reload |
-| 2xx with empty/non-JSON body on a recoverable request | Treat as probable mid-reload, recover, replay once | Unity listener can reappear before managed JSON is ready |
-| Read timeout | Raise `BridgeTimeoutError`; do not replay | The operation may already have mutated Unity and a replay can apply it twice |
+| Condition | Client Action | Architectural Rationale |
+| :--- | :--- | :--- |
+| **HTTP 2xx with valid JSON** | Return payload and cache active port | Normal operational success. |
+| **HTTP 4xx / 5xx** | Raise `BridgeHTTPError` immediately | Server is alive; re-probing ports will not resolve bad inputs. |
+| **Network failure on clean state** | Retry with linear backoff across candidate ports | Port may have rotated or server started on an alternate port. |
+| **Connection drop after good state** | Trigger domain-reload recovery loop | Characteristic signature of a Unity script compilation or assembly reload. |
+| **HTTP 200 with empty body** | Treat as mid-reload transition; trigger recovery | Unity listener socket re-opens before managed C# runtime settles. |
+| **Read Timeout** | Raise `BridgeTimeoutError`; **never blindly replay** | Mutation may have already executed in Unity; replays cause duplicate mutations! |
 
-The last rule is critical. A timeout does not mean Unity did nothing. Methods that can mutate state explicitly pass `retry_on_timeout=False` when necessary. New bridge calls must classify replay safety instead of accepting retries mechanically.
+> [!CAUTION]
+> **Never blindly replay timed-out requests!** A read timeout means the socket timed out while waiting for Unity's response. The mutation may have succeeded on the main thread. Tools that mutate state pass `retry_on_timeout=False`.
 
-## Domain-reload recovery
+---
 
-After a real request observes a connection drop or reload-shaped response, recovery polls `/api/editor/state` on the last-good port at a short interval. It does not recursively call the normal request path.
+## 🔄 Domain-Reload Auto-Recovery Lifecycle
 
-Recovery tracks these states:
+When a connection drop or transient non-JSON response is detected, Visora initiates a dedicated recovery sequence on the last-good port:
 
-- `compiling`: `isCompiling` is true;
-- `updating`: `isUpdating` is true, commonly during asset import;
-- `reloading`: the last-good bridge is temporarily unavailable or returns an unusable body;
-- `unreachable`: no working bridge was ever established.
+```mermaid
+flowchart TD
+    A[Connection Drop / Empty 200] --> B[Enter Recovery Loop]
+    B --> C[Poll /api/editor/state on Last-Good Port]
+    C -->|isCompiling=true| D[State: compiling]
+    C -->|isUpdating=true| E[State: updating]
+    C -->|unusable response| F[State: reloading]
+    D & E & F --> G{Elapsed < READY_WAIT_SECONDS?}
+    G -->|Yes| H[Sleep backoff interval] --> C
+    G -->|No| I[Raise BridgeBusyError with retry_after_seconds]
+    C -->|is_idle=true| J[Replay original request once]
+```
 
-After repeated failures on the known port, recovery performs at most one full candidate rescan. If the editor does not become idle before `UNITY_BRIDGE_READY_WAIT_SECONDS`, it raises `BridgeBusyError` with a state and suggested retry delay.
+---
 
-State, Play Mode, compilation, health, and queue polling use `recover=False` where their own loop already owns transient handling. This avoids nested waits and lets those calls remain responsive while Unity is changing state.
+## 🧬 Typed Exception Taxonomy
 
-## Typed exception taxonomy
+Visora maps transport errors into strongly typed exceptions:
 
-| Exception | Meaning | Typical caller action |
-| --- | --- | --- |
-| `BridgeConnectionError` | No matching bridge or request failed across candidates | Start Unity, enable the bridge, check mode/ports/firewall |
-| `BridgeTimeoutError` | Request, wait, or ticket operation exceeded its budget | Inspect Unity state and operation side effects before retrying |
-| `BridgeHTTPError` | Bridge returned a non-success HTTP status | Read status/body; fix request or Unity-side failure |
-| `BridgeProtocolError` | HTTP succeeded but body was empty, non-JSON, or not an object | Treat as reload only where recovery does; otherwise inspect bridge compatibility |
-| `BridgeBusyError` | Unity did not settle after a transient failure | Honor `retry_after_seconds`, then retry if `retryable` |
-| `BridgeExecutionError` | Dynamic compilation or Unity execution failed | Read compiler/runtime diagnostics and fix code/project state |
-| `BridgeStateError` | Operation is invalid in current editor state | Enter the required Edit/Play Mode or wait for idle |
+| Exception | Root Cause | Recommended Recovery |
+| :--- | :--- | :--- |
+| `BridgeConnectionError` | No candidate port answered | Verify Unity is running and Server Monitor is active. |
+| `BridgeTimeoutError` | Operation exceeded time budget | Inspect scene state before retrying; do not replay blindly. |
+| `BridgeHTTPError` | Endpoint returned 4xx or 5xx | Inspect error message and validate tool input parameters. |
+| `BridgeProtocolError` | Malformed or non-JSON payload | Check bridge compatibility and ensure Unity is not mid-reload. |
+| `BridgeBusyError` | Unity remained busy past timeout | Honor `retry_after_seconds` hint and retry when idle. |
+| `BridgeExecutionError` | Dynamic C# script failed compilation | Check compiler diagnostics in Unity Console. |
+| `BridgeStateError` | Action invalid in current state | Transition editor to Edit Mode or Play Mode as required. |
 
-Tool modules catch bridge errors and return Pydantic failures rather than leaking exceptions through MCP. `backend.tools.errors.bridge_error()` maps `BridgeBusyError` to:
+Bridge errors are mapped into standardized MCP results:
 
 ```json
 {
@@ -100,61 +114,46 @@ Tool modules catch bridge errors and return Pydantic failures rather than leakin
 }
 ```
 
-Other errors remain non-retryable unless a tool has stronger domain knowledge.
+---
 
-## Queue semantics
+## 🎟️ Long-Running Task Queue Semantics
 
-Long-running Unity work may return a ticket. `check_ticket_status` can perform one read or poll until a terminal state:
+Asynchronous Unity tasks return a ticket ID. Tools poll via `check_ticket_status`:
+- `completed`: Terminal success; returns structured output.
+- `failed`: Terminal failure; contains Unity exception message.
+- `cancelled`: Task was aborted before completion.
+- `pending` / `running`: Intermediate status; client continues waiting until tool budget expires.
 
-- `completed`: successful result;
-- `failed`: failure and Unity error;
-- `cancelled`: terminal failure;
-- other values such as `pending` or `running`: non-terminal successful status read;
-- local polling timeout: `success=false`, `status=timeout`.
+---
 
-Transient polling exceptions are retried until the caller’s polling deadline. The native bridge also exposes cancellation internally, although cancellation is not currently a public MCP tool.
+## ⏱️ Timeout & Retry Parameters Reference
 
-## Timeout settings
+| Setting | Default | Scope |
+| :--- | :---: | :--- |
+| `UNITY_BRIDGE_TIMEOUT_SECONDS` | `10 s` | Standard HTTP request timeout |
+| `UNITY_BRIDGE_PING_TIMEOUT_SECONDS` | `2 s` | Fast port-scan candidate probe |
+| `UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS` | `60 s` | Dynamic C# compilation & execution ceiling |
+| `UNITY_BRIDGE_STATE_PROBE_TIMEOUT_SECONDS` | `2 s` | Single recovery state probe |
+| `UNITY_BRIDGE_READY_WAIT_SECONDS` | `8 s` | Total maximum recovery wait for domain reloads |
+| `UNITY_BRIDGE_MAX_RETRIES` | `2` | Retry attempts for safe idempotent requests |
+| `UNITY_BRIDGE_RETRY_BACKOFF` | `0.5 s` | Linear backoff multiplier |
 
-| Setting | Default | Applies to |
-| --- | ---: | --- |
-| `UNITY_BRIDGE_TIMEOUT_SECONDS` | 10 s | General HTTP client requests |
-| `UNITY_BRIDGE_PING_TIMEOUT_SECONDS` | 2 s | Per-port discovery probes |
-| `UNITY_BRIDGE_EXECUTION_TIMEOUT_SECONDS` | 60 s | Dynamic C# execution request and Unity execution budget |
-| `UNITY_BRIDGE_STATE_PROBE_TIMEOUT_SECONDS` | 2 s | One direct recovery state probe |
-| `UNITY_BRIDGE_READY_WAIT_SECONDS` | 8 s | Total reactive reload-recovery wait |
-| `UNITY_BRIDGE_MAX_RETRIES` | 2 | General attempts after the first, where replay is allowed |
-| `UNITY_BRIDGE_RETRY_BACKOFF` | 0.5 s | Linear attempt backoff base |
+---
 
-Tool-specific polling and capture deadlines are supplied as tool parameters or calculated from frame count and interval. Do not raise the global timeout to hide a slow workflow; first determine whether the operation should use a queue, a native sequence endpoint, or a larger explicit tool budget.
+## 🔒 Security & Loopback Isolation
 
-## Native HTTP boundary
+> [!WARNING]
+> The Visora native bridge binds exclusively to loopback interfaces (`127.0.0.1` and `localhost`). It contains no external authentication layer. Never bind this service to public IP addresses or expose it directly to untrusted networks.
 
-The bundled server listens only on:
+---
 
-```text
-http://127.0.0.1:<port>/
-http://localhost:<port>/
-```
+## 🩺 Maintainer Diagnostic Checklist
 
-It has no authentication layer. Loopback binding is therefore part of the security design. If a container must reach Unity, prefer the documented host networking configuration; do not change the Unity package to bind to all interfaces casually.
+When troubleshooting bridge issues:
+1. 🔍 Call `get_bridge_status(scan_all_ports=true)` to locate all responsive bridge candidates.
+2. 🖥️ Inspect Unity Editor's **Window > Visora > Server Monitor** to confirm port and status.
+3. ⏳ If Unity is compiling or updating, call `get_editor_state(wait=true)`.
+4. 🩺 Check `retryable`, `unity_state`, and `retry_after_seconds` instead of string matching.
+5. ⚠️ Never replay a timed-out mutation without inspecting the scene or operation ID first.
+6. 📋 For native feature issues, inspect `GET http://127.0.0.1:<port>/api/visora/info`.
 
-HTTP request handlers run on worker threads. Unity API calls must be dispatched to `MainThreadDispatcher`. Routines that span editor frames use the stepped dispatcher, which serializes them to protect temporary global render and animation state.
-
-## External compatibility boundary
-
-Visora maintains compatibility with the external AnkleBreaker HTTP/JSON contract. That is the only intended backward-compatibility layer. Python modules, functions, and imports are changed directly without legacy aliases; every internal caller and test must move to the canonical interface together.
-
-## Diagnostic checklist
-
-When a bridge call fails:
-
-1. Run `get_bridge_status(scan_all_ports=true)`.
-2. Confirm that its active port matches the bridge shown by the Unity monitor and that `UNITY_BRIDGE_MODE` is explicit. The current MCP status schema does not expose the detected flavor directly.
-3. Run `get_editor_state(wait=true)` if Unity is compiling or importing.
-4. Inspect `retryable`, `unity_state`, and `retry_after_seconds` rather than parsing the error string.
-5. For a read timeout after mutation, inspect the scene or asset before replaying the operation.
-6. For native feature failures, inspect `GET /api/visora/info` locally or check the Unity package version and update the package if the feature is not advertised.
-7. Inspect the Unity Console for package compilation errors.
-
-Continue with [State and safety](STATE_AND_SAFETY.md) for mutation recovery and [Setup](../SETUP_GUIDE.md#troubleshooting) for operator-facing recovery.

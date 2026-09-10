@@ -1,196 +1,163 @@
-# Asset pipeline
+# 📦 Asset Pipeline & Security Boundaries
 
-The asset tools do more than copy a URL into `Assets/`. They separate discovery, untrusted network input, quarantine, archive inspection, filesystem placement, Unity import, and post-import verification into explicit stages.
+> Deep architectural guide to 3D asset discovery, remote URL sanitization, anti-SSRF defenses, quarantine extraction, Unity AssetDatabase registration, and post-import verification.
+
+Visora's asset pipeline separates asset acquisition from Unity Editor project storage. Instead of blindly streaming remote bytes directly into `Assets/`, Visora enforces an explicit multi-stage security pipeline: discovery ➔ URL sanitization ➔ quarantine download ➔ archive inspection ➔ path containment ➔ Unity import ➔ post-import verification.
 
 <p align="center">
   <img src="../assets/asset-pipeline.jpg" alt="A remote 3D package moves through quarantine, archive and path validation, a contained Assets folder, and verified Unity import" width="100%">
 </p>
-<p align="center"><em>Untrusted bytes are inspected before they cross into Unity’s live asset database.</em></p>
+<p align="center"><em>Untrusted bytes are quarantined and validated before they cross into Unity’s live asset database.</em></p>
 
-## End-to-end flow
+---
+
+## 🔄 End-to-End Pipeline Lifecycle
 
 ```mermaid
 flowchart TD
-    Search[search_assets or web_search_assets] --> Choice{URL or provider ID}
-    Choice --> Resolve[Resolve provider download URL]
-    Resolve --> ValidateURL[Require HTTPS and public DNS addresses]
-    ValidateURL --> Stage[Stream to external quarantine with size limit]
-    Stage --> Kind{File type}
-    Kind -->|ZIP| InspectZip[Validate every member, then extract supported files]
-    Kind -->|unitypackage opt-in| InspectPackage[Validate paths, types, and collisions]
-    Kind -->|asset| Place[Choose contained non-overwriting Assets path]
+    Search[🔍 search_assets / web_search_assets] --> Choice{Direct URL or Provider ID?}
+    Choice --> Resolve[🔑 Resolve Authenticated Download URL]
+    Resolve --> ValidateURL[🛡️ Validate HTTPS & Public IP DNS]
+    ValidateURL --> Stage[🗄️ Stream to Quarantine Cache with Size Cap]
+    Stage --> Kind{File Type}
+    Kind -->|ZIP Archive| InspectZip[🤐 Validate Entries, Zip Slip, Ratios]
+    Kind -->|unitypackage| InspectPackage[📦 Verify Whitelist & Reject Scripts]
+    Kind -->|Single Asset| Place[📁 Compute Contained Non-Colliding Path]
     InspectZip --> Place
     InspectPackage --> Import
-    Place --> Import[Unity AssetDatabase import]
-    Import --> Concrete{Imported objects reported?}
-    Concrete -->|No| Cleanup[Remove newly copied path and meta]
-    Concrete -->|Yes| Inspect[inspect_imported_asset]
-    Inspect --> Optional[Optional Undo-aware scene instantiation]
+    Place --> Import[🎮 Unity AssetDatabase Import]
+    Import --> Concrete{Reported Objects > 0?}
+    Concrete -->|No| Cleanup[🧹 Delete Copied File and .meta Sidecar]
+    Concrete -->|Yes| Inspect[🔍 inspect_imported_asset Verification]
+    Inspect --> Optional[✨ Optional Undo-Aware Scene Instantiation]
 ```
 
-## Discovery providers
+---
 
-`search_assets` supports:
+## 🌐 3D Asset Discovery Providers
 
-- **ambientCG:** CC0 materials, textures, environments, and related downloads;
-- **Sketchfab:** model metadata and authenticated download resolution;
-- **Poly Pizza:** included when `POLY_PIZZA_API_KEY` is configured;
-- **direct URL:** an HTTPS query is treated as a direct candidate.
+`search_assets` aggregates online CC0 and commercial repositories:
+- 🎨 **ambientCG**: CC0 PBR materials, textures, HDRIs, and 3D props.
+- 🦊 **Sketchfab**: Broad 3D catalog; requires `SKETCHFAB_API_TOKEN` for download resolution.
+- 🍕 **Poly Pizza**: Low-poly CC0/CC-BY assets; active when `POLY_PIZZA_API_KEY` is configured.
+- 🔗 **Direct URL**: Direct public HTTPS links to supported 3D models or textures.
 
-With `source=auto`, ambientCG and Sketchfab run concurrently; Poly Pizza joins when configured. Provider failures become warnings so one unavailable service does not discard successful results from another.
+> [!TIP]
+> **Sketchfab Search Workaround**: Sketchfab's public API search sometimes behaves as a browse listing rather than filtering by keyword. Use `web_search_assets` to search via SearXNG/DuckDuckGo, extracting a verified `sketchfab:<uid>` for `download_and_import_asset`.
 
-### Sketchfab search caveat
+---
 
-The Sketchfab public search behavior used by this project has been observed to ignore query text and behave like a browse listing. This makes it unsuitable for a specific named character, prop, or vehicle even when the API token is valid.
+## 📋 Accepted File Types & Extensions
 
-Use `web_search_assets` for that case. It searches for real Sketchfab model pages through configured SearXNG instances, falls back to DuckDuckGo, extracts the model UID, and returns an ID such as:
+Visora exclusively admits safe 3D formats and texture companions:
 
 ```text
-sketchfab:<uid>
+.fbx  .obj  .gltf  .glb  .png  .jpg  .jpeg  .tga  .exr  .hdr  .bin  .mtl
 ```
 
-Pass that value as `asset_id` to `download_and_import_asset`. A `SKETCHFAB_API_TOKEN` is still required to resolve the authenticated downloadable archive.
+- `.bin` and `.mtl` are permitted strictly as auxiliary companions for glTF and OBJ models.
+- Executables (`.exe`), scripts (`.cs`, `.py`, `.sh`), and native libraries (`.dll`, `.so`) are **strictly rejected**.
+- `.unitypackage` files are rejected by default and require explicit `allow_unitypackage=true`.
 
-`downloadable_only=true` hides Sketchfab results whose URLs cannot be resolved without a token and reports the hidden count as a warning. Set it to false when discovery without immediate download is useful.
+---
 
-## Accepted inputs
+## 🛡️ Remote URL Defense & Anti-SSRF
 
-`download_and_import_asset` accepts exactly one of:
+Before initiating outbound network requests, every URL and subsequent redirect target is validated:
+- 🔒 **Protocol**: Must use `https://`. Unencrypted HTTP is rejected.
+- 🚫 **Credentials**: Embedded basic authentication (`user:pass@host`) is denied.
+- 🌐 **DNS & IP Routing**: Hostnames are resolved; private RFC1918 addresses (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopback (`127.0.0.1`), link-local (`169.254.0.0/16`), and multicast ranges are blocked.
+- 🔀 **Manual Redirects**: At most 5 redirects are followed manually, re-validating the destination IP on each hop.
 
-- `url`: a direct remote URL;
-- `asset_id`: a provider-prefixed ID such as `sketchfab:<uid>` or `ambientcg:<id>`.
+> [!WARNING]
+> This defense effectively mitigates Server-Side Request Forgery (SSRF) and prevents agents from accidentally pinging internal cloud metadata endpoints (`169.254.169.254`) or local services.
 
-`import_local_asset` accepts an existing local file. Local input bypasses remote URL checks but still passes file-type, destination-containment, collision, package, and Unity-import checks.
+---
 
-Supported downloaded asset/companion extensions are:
+## 🗄️ Quarantine Staging & Streaming
 
-```text
-.fbx .obj .gltf .glb .png .jpg .jpeg .tga .exr .hdr .bin .mtl
-```
+Downloaded data is written into `ASSET_CACHE_DIR` (default `<project>/.visora_cache`), completely outside Unity's `Assets/` directory:
+- Downloads stream in chunks directly to a temporary `.tmp` file.
+- Header `Content-Length` and real transferred bytes are counted continuously against `MAX_ASSET_DOWNLOAD_SIZE_BYTES` (default 250 MB).
+- The file is atomically renamed only after the entire download completes and hashes verify.
+- Incomplete or aborted downloads are immediately deleted.
 
-ZIP is supported as a container. `.bin` and `.mtl` are allowed because non-binary glTF and OBJ assets may depend on them; they are not selected as the primary instantiated model.
+---
 
-`.unitypackage` is denied by default and requires `allow_unitypackage=true`.
+## 🤐 ZIP Archive Inspection & Anti-Zip-Bomb
 
-## Remote URL defense
+ZIP archives are analyzed in quarantine before extracting a single file:
+- 🚫 **Zip Slip Prevention**: Every target path is checked against destination boundaries (`../` traversal is blocked).
+- 🚫 **No Symlinks**: Symbolic links and hard links are rejected.
+- 💣 **Anti-Zip-Bomb**: Total uncompressed size ceiling (1 GB) and per-entry expansion ratio limits (maximum 100:1) prevent decompression bombs.
+- 🧹 **Metadata Stripping**: `__MACOSX` folders and `.DS_Store` files are skipped automatically.
 
-Every initial URL and every redirect target is validated before connecting:
+---
 
-- scheme must be HTTPS;
-- hostname must be present;
-- embedded username/password are rejected;
-- DNS must resolve successfully;
-- every resolved address must be globally routable;
-- at most five redirects are followed manually.
+## 📦 Unity Package (.unitypackage) Restricted Import
 
-This prevents obvious SSRF paths to loopback, private networks, link-local services, and credential-bearing URLs. Manual redirect handling matters because an initially public URL could otherwise redirect to an internal address after validation.
+Because `.unitypackage` files can execute code upon import, Visora treats them with extreme caution:
+- Requires explicit `allow_unitypackage=true`.
+- The archive is unpacked and inspected in quarantine.
+- If it contains any script (`.cs`), assembly (`.dll`), or attempts to overwrite existing files, the entire package is **rejected immediately**.
 
-DNS rebinding cannot be eliminated perfectly by application-level pre-resolution alone. The native bridge remains loopback-only and the downloader should run in a network environment appropriate for untrusted URLs.
+---
 
-## Quarantine and streaming
+## 📁 Path Containment & Collision Avoidance
 
-Remote data is written under `ASSET_CACHE_DIR`, which must resolve outside the Unity project’s `Assets` directory. The default is `<Unity-project>/.visora_cache`; Docker uses `/data/cache` on a named volume.
+- `target_folder` is confined strictly to the project's `Assets/` hierarchy.
+- **Collision Protection**: Existing files are never overwritten. A deterministic incremental suffix is applied:
+  ```text
+  hero.fbx ➔ hero-1.fbx ➔ hero-2.fbx
+  ```
+- The actual assigned path is returned in `asset_path` alongside a diagnostic warning.
 
-Downloads stream in fixed-size chunks to an exclusive `.tmp` file:
+---
 
-- `Content-Length` is rejected when already above the limit;
-- actual streamed bytes are counted even without a header;
-- the default maximum is 250,000,000 bytes;
-- the temporary file is atomically renamed only after a complete response;
-- partial temporary files are removed on failure.
+## 🎮 Unity AssetDatabase Import & Cleanup
 
-Staging outside `Assets` prevents Unity from importing an unvalidated partial download.
+Once validated files are moved into `Assets/`, Unity's `AssetDatabase` is instructed to import the asset:
+- Read timeouts are never replayed automatically.
+- Import is verified: Unity must report concrete imported object paths.
+- If Unity returns zero imported objects, Visora removes the copied files and any generated `.meta` sidecars automatically.
 
-## ZIP validation
+> [!IMPORTANT]
+> **glTF / GLB Requirement**: Vanilla Unity lacks a built-in glTF importer. Ensure a runtime importer such as `com.unity.cloud.gltfast` is installed in the Unity project before attempting to import `.gltf` or `.glb` files.
 
-The full archive is validated before extraction begins. Checks include:
+---
 
-- maximum entry count;
-- path containment to block Zip Slip;
-- symbolic-link rejection;
-- per-entry uncompressed size;
-- total uncompressed size;
-- compression-ratio limit to reduce zip-bomb risk;
-- supported extension filtering;
-- rejection when no supported file remains.
+## 🔍 Post-Import Verification & Scene Instantiation
 
-Dotfiles and `__MACOSX` metadata are skipped. Unsupported provider sidecars are ignored rather than failing an otherwise useful archive. Extraction occurs into a new directory with exclusive file creation; a partial directory is removed if any extraction step fails.
+Always call `inspect_imported_asset` following an import to verify:
+1. Model geometry contains valid vertices and submeshes (`submesh_count > 0`).
+2. Texture and material assignments resolved cleanly without missing shader errors.
+3. Rig animation import settings (Humanoid vs Generic) match intentions.
 
-Configuration defaults are documented in [Setup](../SETUP_GUIDE.md#configuration-reference).
+Once verified, instantiate into the scene using `instantiate_scene_asset`. Instantiation creates an Undo record and returns the instance ID and hierarchy path.
 
-## Unity package validation
+---
 
-A `.unitypackage` can contain project code and overwrite existing paths, so its import is opt-in and intentionally restrictive. Before Unity sees it, Visora reads the package pathname entries and requires:
+## 🧹 Failure & Automatic Cleanup Matrix
 
-- every path to remain under `Assets`;
-- every destination type to be in the normal asset allowlist;
-- no destination to already exist;
-- at least one supported importable asset.
+| Stage | Failure Reason | State on Disk |
+| :--- | :--- | :--- |
+| **URL Validation** | Private IP / SSRF attempt | Zero files written; no network download |
+| **Streaming** | Size cap exceeded / connection drop | Quarantined `.tmp` file deleted immediately |
+| **Archive Scan** | Zip Slip / Zip Bomb / Invalid format | Extraction folder deleted; cache kept clean |
+| **Path Placement** | Path traversal outside `Assets/` | Quarantined file remains in cache; `Assets/` clean |
+| **Unity Import** | Importer error / unreadable format | Copied assets and `.meta` files completely removed |
+| **Instantiation** | Missing parent transform | Imported asset remains; scene stays clean |
 
-Scripts, assemblies, arbitrary project settings, unsafe paths, and collisions are rejected by the extension and containment rules. This makes `.unitypackage` support appropriate for narrow asset bundles, not general package installation.
+---
 
-## Destination containment and collisions
+## ⚙️ Security Configuration Settings
 
-`target_folder` may be relative to the Unity project (`Assets/Characters`) or relative to `Assets` (`Characters`). Absolute paths and traversal outside `Assets` are rejected after path resolution.
+| Setting | Default | Description |
+| :--- | :---: | :--- |
+| `MAX_ASSET_DOWNLOAD_SIZE_BYTES` | `250 MB` | Hard limit for streamed network downloads |
+| `MAX_ASSET_ARCHIVE_ENTRIES` | `10,000` | Maximum number of files permitted inside a ZIP |
+| `MAX_ASSET_ARCHIVE_UNCOMPRESSED_SIZE_BYTES` | `1 GB` | Maximum decompressed extraction limit |
+| `MAX_ASSET_ARCHIVE_COMPRESSION_RATIO` | `100` | Maximum allowed compression expansion ratio |
+| `ASSET_CACHE_DIR` | `.visora_cache` | Quarantined staging directory outside `Assets/` |
+| `DEFAULT_ASSET_IMPORT_DIR` | `Assets/VisoraDownloads` | Default project destination folder |
 
-Existing files are never overwritten. Visora allocates a deterministic suffix:
-
-```text
-robot.fbx -> robot-1.fbx -> robot-2.fbx
-```
-
-The result returns the actual Unity asset path and a warning about the collision. Callers must use the returned path rather than assuming the requested filename.
-
-## Unity import
-
-After validated content is copied into `Assets`, the backend calls a native asset endpoint or the compatible centralized C# script. Import requests are not replayed after read timeout.
-
-The operation is considered successful only when Unity reports concrete imported objects. “Request completed” with an empty import list becomes a failure. When import fails, Visora removes the newly copied file/directory and its root `.meta` sidecar.
-
-### glTF and GLB
-
-Vanilla Unity does not include a glTF importer. The target project must install one, for example `com.unity.cloud.gltfast`. Without it, a `.gltf` or `.glb` download may exist on disk but cannot become a real Unity model; Visora reports this explicitly rather than treating an empty placeholder as success.
-
-## Post-import verification
-
-Always call `inspect_imported_asset` after import. At minimum verify:
-
-- `asset_type` is a real imported type;
-- model geometry exists and `submesh_count` is greater than zero where expected;
-- material and texture relationships are plausible;
-- ModelImporter rig/Avatar settings match the intended workflow;
-- hierarchy warnings are understood.
-
-Only then call `instantiate_scene_asset`. Instantiation is Undo-aware and returns the actual GameObject path and instance ID. A successful import does not automatically create a scene object unless requested.
-
-## Failure and cleanup matrix
-
-| Failure stage | Expected state |
-| --- | --- |
-| URL/DNS validation | No network download and no Unity project changes |
-| Streaming | Partial `.tmp` removed; no Unity project changes |
-| Archive validation/extraction | Partial extraction directory removed |
-| Destination validation | Quarantined file may remain in cache; `Assets` unchanged |
-| Unity import | Newly copied destination and root `.meta` removed |
-| Optional instantiation | Imported asset remains; scene object creation reports failure |
-
-The cache is not a permanent source registry. Operators may remove old quarantine downloads when no Visora process is using them.
-
-## Configuration
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `SKETCHFAB_API_TOKEN` | empty | Resolve Sketchfab downloads |
-| `POLY_PIZZA_API_KEY` | empty | Enable Poly Pizza provider |
-| `DEFAULT_ASSET_IMPORT_DIR` | `Assets/VisoraDownloads` | Default contained destination |
-| `ASSET_DOWNLOAD_TIMEOUT_SECONDS` | `120` | Remote request budget |
-| `MAX_ASSET_DOWNLOAD_SIZE_BYTES` | `250000000` | Streamed download ceiling |
-| `ASSET_CACHE_DIR` | `.visora_cache` | External quarantine root |
-| `MAX_ASSET_ARCHIVE_ENTRIES` | `10000` | ZIP entry ceiling |
-| `MAX_ASSET_ARCHIVE_UNCOMPRESSED_SIZE_BYTES` | `1000000000` | Total expanded-size ceiling |
-| `MAX_ASSET_ARCHIVE_ENTRY_SIZE_BYTES` | `250000000` | One expanded-entry ceiling |
-| `MAX_ASSET_ARCHIVE_COMPRESSION_RATIO` | `100` | Per-entry expansion ratio ceiling |
-| `SEARXNG_INSTANCE_URLS` | three public instances | Comma-separated search fallback order |
-| `WEB_SEARCH_TIMEOUT_SECONDS` | `10` | Per web-search request budget |
-
-For environment loading behavior and Docker mounts, see [Setup](../SETUP_GUIDE.md). For scene recovery after instantiation, see [State and safety](STATE_AND_SAFETY.md).

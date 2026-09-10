@@ -1,26 +1,38 @@
 # 🤝 Contributing to Visora
 
-> Thank you for helping make Unity workflows safer and more useful for agents.
+> Thank you for helping make Unity workflows safer, more predictable, and more capable for AI agents.
 
-Visora provides typed, safety-conscious MCP tools for Unity Editor workflows. Every change should be easy for both an agent and a maintainer to understand, verify, and safely ship.
-
----
-
-## 🧭 Before opening an issue
-
-Read the [documentation index](docs/README.md), [setup guide](docs/SETUP_GUIDE.md), and [agent workflow guide](docs/AGENT_WORKFLOWS.md). Maintainers should also read the [backend development guide](docs/backend/DEVELOPMENT.md). For a defect, use the bug-report form and include a minimal, reproducible Unity bridge setup. Never include credentials, private Unity assets, or proprietary scene data.
-
-> 🔐 For security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead of filing a public issue.
+Visora provides typed, safety-conscious MCP tools for Unity Editor workflows. Every change should be easy for both an agent and a human maintainer to understand, verify, and safely ship.
 
 ---
 
-## 🛠️ Development setup
+## 🧭 Before Opening an Issue
+
+Before creating a new issue, please consult the relevant documentation:
+- 📖 [Documentation Index](docs/README.md)
+- 🛠️ [Setup Guide](docs/SETUP_GUIDE.md)
+- 🤖 [Agent Workflow Guide](docs/AGENT_WORKFLOWS.md)
+- 🏗️ [Backend Development Guide](docs/backend/DEVELOPMENT.md)
+
+> [!NOTE]
+> When reporting a defect, please provide minimal, reproducible Unity bridge reproduction steps. Never include credentials, API tokens, private Unity assets, or proprietary scene data.
+
+> [!IMPORTANT]
+> 🔐 **Security Vulnerabilities**: For security-sensitive issues, follow [SECURITY.md](SECURITY.md) privately rather than opening a public issue.
+
+---
+
+## 🛠️ Development Setup
+
+Install dependencies and set up the local environment:
 
 ```bash
 uv sync --locked --all-extras
 ```
 
-Run the full validation gate before opening a pull request:
+### 🧪 Full Validation Gate
+
+Before submitting a pull request, run the complete validation suite:
 
 ```bash
 uv run ruff check . --fix
@@ -29,7 +41,9 @@ uv run mypy .
 uv run pytest
 ```
 
-After any `unity-package/` change, run the C# compile and format gates. Animation-stack changes also require the Unity EditMode integration gate:
+### 🎮 Unity Package Validation Gate
+
+When making changes under `unity-package/`, run the C# compile and format checks. Animation-stack changes also require the Unity EditMode integration gate:
 
 ```bash
 uv run python scripts/check_unity_package.py
@@ -37,22 +51,24 @@ uv run python scripts/check_unity_package.py --format
 uv run python scripts/check_unity_tests.py
 ```
 
-Documentation-only and other non-functional changes do not require test suites. The detailed change-based validation policy is in [Backend development](docs/backend/DEVELOPMENT.md#validation-by-change-type).
-
-Use `uv` for all Python commands. Changes that affect Unity behavior should be verified against a live bridge when practical; report bridge failures clearly rather than masking them.
-
----
-
-## 🔍 Pull requests
-
-- Keep each pull request focused and use a conventional-commit title.
-- Prefer typed Pydantic models at tool boundaries and compact agent-friendly outputs.
-- Update all callers, imports, and tests when refactoring. Do not add internal backward-compatibility aliases or shims.
-- Preserve Unity scene safety: do not save during Play Mode, restore temporary state, and make destructive operations explicit.
-- Update documentation, schemas, and tests whenever user-facing behavior changes.
+> [!TIP]
+> **Change-Based Validation**: Documentation-only and non-functional edits do not require running the full test suite. Read the detailed policy in [Backend Development](docs/backend/DEVELOPMENT.md#validation-by-change-type).
 
 ---
 
-## ⚖️ Contribution license
+## 🔍 Pull Request Checklist
 
-By submitting a contribution, you agree to license it under the [Apache License 2.0](LICENSE).
+When submitting a pull request, please ensure:
+
+- [ ] 🎯 **Focused Scope**: Keep changes focused with a clean conventional commit title (e.g. `feat(vision): ...`, `fix(bridge): ...`).
+- [ ] 📐 **Typed Contracts**: Use typed Pydantic models at tool boundaries with compact, agent-friendly responses.
+- [ ] 🚫 **No Internal Backwards Compatibility**: When refactoring, update all callers and tests directly. Never introduce internal Python compatibility shims.
+- [ ] 🛡️ **Preserve Scene Safety**: Never auto-save during Play Mode, cleanly restore temporary state, and make destructive actions explicit.
+- [ ] 📚 **Keep Docs in Sync**: Update documentation, schemas, and tests whenever user-facing behavior or parameters change.
+
+---
+
+## ⚖️ License
+
+By submitting a contribution, you agree to license your work under the [Apache License, Version 2.0](LICENSE).
+

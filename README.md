@@ -2,26 +2,42 @@
   <img src="https://raw.githubusercontent.com/AmaLS367/Visora/master/docs/assets/banner.png" alt="Visora Banner" width="100%">
 </p>
 
-# Visora
+# 👁️ Visora
+
+<p align="center">
+  <strong>A high-level Model Context Protocol (MCP) server for Unity Editor.</strong><br>
+  <em>Empowering AI agents to observe, diagnose, mutate, and verify live Unity scenes with typed safety.</em>
+</p>
+
+<p align="center">
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+"></a>
+  <a href="https://unity.com/"><img src="https://img.shields.io/badge/Unity-6000.0%2B-000000?style=for-the-badge&logo=unity&logoColor=white" alt="Unity 6+"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-Standard-4B32C3?style=for-the-badge&logo=modelcontextprotocol&logoColor=white" alt="MCP Protocol"></a>
+  <a href="https://github.com/AmaLS367/Visora/actions"><img src="https://img.shields.io/badge/CI-Passing-2ea44f?style=for-the-badge&logo=githubactions&logoColor=white" alt="CI Status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge" alt="License Apache 2.0"></a>
+  <a href="https://docs.astral.sh/ruff/"><img src="https://img.shields.io/badge/Code%20Style-Ruff-000000?style=for-the-badge&logo=ruff&logoColor=white" alt="Code Style Ruff"></a>
+</p>
+
+---
 
 Visora is a high-level [Model Context Protocol](https://modelcontextprotocol.io/) server for Unity Editor. It gives AI agents typed tools for seeing a scene, understanding its state, changing it safely, and verifying the result.
 
 Raw editor scripting is powerful, but it is a poor interface for an autonomous agent: the agent has to invent C#, interpret unstructured logs, guess whether the camera can see an object, and clean up every temporary state change itself. Visora turns those recurring jobs into explicit workflows with validated inputs, compact structured outputs, safety checks, and visual artifacts.
 
-## Why Visora exists
+## 🎯 Why Visora Exists
 
-An agent working in Unity needs more than remote code execution. It needs to answer questions such as:
+An agent working in Unity needs more than remote code execution. It needs to answer concrete diagnostic questions:
 
-- Is the bridge unavailable, or is Unity only recompiling scripts?
-- Is an object missing, outside the camera frustum, unlit, or behind the camera?
-- Is a broken character caused by mesh bounds, bone bindings, the Avatar, or the animation clip?
-- Did an edit actually improve motion over time, or does one screenshot only look plausible?
-- Can a scene or clip mutation be undone if compilation or execution fails?
+- ❓ Is the bridge unavailable, or is Unity only recompiling scripts?
+- ❓ Is an object missing, outside the camera frustum, unlit, or behind the camera?
+- ❓ Is a broken character caused by mesh bounds, bone bindings, the Avatar, or the animation clip?
+- ❓ Did an edit actually improve motion over time, or does one screenshot only look plausible?
+- ❓ Can a scene or clip mutation be undone if compilation or execution fails?
 
-Visora makes these distinctions part of the tool contract. Its core loop is:
+Visora makes these distinctions part of the tool contract. Its core operating loop is:
 
 ```text
-inspect state -> diagnose -> mutate safely -> verify visually and structurally -> keep or restore
+🔍 Inspect State  ➔  🩺 Diagnose  ➔  🛡️ Mutate Safely  ➔  👁️ Verify Evidence  ➔  ✅ Keep / ↩️ Restore
 ```
 
 <p align="center">
@@ -29,20 +45,20 @@ inspect state -> diagnose -> mutate safely -> verify visually and structurally -
 </p>
 <p align="center"><em>Visora turns raw editor access into an inspect, act, and verify workflow.</em></p>
 
-## What it provides
+## ✨ Key Capabilities
 
-- Visual inspection through scene cameras and neutral diagnostic lighting.
-- Camera inventory, framing diagnostics, and world-to-viewport projection.
-- AnimationClip inspection, exact-time sampling, preview videos, motion metrics, and reproducible comparison records.
-- Skeleton, Humanoid Avatar, contact, IK, gaze, self-intersection, and skinned-mesh diagnostics.
-- Undo-aware scene and animation transactions with explicit recovery paths.
-- Online asset discovery, quarantined downloads, archive validation, Unity import inspection, and scene instantiation.
-- Resilient HTTP transport with multi-port discovery, bridge flavor selection, domain-reload recovery, and typed retry hints.
-- A bundled native Unity package plus compatibility with the AnkleBreaker bridge.
+- 👁️ **Visual Inspection & Lookdev** — Scene cameras, neutral diagnostic lighting, framing calculations, and viewport projections.
+- 📐 **Framing & Viewport Projection** — Camera inventory, frustum diagnostics, and world-to-viewport coordinate mapping.
+- 🎬 **Animation Analysis & Metrics** — AnimationClip inspection, exact-time sampling, preview videos, motion metrics, and reproducible comparison records.
+- 🦴 **Skeleton & Kinematics** — Skeleton mapping, Humanoid Avatar validation, two-bone IK solver, gaze tracking, contact analysis, and curve discontinuity detection.
+- 🛡️ **Undo-Aware Transactions** — Atomic scene and animation transactions with explicit rollback and recovery paths.
+- 📦 **Asset Discovery & Quarantine** — Online asset discovery (Sketchfab, Poly Pizza), quarantined downloads, archive validation, Unity import inspection, and scene instantiation.
+- 🔌 **Resilient HTTP Transport** — Multi-port discovery, bridge flavor selection (native vs legacy), domain-reload recovery, and typed retry hints.
+- ⚡ **Bundled Native Companion** — Native Unity package (`com.visora.editor`) plus full compatibility with the legacy AnkleBreaker bridge.
 
 The current MCP surface contains **46 registered tools**. The generated source-of-truth catalog is in [Agent workflows](docs/AGENT_WORKFLOWS.md#tool-catalog).
 
-## How it fits together
+## 🧩 How It Fits Together
 
 ```mermaid
 flowchart LR
@@ -59,9 +75,9 @@ flowchart LR
 
 The Python process is the agent-facing product surface. Unity remains authoritative for scene, asset, animation, and rendering state. See [Architecture](docs/backend/README.md) for the complete request lifecycle and module boundaries.
 
-## Quick start
+## 🚀 Quick Start
 
-### 1. Install the Python server
+### 1️⃣ Install the Python Server
 
 From PyPI as an isolated command-line tool:
 
@@ -79,14 +95,14 @@ uv sync --locked --all-extras
 
 Visora requires Python 3.10 or newer. Project and installation commands use `uv`.
 
-### 2. Choose a Unity bridge
+### 2️⃣ Choose a Unity Bridge
 
-- **Native bridge:** install `unity-package/` as `com.visora.editor`. The current package requires Unity 6 (`6000.0`) or newer and exposes the complete optimized feature set.
+- **Native bridge (Recommended):** install `unity-package/` as `com.visora.editor`. The current package requires Unity 6 (`6000.0`) or newer and exposes the complete optimized feature set.
 - **Legacy bridge:** keep an existing AnkleBreaker installation and use Visora as a high-level compatibility wrapper. Unity-version support is determined by that bridge.
 
 The Python default is `UNITY_BRIDGE_MODE=legacy`; set `native` explicitly when using the bundled package. `auto` accepts either and prefers a matching legacy bridge when both are running.
 
-### 3. Configure and run
+### 3️⃣ Configure and Run
 
 ```bash
 cp .env.example .env
@@ -114,22 +130,25 @@ After connecting, call `get_bridge_status`, then `get_editor_state`. Do not begi
 
 For platform-specific installation, Docker networking, Unity Package Manager steps, and troubleshooting, read the [Setup guide](docs/SETUP_GUIDE.md).
 
-## Documentation
+## 📚 Documentation Hub
 
-Start at the [documentation index](docs/README.md). The main guides are:
+Explore the full documentation suite organized by workflow and architectural domain:
 
-- [Concepts and philosophy](docs/CONCEPTS.md) — the problem model, design principles, benefits, and intentional limits.
-- [Setup guide](docs/SETUP_GUIDE.md) — Python, Unity, MCP client, Docker, verification, and recovery.
-- [Agent workflows](docs/AGENT_WORKFLOWS.md) — the generated tool catalog and task-oriented recipes.
-- [Backend architecture](docs/backend/README.md) — runtime layers, module ownership, and request lifecycle.
-- [Bridge and failure semantics](docs/backend/BRIDGE.md) — discovery, native/legacy dispatch, retries, reloads, and errors.
-- [Tools and schemas](docs/backend/TOOLS_AND_SCHEMAS.md) — MCP registration, result contracts, compact responses, and extension rules.
-- [State and safety](docs/backend/STATE_AND_SAFETY.md) — Edit/Play Mode, Undo, rollback, saving, and temporary-state restoration.
-- [Asset pipeline](docs/backend/ASSET_PIPELINE.md) — providers, quarantine, SSRF/archive defenses, import, and verification.
-- [Development guide](docs/backend/DEVELOPMENT.md) — repository workflow, tests, generated docs, and contribution checklist.
-- [Roadmap](docs/ROADMAP.md) and [changelog](docs/CHANGELOG.md) — release history and planned work.
+| Domain | Guide | Description |
+| :--- | :--- | :--- |
+| 🧭 **Overview** | [Documentation Index](docs/README.md) | Central hub and roadmap of all documentation resources. |
+| 💡 **Philosophy** | [Concepts & Philosophy](docs/CONCEPTS.md) | The problem model, design principles, and intentional limits. |
+| 🛠️ **Installation** | [Setup Guide](docs/SETUP_GUIDE.md) | Python, Unity, MCP client, Docker, verification, and recovery. |
+| 🤖 **Agent Recipes** | [Agent Workflows](docs/AGENT_WORKFLOWS.md) | The complete 46-tool MCP catalog and task-oriented recipes. |
+| 🏗️ **Architecture** | [Backend Architecture](docs/backend/README.md) | Runtime layers, module boundaries, and request lifecycle. |
+| 🌐 **Networking** | [Bridge & Failure Semantics](docs/backend/BRIDGE.md) | Discovery, native/legacy dispatch, retries, and reloads. |
+| 📐 **Data Contracts** | [Tools & Schemas](docs/backend/TOOLS_AND_SCHEMAS.md) | MCP registration, Pydantic contracts, and context compaction. |
+| 🛡️ **Scene Integrity** | [State & Safety](docs/backend/STATE_AND_SAFETY.md) | Edit/Play Mode, Undo stacks, saving rules, and state cleanup. |
+| 📦 **Asset Handling** | [Asset Pipeline](docs/backend/ASSET_PIPELINE.md) | Quarantine staging, SSRF defense, archive extraction, and import. |
+| 💻 **Development** | [Development Guide](docs/backend/DEVELOPMENT.md) | Repository workflow, tests, validation gates, and conventions. |
+| 🗺️ **Planning** | [Roadmap](docs/ROADMAP.md) & [Changelog](docs/CHANGELOG.md) | Release milestones, historical changes, and future plans. |
 
-## Project layout
+## 📁 Project Layout
 
 ```text
 backend/
@@ -149,20 +168,30 @@ tests/                   Python unit and integration tests
 scripts/                 catalog, distribution, Python/Unity validation helpers
 ```
 
-## Important operating boundaries
+## ⚠️ Important Operating Boundaries
 
-- Visora controls a live Unity Editor; it is not a headless replacement for Unity.
-- The native bridge listens on loopback only. Do not expose it directly to an untrusted network.
-- `safe_transaction` improves recovery but cannot make arbitrary C# intrinsically safe. Code must still register affected Unity objects with Undo.
-- A successful HTTP request is not sufficient proof of a successful creative change. Inspect the typed result and verify the scene, clip, or artifact.
-- `.gltf` and `.glb` require a glTF importer in the target Unity project; vanilla Unity does not provide one.
+> [!IMPORTANT]
+> **Live Unity Companion**: Visora controls a live Unity Editor instance; it is not a standalone headless replacement for Unity.
 
-## Contributing
+> [!WARNING]
+> **Localhost Loopback Only**: The native bridge listens exclusively on loopback (`127.0.0.1`). Never expose this port directly to an untrusted network.
+
+> [!NOTE]
+> **Safe Transactions & Undo**: `safe_transaction` improves recovery but cannot make arbitrary C# intrinsically safe. Script operations must register affected Unity objects with the Undo system.
+
+> [!CAUTION]
+> **Evidence over Assumed Success**: A successful HTTP status (`success=true`) confirms call completion, not creative or aesthetic correctness. Always inspect the returned evidence, motion metrics, and visual artifacts.
+
+> [!TIP]
+> **glTF / GLB Importer Requirement**: `.gltf` and `.glb` files require a glTF importer package installed in the target Unity project; vanilla Unity does not provide one natively.
+
+## 🤝 Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the [backend development guide](docs/backend/DEVELOPMENT.md). Visora intentionally does not keep internal Python compatibility shims: when an internal interface changes, update every caller, test, and document to the new canonical API.
 
-## License
+## 📜 License
 
 Copyright 2026 Ama.
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
+

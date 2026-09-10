@@ -1,24 +1,33 @@
-# Documentation visual assets
+# 🎨 Documentation Visual Assets & Design System
 
-This directory contains Visora’s documentation illustrations. They were generated with the built-in image generation tool using `banner.png` as a style reference, then exported as high-quality JPEG files for substantially smaller repository size.
+> Visual catalog, art direction guidelines, and generative prompts for Visora's editorial documentation graphics.
 
-## Asset map
+This directory contains Visora's technical illustrations, designed to visually reinforce key architecture and workflow principles across the documentation.
 
-| Asset | Concept | Primary use |
-| --- | --- | --- |
-| `banner.png` | Visora identity | Root README hero |
-| `concepts-workflow.jpg` | Inspect → act → verify | README, concepts, agent workflows |
-| `system-architecture.jpg` | MCP client → Python → bridge → Unity | Documentation index, setup, backend architecture |
-| `bridge-recovery.jpg` | Port discovery and domain-reload recovery | Bridge internals |
-| `typed-contracts.jpg` | External payloads normalized into typed results | Tools and schemas |
-| `state-safety.jpg` | Preflight, scoped mutation, rollback, verification | State and safety |
-| `asset-pipeline.jpg` | Quarantine and verified Unity import | Asset pipeline |
-| `development-workflow.jpg` | Python/Unity validation tracks | Development and roadmap |
-| `native-unity-runtime.jpg` | Loopback, router, main thread, native services | Unity package README |
+---
 
-## Shared art direction
+## 🗺️ Asset Gallery & Inventory
 
-Use this prefix for future illustrations:
+| File | Theme & Metaphor | Primary Placement |
+| :--- | :--- | :--- |
+| `banner.png` | 👁️ **Visora Brand Identity** | Root [README.md](../../README.md) hero header |
+| `concepts-workflow.jpg` | 🔄 **Inspect ➔ Act ➔ Verify Loop** | [Concepts](../../docs/CONCEPTS.md) & [Agent Workflows](../../docs/AGENT_WORKFLOWS.md) |
+| `system-architecture.jpg` | 🏗️ **End-to-End System Layers** | [Documentation Index](../../docs/README.md) & [Backend Architecture](../backend/README.md) |
+| `bridge-recovery.jpg` | 🌐 **Port Discovery & Domain Reload** | [Bridge & Failure Semantics](../backend/BRIDGE.md) |
+| `typed-contracts.jpg` | 📐 **Typed Normalization & Compaction** | [Tools & Schemas](../backend/TOOLS_AND_SCHEMAS.md) |
+| `state-safety.jpg` | 🛡️ **Transactional Safety & Rollbacks** | [State & Safety](../backend/STATE_AND_SAFETY.md) |
+| `asset-pipeline.jpg` | 📦 **Quarantine Staging & Import** | [Asset Pipeline](../backend/ASSET_PIPELINE.md) |
+| `development-workflow.jpg` | 💻 **Python & C# Validation Tracks** | [Development Guide](../backend/DEVELOPMENT.md) & [Roadmap](../ROADMAP.md) |
+| `native-unity-runtime.jpg` | ⚡ **Unity Main-Thread Services** | [Unity Package README](../../unity-package/README.md) |
+
+---
+
+## 🎯 Shared Art Direction
+
+> [!NOTE]
+> All documentation graphics adhere to a cohesive visual language: near-black technical canvas, cyan inspection flows, violet mutation/kinematic solvers, and crisp white verification accents.
+
+Use this prefix for future generative prompts:
 
 ```text
 Use the existing Visora banner as a style reference only. Match its near-black technical background,
@@ -28,7 +37,7 @@ glass and metal depth, generous margins, and a cinematic 16:9 landscape composit
 developer documentation. Do not reproduce the banner lettering.
 ```
 
-Use this constraint suffix:
+Constraint suffix:
 
 ```text
 No text, letters, numbers, watermark, tiny labels, clutter, or photoreal people. The illustration
@@ -36,7 +45,10 @@ must communicate through composition and symbols; explanatory wording belongs in
 caption and alt text.
 ```
 
-## Prompt set
+---
+
+## 📝 Canonical Prompt Set
+
 
 ### Concepts workflow
 

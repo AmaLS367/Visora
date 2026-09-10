@@ -1,143 +1,158 @@
-# Concepts and philosophy
+# 💡 Concepts and Philosophy
 
-## The problem Visora solves
+> The design principles, architectural boundaries, and core philosophies that make Visora a dependable tool layer for autonomous Unity agents.
 
-Giving an AI agent access to arbitrary Unity Editor scripting creates capability, but not reliability. The agent still has to solve several different problems on every task:
+---
 
-- discover whether Unity is reachable and ready;
-- translate intent into editor APIs and compilable C#;
-- decide which camera or diagnostic view contains evidence;
-- preserve scene, animation, and editor state while sampling or rendering;
-- distinguish transport failure from compilation failure and domain reload;
-- compress large Unity responses into information useful to another model;
-- prove that a change worked rather than trusting a boolean.
+## 🎯 The Problem Visora Solves
 
-Those concerns are repetitive, stateful, and easy to get subtly wrong. Visora captures them once as typed MCP tools and reusable workflows.
+Giving an AI agent raw access to arbitrary Unity Editor C# scripting creates capability, but not reliability. On every task, the agent is forced to independently resolve complex editor dynamics:
+
+- ❓ Discover whether Unity is reachable, idle, or currently compiling scripts.
+- ❓ Translate high-level intent into complex editor API calls and valid C#.
+- ❓ Determine which camera or diagnostic view captures the necessary evidence.
+- ❓ Preserve scene hierarchy, animation poses, and editor state while sampling or rendering.
+- ❓ Disentangle network transport timeouts from compilation errors and domain reloads.
+- ❓ Compress massive Unity JSON payloads into token-efficient context.
+- ❓ Verify that a mutation actually succeeded rather than trusting a plain boolean flag.
+
+These concerns are repetitive, stateful, and error-prone. Visora encapsulates them into **typed MCP tools** and **reproducible workflows**.
 
 <p align="center">
   <img src="assets/concepts-workflow.jpg" alt="An intelligent observer inspects a camera, character rig, mesh, and animation timeline before a protected verified change" width="100%">
 </p>
-<p align="center"><em>Observation, controlled action, and verification are one loop—not separate features.</em></p>
+<p align="center"><em>Observation, controlled action, and verification form a single continuous loop — not disconnected steps.</em></p>
 
-## The product model
+---
 
-Visora is a workflow layer between an MCP client and a live Unity Editor:
+## ⚖️ Ad-Hoc Scripts vs. Visora Workflow
+
+| Dimension | ⚠️ Traditional Ad-Hoc Scripting | ✨ Visora Typed MCP Workflow |
+| :--- | :--- | :--- |
+| **Agent Interface** | Guessing C# APIs & compiling strings | 46 validated, typed MCP tool contracts |
+| **Diagnostics** | Grepping raw editor log output | Structured models with warnings & metrics |
+| **Visual Verification** | Manual camera placement & screenshots | Multi-camera framing, viewport projection, and preview MP4s |
+| **Scene Safety** | Risk of dirtying scenes or saving in Play Mode | Undo transactions, rollback groups, and Play Mode guards |
+| **Animation QA** | Static screenshot or blind keyframe edits | Exact-time sampling, jerk detection, and IK contact solvers |
+| **Token Economy** | Huge raw Unity JSON dumps | Compacted responses, schema pruning, and local disk artifacts |
+
+---
+
+## 🧩 The Product Model
+
+Visora operates as a dedicated workflow layer between the MCP client and the live Unity Editor:
 
 ```text
-agent intent
-  -> typed Visora tool
-  -> safety and capability checks
-  -> Unity bridge operation
-  -> structured interpretation
-  -> evidence and recovery metadata
+🤖 Agent Intent
+  └── 📐 Typed Visora Tool
+        └── 🛡️ Safety & Capability Checks
+              └── 🔌 Unity Bridge Operation (Native / Legacy)
+                    └── 📊 Structured Interpretation
+                          └── 👁️ Verifiable Evidence & Rollback Metadata
 ```
 
-The Python backend owns the agent-facing vocabulary, validation, orchestration, and compact result shape. Unity owns authoritative editor state and performs Unity API calls. The bridge is transport, not the product abstraction exposed to the agent.
+The Python backend manages agent vocabulary, parameter validation, orchestration, and token compaction. Unity remains the authoritative owner of scene, asset, and rendering state. The bridge serves purely as transport.
 
-This separation matters. “Render the subject and report whether it is framed” is a stable agent operation. The implementation may use a native endpoint today or a compatible C# executor on another bridge without changing the agent’s goal or result model.
+> [!NOTE]
+> This separation ensures stability: *"Render the subject and verify framing"* remains a constant contract for the agent, regardless of whether it executes through a native C# endpoint or a legacy fallback bridge.
 
-## Core philosophy
+---
 
-### Evidence over optimistic success
+## 🧭 Core Philosophies
 
-`success=true` only says that the operation represented by a result completed. It is not proof that the scene looks correct, a character moves, or an imported asset contains a mesh. Visora workflows therefore pair actions with evidence:
+### 🔍 1. Evidence Over Optimistic Success
 
-- asset import with `inspect_imported_asset`;
-- camera changes with framing diagnostics, viewport projection, or screenshots;
-- animation edits with temporal preview and motion metrics;
-- rig changes with skeleton or Avatar validation;
-- visual changes with comparison artifacts.
+A return value of `success=true` indicates only that the operation completed without throwing an exception. It is **not** proof that a character animated properly, a mesh imported cleanly, or lighting rendered correctly. Visora pairs every action with verifiable evidence:
+- 📦 **Asset Import** ➔ `inspect_imported_asset`
+- 📐 **Camera Adjustments** ➔ Framing diagnostics, viewport projections, and screenshots
+- 🎬 **Animation Changes** ➔ Temporal preview videos, jerk metrics, and contact analysis
+- 🦴 **Rig Adjustments** ➔ Skeleton mapping and Avatar validation
+- 🎨 **Visual Edits** ➔ Before/after comparison artifacts (`compare_screenshots`)
 
-An agent should report the evidence it observed, not merely repeat a success flag.
+> [!TIP]
+> Agents should always evaluate and report concrete evidence rather than passively echoing a success flag.
 
-### Diagnose before mutating
+### 🩺 2. Diagnose Before Mutating
 
-Many Unity symptoms have several unrelated causes. A dark screenshot can mean missing lights rather than missing geometry. A deformed model can mean bad bounds, a wrong root bone, invalid weights, or an incompatible animation. Changing materials or transforms before classifying the problem destroys useful evidence and can make the scene harder to recover.
+Many Unity symptoms stem from unrelated root causes. A black screenshot can signify missing scene lighting rather than missing geometry. A deformed character mesh may result from inverted bounds, mismatched root bones, invalid skin weights, or an incompatible clip. Mutating materials or transforms prematurely destroys vital diagnostic evidence.
 
-Visora’s preferred loop is:
+Visora's canonical loop:
+1. 🔍 **Inspect** bridge health and current editor state.
+2. 🩺 **Diagnose** using the smallest check that isolates the root cause.
+3. 🛡️ **Mutate** with a single scoped, recoverable transaction.
+4. 👁️ **Verify** against the baseline using the same diagnostic.
+5. ✅ **Retain** changes only when verifiable evidence confirms improvement.
 
-1. Inspect bridge and editor state.
-2. Gather the smallest diagnostic that separates likely causes.
-3. Make one scoped, recoverable change.
-4. Re-run the same diagnostic or create a comparable artifact.
-5. Keep the change only when the evidence improves.
+### 📐 3. Typed Boundaries, Tolerant Interpretation
 
-### Typed boundaries, tolerant interpretation
+Public tool inputs and outputs are strictly typed with Pydantic models. Every result inherits from `BaseToolResult`, guaranteeing consistent fields for `success`, `error`, and retry metadata. 
 
-Inputs and outputs are typed with Pydantic. Every tool result inherits a common contract with `success`, `error`, and retry metadata. This gives the agent a predictable envelope even when the underlying bridge differs.
+However, external bridge payloads are parsed tolerantly. If an updated Unity service returns an unrecognized enum value, Visora emits a diagnostic warning and applies a safe fallback rather than crashing the agent's MCP session.
 
-Unity and legacy bridge payloads are still external data. Parsers preserve useful success when a newer Unity service returns an unknown enum-like value: the value becomes an explicit fallback with a warning instead of causing an unrelated validation crash. Strictness belongs at the public boundary; tolerance belongs at the transport interpretation boundary.
+### 🛡️ 4. Scene State is a Finite Resource
 
-### Scene state is a resource
+Play Mode, animation sampling, temporary diagnostic cameras, render settings, scene dirty flags, and Undo stacks all represent mutable state. Every diagnostic tool must restore temporary state on both success and failure.
 
-Play Mode, animation sampling, temporary cameras, render settings, active scenes, dirty flags, Undo groups, and asset imports are all state. Every diagnostic operation must own the state it changes and restore it on both success and failure.
+Visora explicitly separates:
+- 👁️ **Inspection** from ⚡ **Mutation**
+- ⏸️ **Edit Mode** from ▶️ **Play Mode**
+- ↩️ **Undo Rollback** from 💾 **Disk Reload**
+- 🎞️ **Temporary Preview State** from 💾 **Persisted Authoring**
+- ⏱️ **Transport Timeouts** from ❌ **Execution Failures**
 
-This is why Visora distinguishes:
+### ⚡ 5. High-Level Tools with Controlled Escape Hatches
 
-- inspection from mutation;
-- Edit Mode from Play Mode;
-- Undo rollback from disk reload;
-- temporary preview state from persisted authoring;
-- a transport timeout from a known failed operation.
+Predefined, typed tools are inherently easier to validate, document, and test. While `safe_transaction` provides an escape hatch for arbitrary C# operations, high-level purpose-built tools should always be preferred for common workflows.
 
-### Prefer high-level operations, retain a controlled escape hatch
+### 📉 6. Compact by Default
 
-Named tools are easier to validate, document, test, and reason about than arbitrary code. They should cover common workflows. `safe_transaction` remains available for editor operations that do not yet deserve a dedicated tool, but arbitrary C# is not treated as equivalent to a purpose-built capability.
+MCP tool definitions and output payloads consume context window space. Visora strips redundant schema descriptions, docstring clutter, and null JSON fields by default. Full Pydantic validation protects the implementation contract while keeping the wire footprint minimal.
 
-### Compact by default
+---
 
-MCP tool definitions and results share an agent’s context window with the task itself. Visora removes redundant schema titles, long docstring sections, duplicate structured content, and null JSON fields by default. Full Pydantic models remain the implementation contract; the wire representation is optimized for reasoning cost.
+## 👥 Who Benefits
 
-## Who benefits
+- 🤖 **Autonomous Agents**: Gain explicit tools, predictable signatures, actionable error messages, retry hints, and visual artifacts.
+- 🎮 **Unity Creators**: Receive transparent, auditable scene modifications with clear Undo stacks, preview videos, and operation logs.
+- 🛠️ **Maintainers**: Enjoy a clean, modular architecture with strict separation between public MCP tools and Unity transport details.
 
-### Agents
+---
 
-Agents get explicit tools, deterministic parameter names, actionable errors, retry hints, and visual outputs they can inspect directly. They spend less context inventing bridge scripts and less time recovering from editor state mistakes.
+## 🚫 What Visora Is Not
 
-### Unity users
+> [!WARNING]
+> - **Not a Headless Replacement**: Visora controls an active Unity Editor instance; it is not a standalone game engine.
+> - **Not an Open Remote Shell**: The bridge binds exclusively to loopback (`127.0.0.1`) and must never be exposed to untrusted networks.
+> - **Not a Guarantee of Arbitrary C# Safety**: Untyped C# snippets executed through `safe_transaction` must register their own Undo operations.
+> - **Not an Asset License Validator**: Search endpoints surface provider metadata, but compliance with licensing terms remains the user's responsibility.
 
-Users get changes that are easier to audit and reproduce. Visual artifacts, preview records, concrete warnings, Undo groups, and operation IDs make an agent’s work legible instead of opaque.
+---
 
-### Maintainers
+## ⚖️ Intentional Architectural Tradeoffs
 
-Maintainers get a stable public MCP vocabulary over replaceable transport details. The same tool contract can route to a native endpoint or a legacy-compatible executor, while shared schemas and tests enforce behavior across modules.
+### 🎮 Live Editor vs. Headless Simulation
+Visora prioritizes absolute fidelity to real Unity project state. This enables authentic camera renders, shader passes, and Avatar imports, while treating script compilation and domain reloads as standard lifecycle events.
 
-## What Visora is not
+### 💾 Local Disk Artifacts vs. Giant Base64 Payloads
+Videos, high-resolution screenshots, and preview records are saved to the local `artifacts/` folder. Compact metadata and summaries are returned in the MCP response, preventing context window exhaustion while preserving full evidence on disk.
 
-- It is not a replacement for the Unity Editor or Unity’s renderer.
-- It is not a general remote shell and should not expose the native bridge to untrusted networks.
-- It is not a guarantee that arbitrary C# is safe or undoable.
-- It is not a visual foundation model; it creates and structures visual evidence for the connected agent.
-- It is not an asset-license validator. Search results expose provider metadata, but the user remains responsible for license compliance.
-- It is not fully transport-independent internally. The current backend deliberately targets the AnkleBreaker-compatible HTTP/JSON contract and the bundled native package.
+### 🚫 Zero Internal Python Compatibility Shims
+Internal deprecated aliases accumulate tech debt and confuse agents. When an internal interface is refactored, all callers, imports, tests, and documentation are updated immediately to the canonical API.
 
-## Intentional tradeoffs
+---
 
-### A live Editor instead of headless simulation
+## ✅ The Definition of "Done"
 
-Visora chooses fidelity to real project state over an isolated model of Unity. This enables real renders, imports, Avatar checks, and editor lifecycle handling, but requires the correct project to be open and makes domain reload a normal operating condition.
+A Visora workflow task is considered fully complete when:
 
-### Local artifacts instead of giant inline payloads
+- [ ] 🎯 The requested operation returned `success=true` in its typed model.
+- [ ] 🩺 Any diagnostic warnings or partial outcomes were evaluated.
+- [ ] 👁️ Visual or structural evidence was verified against the expected state.
+- [ ] 🔄 All temporary sampling poses, cameras, and preview state were restored.
+- [ ] 💾 The scene was intentionally persisted (or cleanly rolled back).
+- [ ] 💬 In case of failure, a concrete recovery action was communicated.
 
-Screenshots, contact sheets, MP4s, and preview records are written under `artifacts/`. Tools may also return selected image content, but large binary payloads are excluded unless explicitly requested. This keeps MCP responses usable while preserving full-fidelity evidence on disk.
+---
 
-### Capability negotiation instead of version guesses
+*Continue with [Agent Workflows](AGENT_WORKFLOWS.md) for practical recipes, or explore [Backend Architecture](backend/README.md) for system internals.*
 
-The native package advertises feature names. The backend checks those capabilities before choosing optimized paths because bridge flavor or version alone cannot prove endpoint semantics. If capability discovery fails transiently, Visora avoids permanently caching a false negative.
-
-### No internal Python compatibility layers
-
-Internal aliases and deprecated wrappers accumulate ambiguity for agents and maintainers. Visora updates all Python callers, imports, tests, and docs when an internal interface changes. Compatibility is maintained only at the external HTTP/JSON boundary where existing Unity bridges require it.
-
-## The definition of “done”
-
-A Visora task is complete when:
-
-- the requested operation returned a typed successful result;
-- warnings and partial outcomes were examined;
-- the relevant visual or structural evidence was checked;
-- temporary editor state was restored;
-- the intended persistence decision was explicit;
-- failures, when present, were reported with a concrete next action.
-
-For practical sequences that implement this philosophy, continue with [Agent workflows](AGENT_WORKFLOWS.md). For implementation details, see [Backend architecture](backend/README.md).

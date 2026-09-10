@@ -1,28 +1,37 @@
-# Tools and schemas
+# 📐 Tools and Schemas Architecture
 
-Visora’s public API is its MCP tool surface. Python modules and Unity endpoints are implementation details; tool names, arguments, result fields, errors, warnings, and evidence paths are what agents depend on.
+> Design principles for Visora's public Model Context Protocol (MCP) surface, Pydantic data modeling, error mapping, and context window compaction.
+
+Visora's public product boundary is its MCP tool registry. While Python modules and Unity C# endpoints implement the underlying logic, AI agents interact exclusively through tool names, parameter schemas, typed results, and diagnostic evidence artifacts.
 
 <p align="center">
   <img src="../assets/typed-contracts.jpg" alt="Irregular Unity, HTTP, image, and diagnostic payloads pass through typed validation into compact result cards" width="100%">
 </p>
-<p align="center"><em>Transport complexity is normalized into a small, predictable agent-facing contract.</em></p>
+<p align="center"><em>Transport complexity is normalized into a predictable, compact, agent-facing contract.</em></p>
 
-## Tool families
+---
 
-| Family | Python package | Responsibilities |
-| --- | --- | --- |
-| Bridge and queue | `backend.tools.bridge` | Connectivity, port scan, editor task tickets |
-| Scene | `backend.tools.scene` | Editor state, Play Mode, save policy, generic safe transactions, restore |
-| Vision | `backend.tools.vision` | Cameras, screenshots, viewport projection, framing, video, visual comparison |
-| Animation | `backend.tools.animation` | Clips, skeletons, previews, records, authoring transactions, Humanoid, contacts, IK, gaze, QA |
-| Mesh | `backend.tools.mesh` | Skinned-mesh inspection and diagnostic classification |
-| Asset | `backend.tools.asset` | Search, secure download/import, local import, inspection, instantiation |
+## 🗂️ MCP Tool Families
 
-The complete parameter table is generated in [Agent workflows](../AGENT_WORKFLOWS.md#tool-catalog). Do not maintain a second hand-written catalog.
+The 46 registered MCP tools are partitioned into focused domain packages:
 
-## Registration model
+| Family | Python Package | Core Responsibilities |
+| :--- | :--- | :--- |
+| 🔌 **Bridge & Queue** | `backend.tools.bridge` | Connectivity, multi-port scanning, long-running task status |
+| 🎮 **Scene & Play Mode** | `backend.tools.scene` | Editor state, Play Mode transitions, atomic Undo transactions |
+| 👁️ **Vision & Rendering** | `backend.tools.vision` | Cameras, screenshots, viewport projections, video capture, diffs |
+| 🎬 **Animation & Kinematics** | `backend.tools.animation` | Clips, skeletons, previews, IK solvers, gaze, contact baking, QA |
+| 📐 **Mesh Diagnostics** | `backend.tools.mesh` | Skinned mesh inspection and deformation issue classification |
+| 📦 **Asset Pipeline** | `backend.tools.asset` | 3D search, quarantine downloads, Unity import, instantiation |
 
-A public tool is an async function decorated with the singleton server:
+> [!NOTE]
+> The full parameter inventory is automatically maintained in [Agent Workflows](../AGENT_WORKFLOWS.md#tool-catalog).
+
+---
+
+## 🏷️ Registration & Discovery Model
+
+Every public MCP tool is an `async` function decorated with the singleton server instance:
 
 ```python
 from backend.app import mcp
@@ -33,75 +42,66 @@ from backend.schemas import SomeResult
 async def some_operation(required_value: str, limit: int = 10) -> SomeResult: ...
 ```
 
-Registration happens when Python imports the module. To make a new tool reachable:
+### 📋 Steps to Register a New Tool
 
-1. Put it in the narrow domain module under `backend/tools/`.
-2. Import and export it from that domain package’s `__init__.py`.
-3. Ensure `backend.server` imports the domain package.
-4. Add its result model to `backend/schemas/` and schema exports.
-5. Add it to the contract tests and domain tests.
-6. Regenerate the tool catalog.
+1. Implement the tool in a specialized module under `backend/tools/<domain>/`.
+2. Import and expose the function in `backend/tools/<domain>/__init__.py`.
+3. Verify that `backend.server` imports the domain package.
+4. Define the output model in `backend/schemas/` and expose it in `backend/schemas/__init__.py`.
+5. Add unit and contract tests under `tests/unit/`.
+6. Run `uv run python scripts/render_tool_catalog.py` to synchronize documentation.
 
-Do not create a second MCP server instance or register the same function through multiple import paths.
+---
 
-## Input contract
+## 📥 Input Contract & Validation Layering
 
-The MCP framework derives JSON Schema from the function signature. Public parameters should therefore be:
+JSON Schema is derived automatically by the MCP framework from Python function type hints. Parameter design principles:
+- 🎯 **Explicit Typing**: Use primitive types (`str`, `int`, `float`, `bool`) or Pydantic models. Avoid opaque unstructured `dict` inputs.
+- 💬 **Intent-Driven Naming**: Name arguments for agent intent (e.g. `subject_path`), not low-level Unity C# DTO field names.
+- 🛡️ **Defensive Bounds**: Provide sensible defaults and enforce upper bounds (e.g. maximum frame count, dimensions) before triggering expensive operations.
+- 📖 **Clear Docstrings**: Document expected physical units (meters, seconds, degrees) and scene side-effects.
 
-- typed explicitly;
-- named for agent intent, not bridge DTO field names;
-- bounded or validated before expensive work;
-- supplied with safe defaults;
-- documented with effects and units in the function docstring.
+### 🧱 Multi-Layered Validation Architecture
 
-Use Pydantic models or constrained literals when an input has structure. Avoid accepting an opaque raw dictionary when the fields form a durable public vocabulary.
+```text
+1. 📐 MCP / Pydantic Layer ➔ Validates types, ranges, required fields
+2. 🛠️ Tool Preflight Layer ➔ Validates domain logic (Edit Mode, path existence)
+3. 🔌 Bridge Client Layer   ➔ Validates HTTP connection & transport status
+4. 🎮 Unity Service Layer   ➔ Authoritative validation on Unity main thread
+```
 
-Validation should happen at the narrowest correct layer:
+---
 
-- MCP/Pydantic: shape and types;
-- tool function: domain combinations and safe ranges;
-- bridge client: transport behavior;
-- Unity service: authoritative existence and editor-state checks.
+## 📤 Output Contract & Status Envelopes
 
-## Output contract
+Every tool returns a model derived from `BaseToolResult`:
 
-Every registered tool must explicitly return a `BaseToolResult` subtype, or a tuple whose first item is one. The tuple form is used when the MCP response also includes an image block.
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `success` | `bool` | Whether the requested operation completed successfully |
+| `error` | `str \| None` | Actionable failure message (omitted when null in compact wire format) |
+| `retryable` | `bool` | Indicates whether re-invoking after Unity settles is recommended |
+| `unity_state` | `str \| None` | Transient state: `compiling`, `updating`, `reloading`, etc. |
+| `retry_after_seconds` | `float \| None` | Recommended backoff wait before retrying |
 
-The common envelope is:
+> [!CAUTION]
+> **`success=true` is NOT Visual Proof!** An asset import can return `success=true` while missing custom shader assignments. Always verify outcome evidence via secondary diagnostics or visual inspections.
 
-| Field | Meaning |
-| --- | --- |
-| `success` | Whether the represented operation completed |
-| `error` | Concrete failure reason, otherwise null/omitted on the compact wire |
-| `retryable` | Whether the identical call is worth retrying after Unity settles |
-| `unity_state` | `compiling`, `updating`, `reloading`, or an internal state description |
-| `retry_after_seconds` | Suggested delay before a transient retry |
+---
 
-Domain schemas add compact facts, warnings, counts, issue categories, paths, and messages. Prefer useful summaries and bounded samples over raw bridge dumps.
+## 🔄 Normalizing Bridge Payloads
 
-### `success` is not visual proof
+Native and legacy bridge responses exhibit subtle structural differences. Tools normalize payloads using shared helpers:
+- Unwrap outer legacy execution wrappers (`{success, result, logs}`) cleanly.
+- Coerce unknown bridge enum strings to safe defaults using `coerce_literal()` and emit diagnostic warnings.
+- Enforce diagnostic array limits (`DIAGNOSTIC_MAX_*`) before constructing output models.
+- **Strictly No Internal Compatibility Shims**: Internal Python code uses canonical APIs directly.
 
-A tool may successfully import an asset that still needs project-specific material setup, or capture a valid image in which a subject is out of frame. Results should expose the evidence needed for the next decision, and workflow documentation should name the verification call.
+---
 
-### Warnings are part of the contract
+## ⚡ Dual-Transport Dispatching Pattern
 
-Warnings describe degraded but usable results: truncated diagnostic arrays, unsupported auto-framing, a suffixed destination name, an unresolved curve path, or pose restoration that Unity did not confirm. Do not hide these in logs.
-
-## Parsing bridge payloads
-
-Native and legacy responses have related but not always identical shapes. Keep that normalization close to the tool domain:
-
-- use shared `_extract_result_payload`-style helpers instead of open-coding wrapper checks;
-- unwrap the legacy executor’s outer `{success, result, logs}` before evaluating the operation result;
-- accept documented alternate key casing only at the external HTTP boundary;
-- coerce unknown external enum-like values to an explicit fallback plus warning when the underlying operation remains useful;
-- cap arrays using configured diagnostic limits before constructing the result.
-
-Do not add Python compatibility aliases or preserve deprecated internal identifiers. External HTTP/JSON compatibility with AnkleBreaker is the only backward-compatibility exception.
-
-## Native capability plus legacy fallback
-
-For a workflow supported by both transports, the normal call pattern is:
+For workflows supporting both native and legacy bridges:
 
 ```python
 payload = await bridge.execute_capability(
@@ -112,13 +112,12 @@ payload = await bridge.execute_capability(
 )
 ```
 
-The bridge chooses the route. Tools should not duplicate port or flavor logic.
+> [!IMPORTANT]
+> Genuinely native-only workflows (such as hardware-timed animation recording or atomic multi-key transactions) must explicitly return an unsupported capability error when run against a legacy bridge, rather than faking success.
 
-Some workflows are genuinely native-only because the legacy executor cannot reproduce their timing or atomicity. Those tools must return an explicit unsupported-capability failure. They must never return fake success or silently perform a weaker mutation.
+---
 
-## Error handling
-
-At the tool boundary:
+## 🛡️ Error Handling & Exception Mapping
 
 ```python
 try:
@@ -127,65 +126,35 @@ except Exception as exc:
     return SomeResult(**bridge_error(exc), warnings=[...])
 ```
 
-Use narrower exception sets internally where recovery behavior differs. Preserve Unity compilation errors, runtime errors, HTTP status, and actionable messages. Do not collapse every failure into “bridge error.”
+- Always preserve compiler diagnostics, stack traces, and HTTP status codes.
+- Map `BridgeBusyError` via `bridge_error(exc)` to ensure `retryable=true` and `retry_after_seconds` propagate to the agent.
 
-For `BridgeBusyError`, use `bridge_error()` or `bridge_retry_fields()` so retry metadata survives. Never infer retryability from matching text.
+---
 
-## MCP context compaction
+## 📉 MCP Context Window Compaction
 
-`VisoraMCPServer` reduces context overhead in two places.
+To preserve context window tokens for LLM reasoning, `VisoraMCPServer` implements automated compaction:
 
-### Tool definitions
+### 1. Tool Definition Compaction (`COMPACT_TOOL_DEFINITIONS=true`)
+- Strips redundant JSON Schema `title` attributes recursively.
+- Truncates verbose `Args:`, `Returns:`, and `Raises:` sections from docstrings.
+- Excludes duplicate output schemas from initial tool announcements.
 
-With `COMPACT_TOOL_DEFINITIONS=true` (default):
+### 2. Result Payload Compaction (`COMPACT_TOOL_RESULTS=true`)
+- Strips redundant duplicate `structured_content` blocks.
+- Recursively removes `null` / `None` fields from serialized JSON.
+- Minifies whitespace while keeping disk artifacts in `artifacts/` at full fidelity.
 
-- output schemas are omitted from the advertised tool definition;
-- long docstring sections beginning with Args/Parameters/Returns/Raises are removed from the description;
-- redundant JSON Schema `title` fields are removed recursively.
+---
 
-The Python annotations and Pydantic result models still exist and are tested. Compaction changes what is advertised to the model, not the implementation contract.
+## ✅ New Tool Authoring Checklist
 
-### Tool results
+Before declaring a new tool complete:
+- [ ] 🎯 **Purpose**: Does this replace ad-hoc C# with a typed, repeatable workflow?
+- [ ] 🛡️ **Safety**: Does it restore temporary state on both success and failure?
+- [ ] ⏱️ **Idempotency**: Is `retry_on_timeout=False` specified for mutating writes?
+- [ ] 🔌 **Transport**: Does it support native, legacy, or declare native-only capability requirements?
+- [ ] 📐 **Schemas**: Does the output model inherit from `BaseToolResult`?
+- [ ] 🧪 **Testing**: Are unit tests and contract tests written and passing?
+- [ ] 📋 **Catalog**: Was `uv run python scripts/render_tool_catalog.py` executed?
 
-With `COMPACT_TOOL_RESULTS=true` (default):
-
-- duplicate MCP `structured_content` is removed;
-- JSON text is re-serialized compactly;
-- null-valued fields are omitted recursively.
-
-Image blocks remain available for visual tools. Full artifacts remain on disk even when inline content is downscaled.
-
-Disable either setting while debugging schema or serialization behavior, understanding that this increases MCP context usage.
-
-## Adding a tool: design checklist
-
-Before implementation:
-
-- Can an existing tool express the workflow without arbitrary C#?
-- Is the operation inspection, diagnosis, mutation, or verification?
-- What Unity state is required?
-- What temporary state must be restored?
-- Is replay after a timeout safe?
-- Is the operation supported by legacy, native, or both?
-- What result fields let an agent decide the next action?
-
-During implementation:
-
-- centralize config in `backend.config`;
-- centralize bridge behavior in `backend.bridge`;
-- centralize reusable legacy C# in the domain `scripts.py`;
-- use a typed result model;
-- bound large results;
-- preserve warnings and concrete errors;
-- use an operation ID or other idempotency mechanism for mutations where supported;
-- return artifact paths for large visual outputs.
-
-Before completion:
-
-- test success, Unity-declared failure, bridge outage, and transient-busy behavior as applicable;
-- test native and legacy shapes when both are supported;
-- verify restoration on success and exception;
-- regenerate `docs/AGENT_WORKFLOWS.md` with `scripts/render_tool_catalog.py`;
-- update the relevant workflow and backend document.
-
-See [Development](DEVELOPMENT.md) for validation commands and [State and safety](STATE_AND_SAFETY.md) for mutation-specific requirements.

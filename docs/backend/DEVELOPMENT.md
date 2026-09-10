@@ -1,213 +1,199 @@
-# Backend development
+# 🛠️ Backend Development & Contribution Guide
 
-This guide covers local development of the Python MCP server and bundled Unity package. Read [Architecture](README.md) first if you are unfamiliar with the request lifecycle.
+This guide covers local development, architectural conventions, testing standards, and validation gates for the Python MCP server and the bundled Unity package (`com.visora.editor`). Read the [Architecture Overview](README.md) first if you are unfamiliar with the request lifecycle.
 
 <p align="center">
   <img src="../assets/development-workflow.jpg" alt="Python and C-sharp source branches move through schemas, tests, compiler checks, Unity verification, documentation, and release" width="100%">
 </p>
 <p align="center"><em>Python and Unity changes have separate gates and converge only after verification.</em></p>
 
-## Prerequisites
+---
 
-For Python work:
+## 📋 Prerequisites
 
-- Python 3.10 or newer;
-- `uv`;
-- Git.
+| Component | Required Tools | Purpose |
+| :--- | :--- | :--- |
+| **Python MCP Server** | • Python `3.10+`<br>• `uv` package manager<br>• Git | Fast virtualenv resolution, linting, type-checking, and MCP runtime. |
+| **Unity Package** (`com.visora.editor`) | • Unity 6 (`6000.0+`)<br>• .NET SDK (`8.0+`)<br>• Licensed Unity Editor | Standalone Roslyn compile/format gates and EditMode integration tests. |
 
-For Unity package work:
+---
 
-- Unity 6 matching the package manifest;
-- .NET SDK for the standalone C# compile/format gate;
-- a locally licensed Unity Editor for EditMode integration tests.
+## ⚙️ Environment Setup
 
-## Environment setup
+Follow these steps to initialize your local development environment:
 
 ```bash
+# 1. Clone repository
 git clone https://github.com/AmaLS367/Visora.git
 cd Visora
+
+# 2. Synchronize locked dependencies and virtual environment
 uv sync --locked --all-extras
+
+# 3. Create environment configuration
 cp .env.example .env
 ```
 
-Use `uv` for every repository Python command. `uv.lock` is committed and CI checks that it is current.
+> [!TIP]
+> Always use `uv` for repository Python commands. The `uv.lock` file is tracked in Git, and CI strictly enforces lockfile synchronization.
 
-Run the server:
+### Running the MCP Server Locally
+
+Launch the server using the CLI script:
 
 ```bash
 uv run visora
 ```
 
-or the equivalent module entrypoint:
+Or via the explicit Python module entrypoint:
 
 ```bash
 uv run python -m backend.server
 ```
 
-Because MCP uses stdio, manual terminal execution normally appears to wait for input. The useful first integration test is to start it from an MCP client and call `get_bridge_status`.
+> [!NOTE]
+> Because MCP operates over `stdio`, manual terminal execution will await JSON-RPC input. To test interactively, connect an MCP client (such as Claude Desktop or Cursor) or write an automated integration test against `backend.server.create_server()`.
 
-## Working tree rules
+---
 
-- Keep bridge HTTP details in `backend.bridge` or a narrow tool helper.
-- Keep settings in `backend.config`; do not read new environment variables ad hoc.
-- Use Pydantic models at public tool boundaries.
-- Centralize reusable legacy C# in the relevant `scripts.py`.
-- Return explicit unsupported or failure results; never return fake success.
-- Bound diagnostic output and keep the default response compact.
-- Preserve the scene and restore every temporary diagnostic state.
-- Do not add internal Python compatibility aliases, wrappers, or deprecated import paths. Update all callers directly.
-- Keep changes focused and use conventional commit messages.
+## 🛡️ Working Tree & Code Rules
 
-## Common development paths
+To keep the codebase maintainable, reliable, and agent-friendly, adhere to these non-negotiable rules:
 
-### Add or change an MCP tool
+* **Strictly NO Internal Backward Compatibility in Python:** Zero tolerance for legacy wrappers, compatibility aliases, deprecated import shims, or fallback arguments inside Python code. When signatures or modules change, update all callers and tests directly.
+* **Encapsulate Bridge Transport:** Keep HTTP/JSON details strictly inside `backend.bridge` or narrow tool helpers. Never leak raw `httpx` logic into domain tools.
+* **Centralize Settings:** Place all configuration variables in `backend.config.Settings`. Never read environment variables ad hoc.
+* **Typed Pydantic Boundaries:** Every MCP tool must take typed inputs and return an explicit Pydantic schema model with `model_dump()`.
+* **Centralize Legacy C#:** Place reusable C# fallback scripts in the relevant `scripts.py` module; avoid ad-hoc inline C# snippets.
+* **Fail Open & Transparently:** Return explicit error fields and unsupported states. Never return fake success or hide bridge failures.
+* **Protect the Scene:** Never save during Play Mode. Always register Undo groups for mutations and restore temporary diagnostic state (e.g., diagnostic cameras, lights, or sampled poses).
+* **Compact Diagnostic Payloads:** Keep default responses agent-friendly and bounded (e.g., summarize large vertex arrays or truncate verbose logs).
+* **Conventional Commits:** Use clear conventional commit messages (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`).
 
-1. Identify the domain package and existing helper/bridge pattern.
-2. Define or update the Pydantic result schema.
-3. Implement the function with `@mcp.tool()` and an explicit return annotation.
-4. Export it through the domain package so startup registration imports it.
-5. Add tool-contract, domain, outage, and transport-shape tests as relevant.
-6. Regenerate the catalog:
+---
 
+## 🚀 Common Development Paths
+
+### 1️⃣ Add or Change an MCP Tool
+
+```mermaid
+graph LR
+    A[Domain Package] --> B[Pydantic Schema]
+    B --> C[Tool Function @mcp.tool]
+    C --> D[Export in __init__.py]
+    D --> E[Tests]
+    E --> F[Regenerate Catalog]
+```
+
+1. Identify the target domain package under `backend/tools/` (e.g., `vision/`, `animation/`, `mesh/`, `asset/`).
+2. Define or update the typed Pydantic result model under `backend/schemas/`.
+3. Implement the tool function with `@mcp.tool()` and an explicit return type annotation.
+4. Export the tool in the domain package's `__init__.py` so startup auto-registration picks it up.
+5. Add unit, outage, and contract tests under `tests/unit/`.
+6. Regenerate the documentation tool catalog:
    ```bash
    uv run python scripts/render_tool_catalog.py
    ```
+7. Update workflow guides in `docs/AGENT_WORKFLOWS.md` and tool references in `docs/backend/TOOLS_AND_SCHEMAS.md`.
 
-7. Update workflow and backend documentation.
+### 2️⃣ Add a Native Unity Endpoint
 
-### Add a native endpoint
+1. Define the request/response DTO and register the route in `VisoraHttpRouter.cs`.
+2. Dispatch main-thread Unity API work via `MainThreadDispatcher.EnqueueAsync` or `EnqueueSteppedAsync`.
+3. Place domain implementation logic in a focused service under `unity-package/Editor/Services/`.
+4. Advertise the named capability in `/api/visora/info` (`VisoraInfoService.cs`).
+5. Implement the corresponding client method in Python's `UnityBridge` and declare its capability dependency.
+6. Provide a legacy C# script fallback if feasible, or return an explicit `501 Not Implemented` with a clear explanation.
+7. Add C# EditMode tests (`unity-package/Tests/Editor/`) and Python integration tests, then run the Unity compile gate.
 
-1. Define the request DTO and route in `VisoraHttpRouter.cs`.
-2. Dispatch Unity API work through `MainThreadDispatcher`.
-3. Put domain logic in a focused service under `Editor/Services/`.
-4. Advertise a named capability in `/api/visora/info`.
-5. Add the Python `UnityBridge` method and make capability selection explicit.
-6. Decide whether a legacy script fallback is equivalent; if not, fail clearly.
-7. Classify replay behavior, especially read timeouts on mutations.
-8. Add C# and Python tests, then run all Unity gates.
+### 3️⃣ Refactor an Internal Python Interface
 
-### Change a Python internal interface
+Update the interface canonically across the entire repository in a single commit. Update all callers, imports, tests, and documentation. Never add deprecation shims or aliases.
 
-Use one canonical name and signature. Update all imports, callers, tests, scripts, and documents in the same change. The project deliberately rejects compatibility shims inside Python; only the external AnkleBreaker HTTP/JSON transport retains backward compatibility.
+---
 
-## Validation by change type
+## 🚦 Validation Gates by Change Type
 
-Choose validation in proportion to the change.
+Select validation gates strictly in proportion to the scope of changes:
 
-### Documentation, comments, or other non-functional edits
+| Change Scope | Required Validation Commands | Notes |
+| :--- | :--- | :--- |
+| **Documentation & Non-functional**<br>*(Markdown, comments, docstrings)* | `uv run ruff format --check .`<br>`uv run python scripts/render_tool_catalog.py --check` | Fast check. Markdown Python code snippets must pass ruff formatting. |
+| **Isolated Python Tool**<br>*(Local helper or single tool)* | `uv run ruff check <file>`<br>`uv run ruff format --check <file>`<br>`uv run mypy <file>`<br>`uv run pytest tests/unit/<domain>/` | Token and time-efficient gate targeted to the modified domain. |
+| **Core / Architectural Python**<br>*(Config, bridge, multi-tool)* | `uv run ruff check . --fix`<br>`uv run ruff format .`<br>`uv run mypy .`<br>`uv run pytest` | Full Python gate. Verify diff after automated formatting. |
+| **Unity Package** (`unity-package/`)<br>*(C# sources, shaders, editor UI)* | `uv run python scripts/check_unity_package.py`<br>`uv run python scripts/check_unity_package.py --format` | Compiles against real Unity managed assemblies using Roslyn analyzers. |
+| **Animation Stack Changes**<br>*(Real-time preview, IK, sampling)* | `uv run python scripts/check_unity_tests.py` | Runs real Unity EditMode test suite headless. |
 
-Do not run test suites. Check only relevant documentation invariants, for example:
+> [!IMPORTANT]
+> The C# compile gate uses auto-discovered Unity installations. In custom environments, set `VISORA_UNITY_MANAGED_DIR` pointing to Unity's `Editor/Data/Managed` directory. For EditMode tests, set `VISORA_UNITY_EDITOR` to the Unity executable path.
 
-```bash
-uv run python scripts/render_tool_catalog.py --check
-```
+---
 
-Also inspect links, headings, version numbers, command examples, and the diff. CI intentionally ignores Markdown-only changes.
-
-### Isolated Python tool change
-
-Run formatting/linting/type checks on modified files and the narrow relevant tests. Example:
-
-```bash
-uv run ruff check backend/tools/vision/camera.py
-uv run ruff format --check backend/tools/vision/camera.py
-uv run mypy backend/tools/vision/camera.py
-uv run pytest tests/unit/vision/test_vision.py
-```
-
-Adjust paths to the changed domain.
-
-### Large Python or architectural change
-
-Run the full Python gate sequentially:
-
-```bash
-uv run ruff check . --fix
-uv run ruff format .
-uv run mypy .
-uv run pytest
-```
-
-The first two commands can modify files. Review their diff before committing.
-
-### Any Unity package change
-
-After every change under `unity-package/`, compile against real Unity assemblies and verify C# formatting:
-
-```bash
-uv run python scripts/check_unity_package.py
-uv run python scripts/check_unity_package.py --format
-```
-
-The script auto-discovers common Unity Hub paths. In a non-standard installation, set `VISORA_UNITY_MANAGED_DIR` to Unity’s `Editor/Data/Managed` directory.
-
-After animation-stack changes, also run real Unity EditMode integration tests:
-
-```bash
-uv run python scripts/check_unity_tests.py
-```
-
-Set `VISORA_UNITY_EDITOR` when the Editor executable is not auto-discovered. Results and logs are written under ignored `artifacts/` paths.
-
-## Test structure
+## 📂 Test Suite Structure
 
 ```text
-tests/unit/core/          config, MCP server, schemas, catalog, definitions
-tests/unit/bridge/        transport and native authoring client behavior
-tests/unit/vision/        images, cameras, capture, video
-tests/unit/animation/     inspection, preview, records, authoring, IK, QA
-tests/unit/mesh/          diagnostic analysis
-tests/unit/asset/         providers, downloader, archives, import safety
-tests/integration/        bridge, scene, assets, and multi-module workflow contracts
-unity-package/Tests/     real Unity EditMode service tests
+tests/
+├── unit/
+│   ├── core/          # Config, MCP server, schemas, catalog, CLI definitions
+│   ├── bridge/        # Transport, retries, discovery, native authoring client
+│   ├── vision/        # Camera listing, screenshots, framing, diagnostic lighting
+│   ├── animation/     # Skeleton inspection, previews, IK solver, QA scans
+│   ├── mesh/          # Diagnostic analysis, bounds, vertex validation
+│   └── asset/         # Providers, downloaders, archive extraction, import safety
+├── integration/       # End-to-end multi-module workflows and bridge contracts
+└── unity-package/Tests/Editor/ # Real Unity EditMode C# service tests
 ```
 
-Tests must isolate `.env` when validating defaults because Pydantic settings load `.env` relative to the current working directory. Prefer injecting `Settings` into `UnityBridge` and patching the package-level bridge used by the domain under test.
+> [!TIP]
+> When testing configuration defaults, isolate `.env` loading using `monkeypatch` or test fixtures, as Pydantic settings load from the current working directory by default.
 
-## Generated tool catalog
+---
 
-The table between `GENERATED_TOOL_CATALOG_START` and `GENERATED_TOOL_CATALOG_END` in `docs/AGENT_WORKFLOWS.md` is generated from the actual MCP registry.
+## 📦 Distribution & Packaging Checks
 
-```bash
-uv run python scripts/render_tool_catalog.py
-uv run python scripts/render_tool_catalog.py --check
-```
-
-Never edit rows in that region by hand. Narrative workflow guidance around it remains authored documentation.
-
-## Distribution checks
-
-Project metadata and the console script live in `pyproject.toml`. Distribution metadata uses README as the long description; wheels include the `backend` package, `py.typed`, and the declared license file. Before a release or packaging change, build both artifacts, then use the repository validation script:
+Project metadata and CLI entrypoints are defined in `pyproject.toml`. Before cutting a release or committing packaging updates:
 
 ```bash
+# Build source distribution and wheel
 uv build
+
+# Validate wheel contents, metadata, and license declarations
 uv run python scripts/validate_distribution.py
 ```
 
-Release version changes may need synchronized edits in Python package metadata, Docker image labels/tags, Unity package metadata, bridge response metadata, changelogs, and documentation. The Python distribution and Unity package have separate versions; do not assume they always advance together.
+> [!NOTE]
+> Python package version (`pyproject.toml`) and Unity package version (`unity-package/package.json`) are maintained independently. Do not assume they increment simultaneously.
 
-## Documentation checklist
+---
 
-When behavior changes, update the smallest relevant set:
+## 📝 Documentation Checklist
 
-- `README.md` for positioning, quick start, or headline capabilities;
-- `docs/SETUP_GUIDE.md` for prerequisites, config, install, and recovery;
-- `docs/AGENT_WORKFLOWS.md` for agent sequences and generated catalog;
-- `docs/backend/BRIDGE.md` for transport/retry semantics;
-- `docs/backend/TOOLS_AND_SCHEMAS.md` for public contracts;
-- `docs/backend/STATE_AND_SAFETY.md` for mutation/restoration rules;
-- `docs/backend/ASSET_PIPELINE.md` for network/file/import safety;
-- `docs/CHANGELOG.md` and `docs/ROADMAP.md` for release history and scope.
+When updating features or behavioral contracts, keep documentation synchronized:
 
-Every command in documentation should be runnable from the repository root unless the surrounding text states otherwise.
+- [ ] [README.md](../../README.md): High-level feature summaries, quick start, badges.
+- [ ] [docs/SETUP_GUIDE.md](../SETUP_GUIDE.md): Environment variables, ports, client configs.
+- [ ] [docs/AGENT_WORKFLOWS.md](../AGENT_WORKFLOWS.md): Workflow recipes and regenerated MCP catalog.
+- [ ] [docs/backend/BRIDGE.md](BRIDGE.md): Port discovery, transport retries, error taxonomy.
+- [ ] [docs/backend/TOOLS_AND_SCHEMAS.md](TOOLS_AND_SCHEMAS.md): Public schemas, payload bounds.
+- [ ] [docs/backend/STATE_AND_SAFETY.md](STATE_AND_SAFETY.md): Mutation guards, Undo transactions.
+- [ ] [docs/backend/ASSET_PIPELINE.md](ASSET_PIPELINE.md): Quarantine extraction, anti-SSRF rules.
+- [ ] [docs/CHANGELOG.md](../CHANGELOG.md) & [docs/ROADMAP.md](../ROADMAP.md): Release milestones and logs.
 
-## Debugging workflow
+---
 
-1. Reproduce with the narrowest public tool.
-2. Record the typed result, including warnings and retry fields.
-3. Confirm mode/port and editor state.
-4. Determine whether the fault is MCP registration, tool preflight, HTTP transport, Unity routing/main-thread dispatch, domain service, or result parsing.
-5. Add a regression at the lowest layer that proves the defect and a contract-level test when user-visible behavior changed.
-6. Verify temporary state and artifacts after both the success and failure path.
+## 🔍 Systematic Debugging Workflow
 
-See [Bridge](BRIDGE.md) for transport-specific diagnosis and [State and safety](STATE_AND_SAFETY.md) for recovery decisions.
+When diagnosing an unexpected tool failure or bridge outage, follow this structured path:
+
+1. **Narrow Reproduction:** Execute the minimal MCP tool call reproducing the issue.
+2. **Inspect Structured Output:** Examine `success`, `error`, `warnings`, and `retry_suggested` fields.
+3. **Verify Editor State:** Confirm whether Unity is running, current Play/Edit mode, and active port.
+4. **Isolate Failure Layer:** Determine if the breakdown occurred in:
+   - Tool argument preflight validation;
+   - Loopback HTTP transport;
+   - Unity C# route matching;
+   - MainThreadDispatcher serialization;
+   - Unity scene API execution;
+   - Result deserialization in Python.
+5. **Add Regression Test:** Add a test at the lowest reproducible layer before applying the fix.
+6. **Verify State Cleanup:** Ensure no temporary cameras, undo groups, or locked assets remain.

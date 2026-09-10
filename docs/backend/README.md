@@ -1,132 +1,125 @@
-# Backend architecture
+# 🏗️ Visora Backend Architecture
 
-The Visora backend is the agent-facing workflow layer. It receives MCP calls over standard input/output, coordinates work against a Unity Editor HTTP bridge, interprets bridge payloads, writes local evidence artifacts when needed, and returns compact Pydantic results.
+> Deep architectural reference detailing runtime boundaries, process topologies, module ownership, and the request lifecycle between AI agents, the Python MCP server, and Unity Editor.
 
-“Backend” in this documentation includes both sides of that workflow:
+The Visora backend functions as the high-level, agent-facing workflow layer. It accepts incoming Model Context Protocol (MCP) tool invocations over standard I/O (`stdio`), dispatches structured operations to a local Unity Editor HTTP bridge, parses and normalizes editor telemetry, persists visual and diagnostic artifacts, and yields compact, validated Pydantic responses.
 
-- `backend/`: the Python MCP server and HTTP client;
-- `unity-package/`: the optional native `com.visora.editor` companion running inside Unity.
+---
 
-The Python package remains the public product boundary. The Unity package accelerates and strengthens that boundary; it does not expose a second MCP API.
+## 🌐 Runtime Topology & Process Boundaries
+
+Visora strictly distinguishes between two independent communication layers:
+1. **Agent Transport (MCP over `stdio`)**: The AI agent / MCP host spawns and talks to `visora` via standard input and output streams.
+2. **Editor Transport (HTTP/JSON on loopback)**: The Python server communicates with Unity Editor's listening bridge over `127.0.0.1`.
 
 <p align="center">
   <img src="../assets/system-architecture.jpg" alt="Visora system layers from AI agent through Python tools and the bridge to a live Unity Editor" width="100%">
 </p>
-<p align="center"><em>Agent intent enters through MCP; authoritative scene work stays inside Unity.</em></p>
-
-## Runtime topology
+<p align="center"><em>Agent intent enters through typed MCP; authoritative scene work stays inside Unity.</em></p>
 
 ```mermaid
 sequenceDiagram
-    participant A as MCP client / agent
-    participant M as backend.app (MCPServer)
-    participant T as backend.tools
-    participant B as UnityBridge
-    participant H as Unity HTTP bridge
-    participant U as Unity main thread / services
+    participant A as 🤖 AI Agent / MCP Client
+    participant M as ⚙️ backend.app (MCPServer)
+    participant T as 🛠️ backend.tools
+    participant B as 🔌 UnityBridge
+    participant H as 🌐 Unity HTTP Router
+    participant U as 🎮 Unity Main Thread
 
     A->>M: call_tool(name, arguments)
-    M->>T: validate arguments and invoke registered function
-    T->>B: high-level bridge request
-    B->>H: HTTP/JSON on selected local port
-    H->>U: dispatch Unity API work to main thread
-    U-->>H: structured result / image data
+    M->>T: validate schema and invoke tool function
+    T->>B: execute_capability(...)
+    B->>H: HTTP/JSON on discovered loopback port
+    H->>U: dispatch via MainThreadDispatcher
+    U-->>H: structured result / framebuffer
     H-->>B: HTTP response
-    B-->>T: decoded dictionary or typed bridge exception
-    T->>T: normalize, analyze, save artifacts
+    B-->>T: decoded payload or typed bridge exception
+    T->>T: normalize, classify, and write artifacts
     T-->>M: Pydantic BaseToolResult subtype
-    M-->>A: compact MCP content and optional image block
+    M-->>A: compacted MCP result + optional image block
 ```
 
-There are two independent transports:
+> [!WARNING]
+> Do not attempt to bind an external HTTP port to the MCP server. The ports configured in `UNITY_BRIDGE_*` belong strictly to Unity Editor's internal loopback listener.
 
-1. The MCP client starts and communicates with the Python server over stdio.
-2. The Python server communicates with Unity over local HTTP/JSON.
+---
 
-Do not configure an HTTP port for the MCP server. The ports in `UNITY_BRIDGE_*` belong to the Unity bridge only.
+## ⚡ Startup & Tool Registration Mechanics
 
-## Startup and registration
+The console command `visora` (or `python -m backend.server`) executes `backend.server:main`.
 
-The console script declared in `pyproject.toml` calls `backend.server:main`.
+Startup executes sequentially:
+1. ⚙️ **Settings Initialization**: `backend.server` loads cached Pydantic settings (`get_settings()`) and configures structured logging.
+2. 📦 **Package Imports**: Imports all tool packages under `backend.tools` (`bridge`, `scene`, `vision`, `animation`, `mesh`, `asset`).
+3. 🏷️ **Decorator Registration**: Importing each module triggers `@mcp.tool()` decorators against the singleton `backend.app.mcp` instance.
+4. 🚀 **Event Loop Start**: `mcp.run()` initializes the stdio JSON-RPC loop.
 
-Startup is intentionally small:
+> [!NOTE]
+> Tool registration is purely import-driven. Any new tool module must be exposed in its parent package's `__init__.py`, otherwise it will not register with the server.
 
-1. `backend.server` loads cached Pydantic settings and configures logging.
-2. It imports the tool packages under `backend.tools`.
-3. Importing those packages imports each module containing `@mcp.tool()` functions.
-4. The decorators register functions on the singleton `backend.app.mcp` server.
-5. `mcp.run()` starts the stdio MCP loop.
+---
 
-Tool registration is therefore import-driven. A correctly implemented module that is never imported from its package `__init__.py` will not appear in the MCP catalog. The generated catalog test exists partly to catch this class of error.
+## 📦 Python Module Ownership Matrix
 
-`get_settings()` is process-cached, and domain bridge instances are created during imports. Environment or `.env` changes therefore require restarting the MCP server process; changing a file while the process is running does not reconfigure existing clients.
+| Module | Core Responsibility | Boundary Constraints |
+| :--- | :--- | :--- |
+| `backend/app.py` | MCP server instance, agent prompts, response & schema compaction | No Unity-specific business logic |
+| `backend/server.py` | Process entrypoint, logging bootstrap, registration imports | No tool implementations |
+| `backend/config.py` | Centralized Pydantic settings and validation | No ad-hoc environment parsing |
+| `backend/bridge/` | Port discovery, HTTP client, retries, reload recovery, transport errors | No domain-level result classification |
+| `backend/tools/bridge/` | Agent-facing bridge status and background task ticketing | No low-level socket handling |
+| `backend/tools/scene/` | Editor state, Play Mode management, Undo transactions | No animation or asset-specific policies |
+| `backend/tools/vision/` | Camera queries, screenshots, MP4 recording, image diffs | No arbitrary scene mutations |
+| `backend/tools/animation/` | Rig inspection, keyframing, preview videos, IK, gaze, and motion QA | No generic HTTP handling |
+| `backend/tools/mesh/` | Skinned mesh diagnostics and issue classification | No material or transform mutations |
+| `backend/tools/asset/` | 3D asset search, quarantine staging, and Unity import | No bridge transport mechanics |
+| `backend/schemas/` | Typed Pydantic result vocabulary and nested models | No filesystem or HTTP side effects |
 
-## Python module ownership
+---
 
-| Area | Owns | Must not own |
-| --- | --- | --- |
-| `backend/app.py` | MCP server instance, agent instructions, response/schema compaction | Unity-specific workflow logic |
-| `backend/server.py` | process entrypoint, logging setup, registration imports | tool implementations |
-| `backend/config.py` | all environment-backed settings and normalization | ad hoc module-level environment reads |
-| `backend/bridge/` | port discovery, HTTP, retry/recovery, bridge flavor and capabilities, typed transport errors | domain interpretation such as mesh classification |
-| `backend/tools/bridge/` | agent-facing health and task-ticket tools | raw transport mechanics |
-| `backend/tools/scene/` | editor state, Play Mode, save rules, Undo-aware generic transactions | asset or animation-specific policies |
-| `backend/tools/vision/` | camera queries, capture, image analysis, MP4 encoding, artifacts | arbitrary scene authoring |
-| `backend/tools/animation/` | clip, skeleton, preview, authoring, rig, contact, IK, gaze, and temporal QA workflows | generic HTTP behavior |
-| `backend/tools/mesh/` | raw mesh diagnostic interpretation and issue classification | material or rig mutation |
-| `backend/tools/asset/` | provider search, secure staging, Unity import, inspection, instantiation | bridge discovery |
-| `backend/schemas/` | public result vocabulary and nested typed records | HTTP requests or filesystem side effects |
+## 🎮 Unity Package Service Responsibilities
 
-Reusable C# snippets for legacy execution live in narrow `scripts.py` modules. A tool should not duplicate a raw snippet already represented there.
+When using `com.visora.editor`, responsibility within Unity is partitioned across focused C# services:
 
-## Unity package ownership
+| Component | Architecture Responsibility |
+| :--- | :--- |
+| `Editor/Core/VisoraServer.cs` | Loopback `HttpListener` lifecycle, background threading, and assembly reload restarts |
+| `Editor/Core/VisoraHttpRouter.cs` | HTTP route matching, DTO deserialization, JSON responses, and capability flags |
+| `Editor/Core/MainThreadDispatcher.cs` | Safe marshaling of incoming HTTP tasks to the Unity Editor main thread |
+| `Editor/Core/VisoraSettings.cs` | `EditorPrefs`-backed persistent settings (port, auto-start, logging) |
+| `Editor/Services/` | Domain services for cameras, animations, assets, IK solvers, and transactions |
+| `Tests/Editor/` | Automated Unity EditMode integration test fixtures |
 
-| Area | Responsibility |
-| --- | --- |
-| `Editor/Core/VisoraServer.cs` | Loopback-only `HttpListener` lifecycle and assembly-reload restart |
-| `Editor/Core/VisoraHttpRouter.cs` | HTTP route matching, request DTOs, JSON responses, advertised capabilities |
-| `Editor/Core/MainThreadDispatcher.cs` | Moving Unity API work from HTTP worker threads to the Editor main thread |
-| `Editor/Core/VisoraSettings.cs` | EditorPrefs-backed port, auto-start, and verbose-log settings |
-| `Editor/Services/` | Camera, diagnostics, queue, transaction, asset, animation, IK, and authoring implementations |
-| `Tests/Editor/` | Unity EditMode tests against production services |
+> [!IMPORTANT]
+> Unity APIs are fundamentally main-thread-bound. Incoming HTTP requests accept payloads asynchronously on worker threads, but all scene and asset mutations are dispatched through `MainThreadDispatcher`.
 
-Unity APIs are generally main-thread-bound. The HTTP listener accepts work on background tasks, but the router must dispatch Unity API access through `MainThreadDispatcher`. Time-based routines are stepped on `EditorApplication.update`; only one such routine runs at a time because concurrent routines could snapshot and restore each other’s temporary global state incorrectly.
+---
 
-## Request lifecycle
+## 🔄 End-to-End Request Lifecycle
 
-### 1. MCP validation
+### 1️⃣ MCP Schema Validation
+Parameters are validated against the derived Pydantic schema before the tool body runs, rejecting malformed requests immediately.
 
-The MCP framework derives an input schema from the Python function signature. Parameters are validated before the function runs. Public tools declare explicit return types derived from `BaseToolResult`.
+### 2️⃣ Tool Preflight
+The tool evaluates constraints that cannot be expressed purely through schemas: active Edit Mode requirements, frame rate limits, or required native package capabilities.
 
-### 2. Tool preflight
+### 3️⃣ Transport Selection
+`UnityBridge` determines whether to route via high-performance native JSON endpoints (`/api/visora/*`) or via legacy AnkleBreaker C# statement bodies.
 
-The tool validates domain conditions that HTTP cannot express: Edit Mode requirements, clip paths, camera dimensions, frame budgets, asset destinations, or required native capabilities.
+### 4️⃣ Unity Main Thread Execution
+The request is queued and executed on Unity's main thread, guaranteeing thread safety for transforms, shaders, and animations.
 
-### 3. Transport selection
+### 5️⃣ Interpretation & Classification
+The Python tool unrolls the raw Unity payload, coerces known enumerations, classifies diagnostic anomalies, and compiles actionable warnings.
 
-The shared `UnityBridge` selects a configured port and bridge flavor. A tool normally calls `execute_capability(legacy_code, native_path=..., native_payload=...)`:
+### 6️⃣ Evidence Artifacts & Compaction
+Visual tools write full-resolution PNGs, comparison diffs, or MP4s to `artifacts/`. The MCP response is compacted to conserve the agent's context window.
 
-- native bridge with a supplied native route: send typed JSON directly;
-- legacy bridge: compile and execute the centralized C# statement body;
-- native-only workflow: reject explicitly when the feature is not advertised.
+---
 
-Capability checks are separate from flavor checks. Stable core routes dispatch by flavor, while version-sensitive and advanced workflows require an advertised feature before selecting the optimized or native-only path. A new tool must decide explicitly which rule applies.
+## 📐 Shared Result Invariant & Status Contract
 
-### 4. Unity execution
-
-The native router deserializes request DTOs, dispatches Unity API work to the main thread, and serializes a JSON object. Legacy mode wraps the snippet’s own result inside the executor’s outer execution result; domain parsers unwrap that layer before reading operation success.
-
-### 5. Interpretation
-
-Tool code translates raw keys, bounds potentially large arrays, classifies diagnostics, and accumulates warnings. Known vocabulary is represented by typed fields. Unexpected external values degrade to documented fallbacks with warnings where preserving the successful diagnostic is safer than rejecting the whole response.
-
-### 6. Evidence and result
-
-Visual tools may write PNG, contact-sheet, MP4, or preview-record artifacts under `artifacts/`. The tool returns an absolute artifact path and may additionally return an MCP image block. `backend.app.VisoraMCPServer` compacts the final wire result by default.
-
-## Shared result invariant
-
-Every public result inherits:
+Every public tool returns a model derived from `BaseToolResult`:
 
 ```python
 class BaseToolResult(RetryHint):
@@ -140,51 +133,47 @@ class RetryHint(BaseModel):
     retry_after_seconds: float | None = None
 ```
 
-Additional data and warnings are tool-specific. A caller should interpret the envelope as follows:
+### 🧭 Interpretation Guidelines for Agents
 
-- `success=true`: read data and warnings; verify the domain outcome.
-- `success=false`, `retryable=true`: Unity was transiently compiling, importing, or reloading; wait as suggested and retry.
-- `success=false`, `retryable=false`: change configuration, input, or project state before retrying.
+- ✅ `success=true`: The operation succeeded. Inspect returned data, warnings, and artifacts.
+- ⏳ `success=false, retryable=true`: Unity is transiently compiling scripts or reloading domain. Wait `retry_after_seconds` and retry.
+- ❌ `success=false, retryable=false`: Operational error (invalid arguments, missing object, fatal Avatar blocker). Do not retry without modifying parameters or scene state.
 
-“Unreachable” is intentionally not marked retryable. This prevents an agent from looping forever when Unity is not running.
+---
 
-## Shared instances and patch points
+## 🔌 Native vs. Legacy Bridge Architecture
 
-Each tool package exposes a long-lived `UnityBridge` instance from its `common.py` or health module. The async HTTP client, active port, last-good port, flavor, and supported features are therefore cached across calls in that process.
+| Capability | ⚡ Native `com.visora.editor` | 🔌 Legacy AnkleBreaker |
+| :--- | :--- | :--- |
+| **Configuration** | `UNITY_BRIDGE_MODE=native` | `UNITY_BRIDGE_MODE=legacy` (default) |
+| **Endpoints** | Dedicated typed routes under `/api/visora/*` | Single `/execute` endpoint |
+| **Execution** | Pre-compiled C# services | Dynamic C# compilation & execution |
+| **High-FPS Capture** | Hardware-clocked native sequence capture | Per-frame polling or compatible routines |
+| **Capabilities** | Advertised dynamically via `/api/visora/info` | Fixed synthesized core set |
+| **Unity Support** | Unity 6 (`6000.0`)+ | Determined by AnkleBreaker |
 
-Some tool modules deliberately call through the package attribute, for example `backend.tools.animation.bridge`, rather than retaining a copied module binding. This keeps the active bridge replaceable in tests and centralizes state for the domain package. When adding a tool, follow the existing package pattern instead of constructing a new `UnityBridge` per call.
+---
 
-## Native and legacy behavior
+## 📁 Artifact Storage & Ownership
 
-| Property | Native `com.visora.editor` | Legacy AnkleBreaker |
-| --- | --- | --- |
-| Selection | `UNITY_BRIDGE_MODE=native` | default `legacy` |
-| Discovery identity | `flavor: visora-native` | missing/native-different flavor treated as legacy |
-| High-level endpoints | Yes, under `/api/visora/*` | No |
-| Compatible executor | Yes | Yes |
-| Capability advertisement | `/api/visora/info` | synthesized core list |
-| Sequence capture | Native single-request routines | compatible or per-frame fallback depending on workflow |
-| Minimum Unity version | Unity 6 from package manifest | determined by AnkleBreaker installation |
+Generated visual and diagnostic evidence is written to disk relative to the server working directory:
 
-`auto` is intended for mixed installations and prefers legacy when both a legacy and native bridge respond. This is current behavior, not a recommendation to run both.
+```text
+artifacts/
+  ├── screenshots/           Single-frame camera renders & contact sheets
+  ├── comparisons/           Visual before/after diff images
+  ├── frames/                Individual video frame sequences
+  ├── visora-video-*.mp4     Assembled MP4 animation captures
+  └── animation_previews/    Preview manifests, keyframes, and record.json
+```
 
-## Artifact ownership
+---
 
-Artifacts are relative to the Python process working directory:
+## 📚 Related Architectural Guides
 
-- `artifacts/screenshots/`: screenshots and inspection contact sheets;
-- `artifacts/comparisons/`: visual diff images;
-- `artifacts/frames/`: video frame images and contact sheets;
-- `artifacts/visora-video-*.mp4`: general video captures;
-- `artifacts/animation_previews/<preview_id>/`: key frames, contact sheet, MP4, and atomic `record.json`.
+- 🌐 [Bridge & Failure Semantics](BRIDGE.md) — Discovery, retries, and domain reload recovery.
+- 📐 [Tools & Schemas](TOOLS_AND_SCHEMAS.md) — Schema design and context compaction rules.
+- 🛡️ [State & Safety](STATE_AND_SAFETY.md) — Play Mode invariants and transaction lifecycles.
+- 💻 [Backend Development](DEVELOPMENT.md) — Local testing and validation gates.
+- 🤖 [Agent Workflows](../AGENT_WORKFLOWS.md) — Task recipes and 46-tool MCP catalog.
 
-Full-resolution data lives at the returned path. Inline images are downscaled according to `VISION_INLINE_MAX_DIMENSION`; MP4 base64 is opt-in. Artifact cleanup is currently an operator responsibility except for internal preview pruning helpers.
-
-## Further reading
-
-- [Bridge and failure semantics](BRIDGE.md)
-- [Tools and schemas](TOOLS_AND_SCHEMAS.md)
-- [State and safety](STATE_AND_SAFETY.md)
-- [Asset pipeline](ASSET_PIPELINE.md)
-- [Backend development](DEVELOPMENT.md)
-- [Agent workflows](../AGENT_WORKFLOWS.md)

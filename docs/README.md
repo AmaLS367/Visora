@@ -1,92 +1,96 @@
-# Visora documentation
+# 📚 Visora Documentation Hub
 
-This directory documents Visora from three points of view: the person installing it, the agent using it, and the maintainer extending it.
+> Complete architectural, operational, and development documentation for Visora — bridging AI agents with Unity Editor through typed MCP workflows.
+
+This directory documents Visora from three complementary perspectives: the **operator** setting it up, the **autonomous agent** executing workflows, and the **maintainer** extending tools and bridges.
 
 <p align="center">
   <img src="assets/system-architecture.jpg" alt="An AI agent communicates through typed Python tools and a resilient bridge with a live Unity Editor" width="100%">
 </p>
-<p align="center"><em>One agent-facing workflow layer, two bridge implementations, and Unity as the source of truth.</em></p>
+<p align="center"><em>One agent-facing workflow layer, two bridge implementations, and Unity as the authoritative source of truth.</em></p>
 
-## Choose a starting point
+---
 
-| I want to… | Read |
-| --- | --- |
-| Understand the idea and product boundaries | [Concepts and philosophy](CONCEPTS.md) |
-| Install Visora and connect an MCP client | [Setup guide](SETUP_GUIDE.md) |
-| See every MCP tool and reliable task recipes | [Agent workflows](AGENT_WORKFLOWS.md) |
-| Understand the Python and Unity architecture | [Backend architecture](backend/README.md) |
-| Diagnose bridge discovery, reloads, or timeouts | [Bridge and failure semantics](backend/BRIDGE.md) |
-| Add or modify a tool or result model | [Tools and schemas](backend/TOOLS_AND_SCHEMAS.md) |
-| Reason about Undo, saving, Play Mode, and cleanup | [State and safety](backend/STATE_AND_SAFETY.md) |
-| Understand secure asset downloads and imports | [Asset pipeline](backend/ASSET_PIPELINE.md) |
-| Set up a development environment and validate changes | [Backend development](backend/DEVELOPMENT.md) |
-| Check what shipped or what is next | [Changelog](CHANGELOG.md) and [roadmap](ROADMAP.md) |
+## 🧭 Choose Your Starting Point
 
-## Documentation map
+| Objective | Guide | Focus Area |
+| :--- | :--- | :--- |
+| 💡 **Understand Core Concepts** | [Concepts and Philosophy](CONCEPTS.md) | Problem formulation, design principles, benefits, and boundaries. |
+| 🛠️ **Install & Connect Client** | [Setup Guide](SETUP_GUIDE.md) | Local environment, MCP clients (Claude/Cursor), Docker, and verification. |
+| 🤖 **Agent Workflows & Recipes** | [Agent Workflows](AGENT_WORKFLOWS.md) | Complete 46-tool MCP catalog and task-specific recipes. |
+| 🏗️ **Backend Architecture** | [Backend Architecture](backend/README.md) | Process boundaries, startup, dispatch, and request lifecycles. |
+| 🌐 **Bridge Transport & Retries** | [Bridge & Failure Semantics](backend/BRIDGE.md) | Native/legacy routing, domain-reload recovery, and error codes. |
+| 📐 **Tools & Result Schemas** | [Tools and Schemas](backend/TOOLS_AND_SCHEMAS.md) | Pydantic contracts, result compaction, and tool authoring. |
+| 🛡️ **Scene Integrity & Undo** | [State and Safety](backend/STATE_AND_SAFETY.md) | Edit/Play mode boundaries, transactions, and state restoration. |
+| 📦 **Asset Ingestion Pipeline** | [Asset Pipeline](backend/ASSET_PIPELINE.md) | Quarantine sandboxing, SSRF defenses, archive checks, and imports. |
+| 💻 **Maintainer Workflow** | [Backend Development](backend/DEVELOPMENT.md) | Local development, test suites, and pre-commit validation gates. |
+| 🗺️ **Releases & Roadmap** | [Changelog](CHANGELOG.md) & [Roadmap](ROADMAP.md) | Released features, version milestones, and future plans. |
 
-### User and operator documentation
+---
 
-- [Setup guide](SETUP_GUIDE.md) covers supported runtime combinations, installation, MCP configuration, environment variables, Docker, and first-run verification.
-- [Agent workflows](AGENT_WORKFLOWS.md) is task-oriented. Its tool table is generated from the actual MCP registry and must not be edited by hand.
-- [Troubleshooting](SETUP_GUIDE.md#troubleshooting) starts from observable symptoms such as “bridge unreachable,” “Unity is busy,” or “the imported model is empty.”
+## 🗺️ Documentation Map
 
-### Product documentation
+### 👤 User & Operator Documentation
 
-- [Concepts and philosophy](CONCEPTS.md) explains why Visora is a workflow layer rather than a collection of editor-script snippets.
-- [Roadmap](ROADMAP.md) records release scope and historical delivery notes.
-- [Changelog](CHANGELOG.md) records changes by release.
+- 🛠️ [Setup Guide](SETUP_GUIDE.md) — Supported runtime combinations, installation options, MCP client configuration, environment settings, and Docker containerization.
+- 🩺 [Troubleshooting](SETUP_GUIDE.md#troubleshooting) — Observable symptom resolutions (e.g. *bridge unreachable*, *Unity domain reload busy*, *imported model empty*).
 
-### Maintainer documentation
+### 🤖 Agent & Product Documentation
 
-The [`backend/`](backend/) section describes implementation details that are easy to miss when reading one tool in isolation:
+- 💡 [Concepts and Philosophy](CONCEPTS.md) — Explains why Visora is a safety workflow layer rather than an ad-hoc C# snippet runner.
+- 🤖 [Agent Workflows](AGENT_WORKFLOWS.md) — Task-oriented guide featuring the verified 46-tool MCP catalog.
+- 🗺️ [Roadmap](ROADMAP.md) & 📜 [Changelog](CHANGELOG.md) — Release histories and planned evolution.
 
-- process startup and import-time tool registration;
-- the distinction between MCP transport and Unity HTTP transport;
-- bridge flavor and capability negotiation;
-- why read timeouts are not automatically replayed;
-- how domain reload is recognized and recovered;
-- Pydantic result invariants and context compaction;
-- scene/animation safety and temporary-state ownership;
-- asset quarantine, path containment, redirect validation, and import verification;
-- Python, C#, Unity, and generated-document validation gates.
+### 🏗️ Maintainer & Architecture Documentation
 
-## Sources of truth
+The [`backend/`](backend/) directory details deep implementation mechanics:
+- ⚡ **Startup & Discovery**: Import-time tool registration and multi-port bridge discovery.
+- 🔄 **Failure Recovery**: Distinguishing transport timeouts from Unity script compilation or domain reloads.
+- 📦 **Pydantic Contracts**: Strict public typing paired with tolerant transport parsing.
+- 🛡️ **Transactional Safety**: Scoped undo groups, Play Mode guards, and temporary state cleanup.
+- 🔒 **Security Defense**: Asset quarantine, path traversal guards, SSRF validation, and zip bomb mitigations.
 
-When documents and implementation disagree, use these sources in order:
+---
 
-1. Tool signatures and Pydantic schemas under `backend/tools/` and `backend/schemas/`.
-2. Bridge behavior in `backend/bridge/` and native routes in `unity-package/Editor/Core/VisoraHttpRouter.cs`.
-3. Automated tests under `tests/` and `unity-package/Tests/Editor/`.
-4. Generated tool catalog in [Agent workflows](AGENT_WORKFLOWS.md#tool-catalog).
-5. Narrative documentation.
+## 📌 Sources of Truth
 
-Version requirements come from `pyproject.toml` and `unity-package/package.json`. Configuration defaults come from `backend/config.py`; `.env.example` is the copyable reference.
+When documentation and implementation diverge, resolve discrepancies using this strict hierarchy:
 
-## Visual language
+1. 📐 **Tool Signatures & Schemas**: `backend/tools/` and `backend/schemas/`.
+2. 🔌 **Bridge Protocols**: `backend/bridge/` and `unity-package/Editor/Core/VisoraHttpRouter.cs`.
+3. 🧪 **Automated Test Suites**: Tests under `tests/` and `unity-package/Tests/Editor/`.
+4. 📋 **Generated Catalog**: The tool table in [Agent Workflows](AGENT_WORKFLOWS.md#tool-catalog).
+5. 📖 **Narrative Documentation**.
 
-Documentation illustrations follow the visual identity established by the Visora banner: near-black technical space, cyan request/inspection paths, violet mutation/recovery paths, and white verification accents.
+> [!NOTE]
+> Version requirements are defined in `pyproject.toml` and `unity-package/package.json`. Configuration defaults are defined in `backend/config.py`, with `.env.example` as the canonical reference.
 
-Keep future additions consistent:
+---
 
-- use conceptual raster illustrations for orientation and mood;
-- use Mermaid or tables when exact labels and relationships matter;
-- avoid embedding explanatory text inside generated images;
-- write alt text that explains the relationship shown, not just the objects present;
-- add a short caption stating the page’s key idea;
-- optimize large raster files before committing them;
-- reuse an illustration only when the same concept is genuinely being explained.
+## 🎨 Visual Language & Design System
 
-Current project illustrations and their reusable prompt set live under [`docs/assets/`](assets/README.md).
+Documentation graphics adhere to the visual identity established by the Visora banner:
+- 🌌 **Near-black technical canvas**
+- 🔷 **Cyan** (`#00FFFF` / `#38BDF8`) for observation, inspection, and telemetry paths
+- 🟣 **Violet** (`#A855F7` / `#8B5CF6`) for mutations, kinematic solvers, and recovery paths
+- ⚪ **Pure white / neutral gray** for verification accents and boundaries
 
-## Keeping documentation current
+Project illustrations and generative prompt definitions reside under [`docs/assets/`](assets/README.md).
 
-Documentation is part of the public tool contract. A change is incomplete when it changes a tool name, parameter, output, feature requirement, failure mode, installation step, or safety rule without updating the relevant guide.
+---
 
-After changing an MCP tool, regenerate and verify the catalog:
+## 🔄 Keeping Documentation Synchronized
+
+> [!IMPORTANT]
+> Documentation is part of Visora's public tool contract. Whenever modifying tool names, parameters, result structures, or safety invariants, always update the corresponding documentation.
+
+After modifying tool definitions, synchronize and verify the generated catalog:
 
 ```bash
 uv run python scripts/render_tool_catalog.py
 uv run python scripts/render_tool_catalog.py --check
 ```
 
-For documentation-only edits, do not run the Python or Unity test suites. Check Markdown links, headings, generated regions, and factual consistency instead. See [Backend development](backend/DEVELOPMENT.md#validation-by-change-type).
+> [!TIP]
+> For documentation-only changes, do not run the entire Python/Unity test suite. Verify Markdown links, headings, generated regions, and formatting instead. See [Backend Development](backend/DEVELOPMENT.md#validation-by-change-type).
+
