@@ -7,10 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.1.3] - 2026-09-10
 
 ### Added
 
+- **10 Agent Skills for Production Animation, IK, & Action Workflows:** reusable, prescriptive skills under `skills/` establishing deterministic verification routines, tool sequences, and safety constraints:
+  - `visora-animation-workflow`: guides character rig/Avatar preflight, safe low-resolution Edit Mode preview iterations, contact constraint analysis, keyframe hold authoring, and final capture criteria without risking scene corruption or inferring success from static screenshots.
+  - `visora-camera-action-workflow`: enforces a single authoritative impact timestamp $T_{\text{impact}}$ orchestrating character holds, camera recoil, flash triggers, and hit-stops without unsynchronized procedural screen shake.
+  - `visora-rig-retarget-workflow`: guides imported rig inspection, Humanoid preflight, Avatar blocker diagnosis, mocap retargeting verification, contact IK baking, and explicit fallback paths for Generic/non-Humanoid rigs.
+  - `visora-contact-ik-workflow`: prescribes contact phase identification, limb chain verification, pole vector selection, reachability analysis, and continuous curve baking to lock effectors and eliminate foot/hand sliding.
+  - `visora-gaze-and-acting-workflow`: prescribes hierarchical look-at gaze distribution across chest, neck, head, and eyes, anatomical limit verification, and natural posture evaluation.
+  - `visora-animation-qa-workflow`: prescribes automated mathematical QA passes covering curve discontinuity scans, angular velocity/jerk spikes, foot sliding verification, and regression metrics.
+  - `visora-motion-polish-workflow`: prescribes applying the 12 principles of animation in 3D, kinematic joint jerk smoothing, and spacing verification.
+  - `visora-camera-contact-workflow`: prescribes authoring high-impact character-camera interactions (drops, stomps, lens strikes), viewport effector alignment, synchronized hit-stops, and recoil impulses.
+  - `visora-lookdev-workflow`: prescribes verifying scene lighting contrast, material albedo ranges, exposure balance, and silhouette readability.
+  - `visora-sequence-authoring-workflow`: prescribes coordinating multi-track scenes, simultaneous character animations, camera trajectories, and keyframe events using atomic transactions.
+  - Skill integrity test suite: `tests/unit/skills/test_skills.py` systematically validating YAML frontmatter, naming conventions, required sections, tool references, and safety rules across all skills.
+- **Inverse Kinematics, Viewport Effector Alignment, & Character Gaze:** typed MCP tools and native endpoints for character posing and kinematic problem-solving:
+  - `solve_two_bone_ik`: analytical 3D Two-Bone inverse kinematics solver for arm and leg chains with target position, pole vector orientation, optional angle limits, and curve baking to AnimationClip (`backend/tools/animation/ik.py`).
+  - `place_effector_in_viewport`: computes 3D world targets from normalized 2D camera viewport coordinates `(x, y, depth)` and executes Two-Bone IK to align effectors (hands/feet) directly to camera framing.
+  - `solve_character_gaze`: distributes eye-line and head look-at direction naturally across chest, neck, head, and eyes with biomechanical weighting, anatomical rotation limits, and optional curve baking (`backend/tools/animation/gaze.py`).
+  - Native Unity bridge endpoints: `/api/visora/animation/ik/two-bone`, `/api/visora/animation/ik/viewport-align`, and `/api/visora/animation/gaze/solve` via `InverseKinematicsService.cs` and `GazeService.cs`.
+- **Temporal Motion QA, Curve Discontinuity Diagnostics, & Motion Polish:** mathematical animation diagnostics and smoothing tools:
+  - `detect_curve_discontinuities`: mathematical scan for first- and second-derivative velocity/acceleration jumps, tangent mismatches, and Euler flip discontinuities ($>180^\circ$) across AnimationClip curve bindings (`backend/tools/animation/qa.py`).
+  - `analyze_joint_motion`: temporal QA scanner evaluating angular velocity, acceleration jerk, and foot sliding thresholds across animation timelines.
+  - Kinematic smoothing via native `AnimationMotionQAService.cs`: reduces excessive joint jerk and trajectory jitter while preserving key silhouette poses.
+  - Vocabulary coercion and error resilience (`backend.tools.animation.common`): added `warns()` and `coerce_literal()` helpers to safely handle unknown or unmodelled Unity bridge enum responses in `MotionAnomaly`, `CurveDiscontinuityItem`, and `BodyPenetrationEvent`.
+- **Camera-Subject Action Coordination, Effector Contact Baking, & Atomic Transactions:**
+  - `author_camera_subject_action`: coordinates high-impact beats (drops, stomps, lens strikes) aligning character effectors to the camera viewport, authoring synchronized hit-stops, camera recoil impulses, and lens flashes at exact impact timestamps ($T_{\text{impact}}$).
+  - `bake_effector_contact`: stepped Edit Mode contact locking for limbs/effectors against ground or geometry over designated contact time ranges to eliminate foot sliding.
+  - `analyze_self_intersections`: detects mesh and bone self-penetration and volume collision anomalies across animated poses, supporting generic skeleton segment detection and outlier filtering (`AnimationSelfIntersectionService.cs`).
+  - `edit_animation_transaction`: atomic multi-operation transaction runner for AnimationClips (upserting keys, removing keys, adding/removing animation events, hold ranges) with automatic pre-mutation backup snapshots under `VisoraBackups/`, unified Undo grouping, and automatic rollback on error (`AnimationTransactionService.cs`, `AnimationRollbackService.cs`).
+  - Non-destructive C# authoring helpers: `AnimationSampling` for safe `AnimationMode` lifecycle and `AnimationCurveWriter` for tangent-preserving, non-destructive curve writes.
+- **Humanoid Retargeting and Contact Constraints MCP Tools:** 5 typed MCP tools for character setup, retargeting validation, and contact dynamics:
+  - `validate_humanoid_avatar` for diagnosing avatar validity, required bone hierarchy (15 required bones), T-pose/A-pose orientation, and scale anomalies with actionable `AvatarBlocker` diagnostics.
+  - `configure_humanoid_avatar` for configuring imported character models via `ModelImporter` (`create_new` or `copy_from_other`).
+  - `preview_humanoid_retarget` for testing animation compatibility on humanoid rigs, detecting unmapped bones, root motion drift, and posture distortions.
+  - `analyze_contact_constraints` for stepped Edit Mode contact analysis, detecting foot sliding, ground penetration, and effector phase transitions.
+  - `bake_contact_constraints` for 3D Two-Bone analytical IK baking to lock contacts and eliminate foot slipping, with automatic `.anim` cloning for read-only FBX assets, pre-mutation snapshots under `VisoraBackups/`, and Undo support.
+  - Native package capabilities: `/api/visora/humanoid/*` endpoints with `humanoid_avatar_diagnostics`, `humanoid_avatar_configuration`, and `humanoid_contact_constraints` feature detection.
+- **AnimationClip Keyframe, Event, and Backup Management:**
+  - `list_animation_keyframes` for multi-channel curve inspection, tangent modes, and step-tangent hold ranges.
+  - `list_animation_backups` and `restore_animation_clip` for automatic pre-mutation asset snapshots stored under `VisoraBackups/` and atomic file rollback.
+  - Native package capability: typed native HTTP endpoints under `/api/visora/animation/*` with feature detection (`animation_authoring`), idempotency tracking, undo registration, and atomic backup snapshots.
+- **Reproducible Preview Artifacts & Comparison Engine:** stable artifact records and regression diffing for animation iteration:
+  - `AnimationPreviewRecord` schema and atomic storage engine in `backend.tools.animation.preview_store`, organizing preview runs under `artifacts/animation_previews/<preview_id>/` with `record.json`, MP4 video, and extracted keyframe PNGs.
+  - New MCP tools: `get_animation_preview_record` for loading full preview manifests and `list_animation_preview_records` for compact historical summaries.
+  - Upgraded `compare_animation_previews` with `preview_compare` engine: diffs preview inputs, motion metrics, peak timestamps, and generates side-by-side visual contact sheet artifacts comparing before/after keyframes.
+- **One-Step Animation Review & High-FPS Preview:**
+  - `preview_animation` one-step review: one Edit Mode call inspects an authored clip, preserves its full range within the native frame ceiling, captures a low-resolution MP4, selects timestamped boundary/event/motion key frames, and returns motion and restoration diagnostics. Live verification on `Тестинг` captured `RebeccaDropkick` at an actual 24.0 fps across 49 frames; auto-framing corrected a clipped `Main Camera` view with a temporary camera that was destroyed afterwards, while the target pose and clean scene state were restored.
+  - `authored_clip` capture mode: samples an AnimationClip at exact timestamps in Edit Mode, hitting 23.999998 of a requested 24 fps in 1.87s with no domain reload, and restoring the target pose afterwards.
+  - Native real-time sequence recording: Unity records a whole camera sequence on its own clock and returns it in one response (`diagnostic_lit` went from 0.58 to 9.65 fps and `game_camera` reached 10.8 fps).
+  - Measured frame timing: sequences report `actual_fps` and `timing_source` (`native_realtime`, `edit_mode_sampled`, or `python_wallclock`), and MP4 is encoded at the rate actually achieved so playback runs at real speed.
 - **Real Unity End-to-End Animation Fixtures & C# Test Suites:** deterministic integration fixtures and end-to-end test suites for the production workflows that mocks cannot establish:
   - C# EditMode integration test suites (`unity-package/Tests/Editor/`):
     - `HumanoidRigIntegrationTests`: validates Generic rig `AvatarBlocker` diagnostics, actionable suggestions, and missing bone warnings; validates complete 15-bone Humanoid rig in canonical T-pose with zero blockers and angular symmetry; verifies four-limb contact constraint analysis via `HumanoidContactService.AnalyzeContacts`.
@@ -21,56 +69,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Multi-phase domain reload recovery: verifies client resilience across socket connection drops, transient empty HTTP 200 responses, and non-JSON HTML bodies until bridge re-binding is complete.
     - Stale first Game View frame detection: validates `_discard_stale_frames` comparing against baseline, discarding pre-Play-Mode content, and awaiting dynamic frames.
     - Physical artifact verification: inspects real files on disk, ensuring `record.json` matches `AnimationPreviewRecord` schema, MP4 files have valid `ftyp` container headers, and keyframes are valid PNGs.
-- **Reproducible Preview Artifacts & Comparison Engine:** stable artifact records and regression diffing for animation iteration:
-  - `AnimationPreviewRecord` schema and atomic storage engine in `backend.tools.animation.preview_store`, organizing preview runs under `artifacts/animation_previews/<preview_id>/` with `record.json`, MP4 video, and extracted keyframe PNGs.
-  - New MCP tools: `get_animation_preview_record` for loading full preview manifests and `list_animation_preview_records` for compact historical summaries.
-  - Upgraded `compare_animation_previews` with `preview_compare` engine: diffs preview inputs, motion metrics, peak timestamps, and generates side-by-side visual contact sheet artifacts comparing before/after keyframes.
-- **Agent Skills for Animation Workflows:** reusable, prescriptive skills under `skills/`:
-  - `visora-animation-workflow`: guides character rig preflight, progressive preview iteration, and final capture criteria.
-  - `visora-camera-action-workflow`: enforces a single authoritative impact timestamp $T_{\text{impact}}$, synchronized poses, camera recoil, flash, and hit-stop without unsynchronized procedural shake.
-  - `visora-rig-retarget-workflow`: guides imported rig validation, Humanoid eligibility diagnostics, and Generic rig fallbacks.
-  - Skill integrity test suite: `tests/unit/test_skills.py` validating skill structure, YAML frontmatter, tool references, and safety rules.
-- **Humanoid retargeting and contact constraints MCP tools:** 5 typed MCP tools for character setup, retargeting validation, and contact dynamics:
-  - `validate_humanoid_avatar` for diagnosing avatar validity, required bone hierarchy (15 required bones), T-pose/A-pose orientation, and scale anomalies.
-  - `configure_humanoid_avatar` for configuring imported character models via `ModelImporter` (`create_new` or `copy_from_other`).
-  - `preview_humanoid_retarget` for testing animation compatibility on humanoid rigs, detecting unmapped bones, root motion drift, and posture distortions.
-  - `analyze_contact_constraints` for stepped Edit Mode contact analysis, detecting foot sliding, ground penetration, and effector phase transitions.
-  - `bake_contact_constraints` for 3D Two-Bone analytical IK baking to lock contacts and eliminate foot slipping, with automatic `.anim` cloning for read-only FBX assets, pre-mutation snapshots under `VisoraBackups/`, and Undo support.
-  - Native package capabilities: `/api/visora/humanoid/*` endpoints with `humanoid_avatar_diagnostics`, `humanoid_avatar_configuration`, and `humanoid_contact_constraints` feature detection.
-- **AnimationClip and event authoring MCP tools:** 9 typed MCP tools for non-destructive animation clip editing:
-  - `list_animation_keyframes`, `set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, and `set_keyframe_hold` for multi-channel curve authoring, tangent modes, and step-tangent hold ranges.
-  - `create_animation_event` and `remove_animation_event` for authoring synchronized timeline markers and events (e.g., hit-stop, camera recoil, sound triggers).
-  - `list_animation_backups` and `restore_animation_clip` for automatic pre-mutation asset snapshots stored under `VisoraBackups/` and atomic file rollback.
-  - Native package capability: typed native HTTP endpoints under `/api/visora/animation/*` with feature detection (`animation_authoring`), idempotency tracking, undo registration, and atomic backup snapshots.
-- **`preview_animation` one-step review:** one Edit Mode call inspects an authored clip, preserves its full range within the native frame ceiling, captures a low-resolution MP4, selects timestamped boundary/event/motion key frames, and returns motion and restoration diagnostics. Live verification on `Тестинг` captured `RebeccaDropkick` at an actual 24.0 fps across 49 frames; auto-framing corrected a clipped `Main Camera` view with a temporary camera that was destroyed afterwards, while the target pose and clean scene state were restored.
-- **Native real-time sequence recording:** Unity records a whole camera sequence on its own clock and returns it in one response. Measured against a live editor, `diagnostic_lit` went from 0.58 to 9.65 fps and `game_camera` reached 10.8 fps, because per-frame capture spent a bridge round trip on every frame.
-- **`authored_clip` capture mode:** samples an AnimationClip at exact timestamps in Edit Mode, hitting 23.999998 of a requested 24 fps in 1.87s with no domain reload, and restoring the target pose afterwards.
-- **Measured frame timing:** sequences report `actual_fps` and `timing_source` (`native_realtime`, `edit_mode_sampled`, or `python_wallclock`), and MP4 is encoded at the rate actually achieved so playback runs at real speed.
-- **C# compile gate:** `scripts/check_unity_package.py` builds the Unity package against real Unity assemblies with .NET and Unity analyzers, in CI as well as locally. Unity was previously the only thing that ever compiled this code.
+  - C# compile gate: `scripts/check_unity_package.py` builds the Unity package against real Unity assemblies with .NET and Unity analyzers, in CI as well as locally.
 
 ### Changed
 
-- **Downscaled inline MCP images and lowered screenshot default:** optimized agent token and context consumption across vision workflows:
-  - Downscaled inline MCP `Image` payloads to at most 1280px on the longest edge via `_downscale_for_inline` (`VISION_INLINE_MAX_DIMENSION`), preserving aspect ratio while keeping full-resolution PNG artifacts intact on disk across `screenshot`, `compare_screenshots`, `inspect_scene_visual`, `preview_animation`, and `capture_video`.
-  - Lowered default `screenshot` resolution to 1280×720 (previously 1920×1080), saving ~55% pixels per call.
-- **Lowered diagnostic dump thresholds:** reduced default diagnostic dump sizes to save context tokens while preserving rig/clip topology: `diagnostic_max_bindings` (25 → 12), `diagnostic_max_transforms` (25 → 12), `diagnostic_max_bones` (30 → 16), `diagnostic_max_bone_bindings` (30 → 16), and `diagnostic_max_hierarchy_nodes` (50 → 24).
-- **Pruned duplicate and single-op MCP tools:** reduced catalog overhead by removing redundant tools and aliases:
-  - Removed pure aliases `clip_inspector` and `analyze_animation_curves` in favor of canonical `inspect_animation_clip`.
-  - Removed single-op keyframe and event authoring tools (`set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, `set_keyframe_hold`, `create_animation_event`, `remove_animation_event`) in favor of atomic `edit_animation_transaction`.
-  - Merged polling wrapper `wait_for_editor_idle` into `get_editor_state(wait=True)`.
-  - Merged polling wrapper `wait_for_ticket` into `check_ticket_status(wait=True)`.
-  - Merged `get_video_frames` and `get_video_mp4` into a unified `capture_video` tool with `output: Literal["frames", "mp4"]`.
-- **Reactive reload recovery for the bridge:** a healthy request costs exactly one round trip (no preemptive probe). Once a request fails with a connection drop or a mid-reload body, the bridge polls Unity's editor state — pinging only the last known-good port, one full rescan at most — until it is idle, then retries the request once. If Unity stays busy past `UNITY_BRIDGE_READY_WAIT_SECONDS` (default 8s) it raises `BridgeBusyError` (`reason` = `compiling` / `updating` / `reloading` / `unreachable`) instead of soaking the full per-request timeout and retry budget (minutes for `execute_code`). Tools surface it as `retryable=true` with `unity_state` and `retry_after_seconds` on the result. New settings: `UNITY_BRIDGE_STATE_PROBE_TIMEOUT_SECONDS`, `UNITY_BRIDGE_READY_WAIT_SECONDS`.
-- **Read timeouts on non-idempotent bridge calls are no longer retried:** a read timeout means the request already reached Unity, so replaying it could apply the edit twice. `execute_code`, asset import/instantiate, all bakes and IK/gaze solves, and transaction execute/commit/rollback now fail fast on a read timeout (`retry_on_timeout=False`); read-only and operation-id-keyed idempotent endpoints still retry. Recovery never re-sends a request that timed out mid-flight. The bridge also prefers the last working port on reconnect.
+- **MCP Token Overhead Reduction & Agent Context Protection:**
+  - **82% reduction in MCP tool definition tokens:** implemented custom `VisoraMCPServer` overriding `list_tools` to strip redundant `output_schema` definitions, stripped duplicated Args/Returns docstring sections while preserving operational guidance, and stripped cosmetic `title` properties from parameter JSON schemas (`COMPACT_TOOL_DEFINITIONS`).
+  - **Compacted tool execution results:** added `compact_tool_results` setting (enabled by default) to override `call_tool` in `VisoraMCPServer`, stripping duplicate `structured_content`, and stripping `None`/null fields and indentation whitespace from TextContent JSON payloads, significantly reducing agent context consumption per tool call.
+  - **Throttled diagnostic data dumps & context protection:** added centralized diagnostic dump limits to Settings (`path_filter`, `max_bindings`, `max_transforms` with anomalous bone prioritization, `max_bones`, `max_bone_bindings`, `max_hierarchy_nodes`) and lowered default thresholds by ~50% (`diagnostic_max_bindings`: 25 → 12, `diagnostic_max_transforms`: 25 → 12, `diagnostic_max_bones`: 30 → 16, `diagnostic_max_bone_bindings`: 30 → 16, and `diagnostic_max_hierarchy_nodes`: 50 → 24) to protect LLM context windows while preserving rig/clip topology.
+  - **Downscaled inline MCP images & lowered screenshot defaults:** downscaled inline MCP `Image` payloads to at most 1280px on the longest edge via Lanczos resampling (`VISION_INLINE_MAX_DIMENSION`), saving ~55% pixels and context tokens per call while keeping full-resolution PNG artifacts intact on disk across `take_screenshot`, `compare_screenshots`, `inspect_scene_visual`, `preview_animation`, and `capture_video`. Lowered default `take_screenshot` resolution from 1920×1080 to 1280×720.
+  - **Multimodal FastMCP vision migration:** replaced base64 string fields with `file_path`, `contact_sheet_path`, and `diff_image_path`, returning native FastMCP `Image` blocks alongside compact metadata schemas and persisting rendered frames, screenshots, and labeled contact sheets under `artifacts/`.
+- **MCP Tool Catalog Pruning & Consolidation:**
+  - Pruned 11 redundant tools and aliases, reducing the active catalog from 55 tools (46,460 characters) to 44 tools (34,518 characters, -25.7% total footprint):
+    - Removed pure aliases `clip_inspector` and `analyze_animation_curves` in favor of canonical `inspect_animation_clip`.
+    - Removed single-op keyframe and event authoring tools (`set_animation_keyframe`, `move_animation_keyframe`, `remove_animation_keyframe`, `set_keyframe_hold`, `create_animation_event`, `remove_animation_event`) in favor of atomic `edit_animation_transaction`.
+    - Merged polling wrapper `wait_for_editor_idle` into `get_editor_state(wait=True)`.
+    - Merged polling wrapper `wait_for_ticket` into `check_ticket_status(wait=True)`.
+    - Merged `get_video_frames` and `get_video_mp4` into a unified `capture_video` tool with format selection (`output: Literal["frames", "mp4"]`).
+- **Unity C# Package Performance & Refactoring:**
+  - Optimized reflection caching: cached reflection lookups across Unity Editor services to eliminate repetitive reflection overhead during animation sampling and bone mapping.
+  - Bone matching acceleration: replaced switch patterns and sequential string matches with dictionary lookups and fast lookup tables for humanoid and custom rig bones.
+  - Robust animation sampling lifecycle: introduced `AnimationSampling` context ensuring `AnimationMode.StartAnimationMode` and `AnimationMode.StopAnimationMode` are cleanly paired even during unhandled exceptions.
+- **Modular Test Suite Architecture (`tests/unit/`):** eliminated flat test directory bloat by reorganizing unit tests into domain-scoped subpackages mirroring the backend structure (`animation/`, `asset/`, `bridge/`, `core/`, `mesh/`, `skills/`, `vision/`):
+  - Isolated 19 animation, kinematics, and rig test suites under `tests/unit/animation/` (`test_animation`, `test_ik`, `test_gaze`, `test_contact`, `test_qa`, `test_preview`, `test_transaction`, etc.).
+  - Grouped server, configuration, schemas, tool catalog, and diagnostic dump tests under `tests/unit/core/`.
+  - Enables targeted domain test execution (e.g. `uv run pytest tests/unit/animation/`) while maintaining 100% test pass rate across all 512 tests, and preserving complete git history and blame tracking.
+- **Reactive Bridge Reload Recovery & Failover:**
+  - A healthy request costs exactly one round trip (no preemptive probe). Once a request fails with a connection drop or a mid-reload body, the bridge polls Unity's editor state — pinging only the last known-good port, one full rescan at most — until it is idle, then retries the request once. If Unity stays busy past `UNITY_BRIDGE_READY_WAIT_SECONDS` (default 8s) it raises `BridgeBusyError` (`reason` = `compiling` / `updating` / `reloading` / `unreachable`) instead of soaking the full per-request timeout and retry budget (minutes for `execute_code`). Tools surface it as `retryable=true` with `unity_state` and `retry_after_seconds` on the result. New settings: `UNITY_BRIDGE_STATE_PROBE_TIMEOUT_SECONDS`, `UNITY_BRIDGE_READY_WAIT_SECONDS`.
+  - Read timeouts on non-idempotent bridge calls are no longer retried: a read timeout means the request already reached Unity, so replaying it could apply the edit twice. `execute_code`, asset import/instantiate, all bakes and IK/gaze solves, and transaction execute/commit/rollback now fail fast on a read timeout (`retry_on_timeout=False`); read-only and operation-id-keyed idempotent endpoints still retry. Recovery never re-sends a request that timed out mid-flight. The bridge also prefers the last working port on reconnect.
 
 ### Fixed
 
 - **`get_video_mp4` rejected its own default frame rate ([#6](https://github.com/AmaLS367/Visora/issues/6)):** it validated fps up to 30, then delegated to `get_video_frames`, which re-validated at the 12 fps frame-payload limit. Both tools now share a capture core with their own ceiling.
 - **Transient Unity responses during domain reload:** the bridge answers 200 with an empty or non-JSON body while reloading, which surfaced as a raw `JSONDecodeError` that no retry path recognised. All decode sites now raise a typed `BridgeProtocolError`, and the play-mode and readiness polls treat it as transient.
-- **Stale first Game View frame:** `game_camera` discards frames still showing pre-Play-Mode content, warning instead of failing when a scene is simply static.
+- **Stale first Game View frame ([#4](https://github.com/AmaLS367/Visora/issues/4)):** `game_camera` discards frames still showing pre-Play-Mode content, warning instead of failing when a scene is simply static.
+- **Compilation and runtime error visibility ([#5](https://github.com/AmaLS367/Visora/issues/5)):** surfaced compilation errors and runtime diagnostics cleanly in `safe_scene_transaction`.
 - **Lost recordings on a single dropped frame:** a transient bridge failure is retried instead of ending the sequence.
 - **Duplicated frame warnings:** an identical per-frame caveat is reported once with its frame count, rather than repeated for every frame.
 - **Unity 6 deprecations:** replaced `FindObjectsOfType`, `AssetDatabase.ImportPackage`, and `EntityId.GetRawData` with their current equivalents.
+- **Docstring indentation in server:** normalized docstring indentation in `compact_tool_description` to prevent malformed MCP tool descriptions.
+
+See the [v0.1.3 roadmap](ROADMAP.md#--planned-for-v013--animation-authoring--temporal-verification) for the delivery status and scope of these milestones.
 
 ---
 
