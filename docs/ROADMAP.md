@@ -2,6 +2,11 @@
 
 > **Current Release:** 🚀 **v0.1.3 (Completed)**
 
+<p align="center">
+  <img src="assets/development-workflow.jpg" alt="Python and Unity development tracks pass through validation and converge into a verified Visora release" width="100%">
+</p>
+<p align="center"><em>Each release joins the typed Python workflow layer, native Unity services, tests, and documentation.</em></p>
+
 ---
 
 ## 🚀 Released in v0.1.3 — Animation Authoring & Temporal Verification

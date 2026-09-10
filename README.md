@@ -2,118 +2,164 @@
   <img src="https://raw.githubusercontent.com/AmaLS367/Visora/master/docs/assets/banner.png" alt="Visora Banner" width="100%">
 </p>
 
-# Visora 👁️
+# Visora
 
-Visora is a high-level Model Context Protocol (MCP) server for Unity Editor. It supports AnkleBreaker as the default compatibility transport and the bundled native Unity package, with typed tools for visual diagnostics, safe scene work, animation, rigging, meshes, and queue polling.
+Visora is a high-level [Model Context Protocol](https://modelcontextprotocol.io/) server for Unity Editor. It gives AI agents typed tools for seeing a scene, understanding its state, changing it safely, and verifying the result.
 
----
+Raw editor scripting is powerful, but it is a poor interface for an autonomous agent: the agent has to invent C#, interpret unstructured logs, guess whether the camera can see an object, and clean up every temporary state change itself. Visora turns those recurring jobs into explicit workflows with validated inputs, compact structured outputs, safety checks, and visual artifacts.
 
-## 📚 Documentation
+## Why Visora exists
 
-- 📖 **[Agent Workflow Guide & Practical Recipes](https://github.com/AmaLS367/Visora/blob/master/docs/AGENT_WORKFLOWS.md)** — Step-by-step diagnostic recipes, camera projections, rig/animation debugging, and agent safety rules.
-- ⚙️ **[Setup & Integration Guide](https://github.com/AmaLS367/Visora/blob/master/docs/SETUP_GUIDE.md)** — Setup instructions for Unity Editor, AnkleBreaker, `.env` config, and client setups (Claude Desktop, Cursor, Antigravity, OpenCode).
-- 🗺️ **[Roadmap & Progress](https://github.com/AmaLS367/Visora/blob/master/docs/ROADMAP.md)** — Current status and milestones.
-- 📝 **[Changelog](https://github.com/AmaLS367/Visora/blob/master/docs/CHANGELOG.md)** — Release history and version notes.
+An agent working in Unity needs more than remote code execution. It needs to answer questions such as:
 
----
+- Is the bridge unavailable, or is Unity only recompiling scripts?
+- Is an object missing, outside the camera frustum, unlit, or behind the camera?
+- Is a broken character caused by mesh bounds, bone bindings, the Avatar, or the animation clip?
+- Did an edit actually improve motion over time, or does one screenshot only look plausible?
+- Can a scene or clip mutation be undone if compilation or execution fails?
 
-## 🚀 Stack
+Visora makes these distinctions part of the tool contract. Its core loop is:
 
-- **Python 3.10+**
-- **MCPServer (mcp)** — MCP server framework
-- **HTTPX** — Async HTTP client with automatic port discovery and retry backoff
-- **Pydantic v2 + pydantic-settings** — Typed config, validation, and structured tool output schemas
-- **Asyncio** — Asynchronous task loop & non-blocking ticket polling
-
----
-
-## 📂 Project Structure
-
-```
-visora/
-├── backend/
-│   ├── __init__.py
-│   ├── app.py             # MCPServer application instance
-│   ├── server.py          # MCP server entrypoint
-│   ├── config.py          # Centralized Pydantic settings
-│   ├── bridge.py          # HTTP bridge client with multi-port failover
-│   ├── tools/
-│   │   ├── vision/        # screenshots, camera rendering, viewport projection, video
-│   │   ├── animation/     # clip curve inspection, skeleton mapping, pose sampling
-│   │   ├── scene/         # safe transactions, playmode lifecycle, compilation check
-│   │   ├── mesh/          # skinned mesh diagnostics, bone binding & bound audit
-│   │   └── bridge/        # health check, port scan, queue ticket polling
-│   └── schemas/           # Pydantic output models for every tool
-├── docs/
-│   ├── AGENT_WORKFLOWS.md # Agent recipes, workflows, and safety rules
-│   ├── SETUP_GUIDE.md     # Installation and MCP client configuration
-│   └── ROADMAP.md         # Roadmap & feature matrix
-├── tests/                 # Unit and integration test suites
-├── Dockerfile              # Hardened production container image
-├── compose.yaml            # Secure local MCP container configuration
-├── pyproject.toml
-└── .env.example
+```text
+inspect state -> diagnose -> mutate safely -> verify visually and structurally -> keep or restore
 ```
 
----
+<p align="center">
+  <img src="docs/assets/concepts-workflow.jpg" alt="Visora observes a Unity scene, applies a controlled change, and verifies the result in a continuous loop" width="100%">
+</p>
+<p align="center"><em>Visora turns raw editor access into an inspect, act, and verify workflow.</em></p>
 
-## 🛠️ Getting Started
+## What it provides
 
-### Install from PyPI
+- Visual inspection through scene cameras and neutral diagnostic lighting.
+- Camera inventory, framing diagnostics, and world-to-viewport projection.
+- AnimationClip inspection, exact-time sampling, preview videos, motion metrics, and reproducible comparison records.
+- Skeleton, Humanoid Avatar, contact, IK, gaze, self-intersection, and skinned-mesh diagnostics.
+- Undo-aware scene and animation transactions with explicit recovery paths.
+- Online asset discovery, quarantined downloads, archive validation, Unity import inspection, and scene instantiation.
+- Resilient HTTP transport with multi-port discovery, bridge flavor selection, domain-reload recovery, and typed retry hints.
+- A bundled native Unity package plus compatibility with the AnkleBreaker bridge.
+
+The current MCP surface contains **46 registered tools**. The generated source-of-truth catalog is in [Agent workflows](docs/AGENT_WORKFLOWS.md#tool-catalog).
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    Agent[AI agent / MCP client] -->|MCP over stdio| Python[Visora Python server]
+    Python --> Tools[Typed workflow tools]
+    Tools --> Bridge[Resilient HTTP bridge client]
+    Bridge -->|legacy contract| AB[AnkleBreaker]
+    Bridge -->|native endpoints| Native[com.visora.editor]
+    AB --> Unity[Unity Editor]
+    Native --> Unity
+    Unity -->|JSON results and images| Bridge
+    Tools --> Artifacts[Local screenshots, videos, preview records]
+```
+
+The Python process is the agent-facing product surface. Unity remains authoritative for scene, asset, animation, and rendering state. See [Architecture](docs/backend/README.md) for the complete request lifecycle and module boundaries.
+
+## Quick start
+
+### 1. Install the Python server
+
+From PyPI as an isolated command-line tool:
 
 ```bash
-pip install visora
-visora
+uv tool install visora
 ```
 
-Visora starts an MCP server over standard input/output. Keep a Unity Editor open with either AnkleBreaker or the bundled `com.visora.editor` package configured as its HTTP bridge; see the [setup guide](https://github.com/AmaLS367/Visora/blob/master/docs/SETUP_GUIDE.md).
-
-### Development Installation
+For development from this repository:
 
 ```bash
-# Using uv (recommended)
-uv pip install -e .
-
-# Or using pip
-pip install -e .
+git clone https://github.com/AmaLS367/Visora.git
+cd Visora
+uv sync --locked --all-extras
 ```
 
-### Environment Configuration
+Visora requires Python 3.10 or newer. Project and installation commands use `uv`.
 
-Copy the `.env.example` file to `.env`:
+### 2. Choose a Unity bridge
+
+- **Native bridge:** install `unity-package/` as `com.visora.editor`. The current package requires Unity 6 (`6000.0`) or newer and exposes the complete optimized feature set.
+- **Legacy bridge:** keep an existing AnkleBreaker installation and use Visora as a high-level compatibility wrapper. Unity-version support is determined by that bridge.
+
+The Python default is `UNITY_BRIDGE_MODE=legacy`; set `native` explicitly when using the bundled package. `auto` accepts either and prefers a matching legacy bridge when both are running.
+
+### 3. Configure and run
 
 ```bash
 cp .env.example .env
-```
-
-### Running the MCP Server
-
-```bash
-# Direct module execution
-uv run python -m backend.server
-
-# Or package CLI
+# Set UNITY_BRIDGE_MODE=native when using com.visora.editor.
 uv run visora
 ```
 
-### Docker
+Visora communicates with its MCP client over standard input/output. A repository-based client configuration looks like this:
 
-Visora's container uses stdio, just like a local MCP server. Build and run it with Docker Compose:
-
-```bash
-docker compose build --pull
-docker compose run --rm -i visora
+```json
+{
+  "mcpServers": {
+    "visora": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/Visora", "visora"],
+      "env": {
+        "UNITY_BRIDGE_MODE": "native"
+      }
+    }
+  }
+}
 ```
 
-The Compose service reaches a Unity bridge on the host through `host.docker.internal`; configure bridge and optional provider variables in `.env`. See the [Docker setup guide](docs/SETUP_GUIDE.md#docker) for Linux networking and security details.
+After connecting, call `get_bridge_status`, then `get_editor_state`. Do not begin with a scene mutation.
 
----
+For platform-specific installation, Docker networking, Unity Package Manager steps, and troubleshooting, read the [Setup guide](docs/SETUP_GUIDE.md).
 
-## 🧰 Available MCP Tools
+## Documentation
 
-The generated, source-of-truth list of all 24 registered tools and their current parameters is in the [Agent Workflow Guide](https://github.com/AmaLS367/Visora/blob/master/docs/AGENT_WORKFLOWS.md#tool-catalog).
+Start at the [documentation index](docs/README.md). The main guides are:
 
----
+- [Concepts and philosophy](docs/CONCEPTS.md) — the problem model, design principles, benefits, and intentional limits.
+- [Setup guide](docs/SETUP_GUIDE.md) — Python, Unity, MCP client, Docker, verification, and recovery.
+- [Agent workflows](docs/AGENT_WORKFLOWS.md) — the generated tool catalog and task-oriented recipes.
+- [Backend architecture](docs/backend/README.md) — runtime layers, module ownership, and request lifecycle.
+- [Bridge and failure semantics](docs/backend/BRIDGE.md) — discovery, native/legacy dispatch, retries, reloads, and errors.
+- [Tools and schemas](docs/backend/TOOLS_AND_SCHEMAS.md) — MCP registration, result contracts, compact responses, and extension rules.
+- [State and safety](docs/backend/STATE_AND_SAFETY.md) — Edit/Play Mode, Undo, rollback, saving, and temporary-state restoration.
+- [Asset pipeline](docs/backend/ASSET_PIPELINE.md) — providers, quarantine, SSRF/archive defenses, import, and verification.
+- [Development guide](docs/backend/DEVELOPMENT.md) — repository workflow, tests, generated docs, and contribution checklist.
+- [Roadmap](docs/ROADMAP.md) and [changelog](docs/CHANGELOG.md) — release history and planned work.
+
+## Project layout
+
+```text
+backend/
+  app.py                 MCP server behavior and agent instructions
+  server.py              process entrypoint and tool registration imports
+  config.py              centralized Pydantic settings
+  bridge/                HTTP transport, discovery, recovery, typed exceptions
+  tools/                 bridge, scene, vision, animation, mesh, and asset workflows
+  schemas/               Pydantic input/output vocabulary
+unity-package/
+  Editor/Core/           HTTP server, router, main-thread dispatcher, settings
+  Editor/Services/       Unity-native workflow implementations
+  Tests/Editor/          Unity EditMode integration tests
+docs/                    user, agent, architecture, and contributor documentation
+skills/                  optional agent workflow skills
+tests/                   Python unit and integration tests
+scripts/                 catalog, distribution, Python/Unity validation helpers
+```
+
+## Important operating boundaries
+
+- Visora controls a live Unity Editor; it is not a headless replacement for Unity.
+- The native bridge listens on loopback only. Do not expose it directly to an untrusted network.
+- `safe_transaction` improves recovery but cannot make arbitrary C# intrinsically safe. Code must still register affected Unity objects with Undo.
+- A successful HTTP request is not sufficient proof of a successful creative change. Inspect the typed result and verify the scene, clip, or artifact.
+- `.gltf` and `.glb` require a glTF importer in the target Unity project; vanilla Unity does not provide one.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [backend development guide](docs/backend/DEVELOPMENT.md). Visora intentionally does not keep internal Python compatibility shims: when an internal interface changes, update every caller, test, and document to the new canonical API.
 
 ## License
 

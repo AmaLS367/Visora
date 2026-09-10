@@ -1,7 +1,7 @@
 [project]
 name = "visora"
 version = "0.1.3"
-description = "A high-level MCP wrapper over an existing Unity Editor HTTP bridge"
+description = "A high-level MCP server for reliable, typed AI-agent workflows in Unity Editor"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/AmaLS367/Visora/blob/master/docs/SETUP_GUIDE.md"
+Documentation = "https://github.com/AmaLS367/Visora/blob/master/docs/README.md"
 Changelog = "https://github.com/AmaLS367/Visora/blob/master/docs/CHANGELOG.md"
 Issues = "https://github.com/AmaLS367/Visora/issues"
 Repository = "https://github.com/AmaLS367/Visora"
@@ -74,4 +74,3 @@ skip_covered = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend"]
-

@@ -6,8 +6,8 @@
   "unity": "6000.0",
   "unityRelease": "0f1",
   "documentationUrl": "https://github.com/AmaLS367/Visora",
-  "changelogUrl": "https://github.com/AmaLS367/Visora/blob/main/unity-package/CHANGELOG.md",
-  "licensesUrl": "https://github.com/AmaLS367/Visora/blob/main/LICENSE",
+  "changelogUrl": "https://github.com/AmaLS367/Visora/blob/master/unity-package/CHANGELOG.md",
+  "licensesUrl": "https://github.com/AmaLS367/Visora/blob/master/LICENSE",
   "dependencies": {},
   "keywords": [
     "visora",

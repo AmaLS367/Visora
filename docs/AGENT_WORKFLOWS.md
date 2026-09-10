@@ -2,6 +2,11 @@
 
 Visora is a typed MCP layer for Unity Editor diagnostics and safe scene work. Every tool returns a Pydantic result with `success` and, on failure, a concrete `error`; do not treat a missing image or payload as success.
 
+<p align="center">
+  <img src="assets/concepts-workflow.jpg" alt="The Visora workflow cycles through inspection, safe action, and evidence-based verification around a Unity scene" width="100%">
+</p>
+<p align="center"><em>Start with evidence, make one recoverable change, then verify the same scene over time.</em></p>
+
 ## Transport
 
 `legacy` is the default and uses AnkleBreaker. Set `UNITY_BRIDGE_MODE=native` only when `com.visora.editor` is installed. Native mode exposes typed camera endpoints and the same statement-body executor contract as legacy, so the MCP surface stays identical. `auto` supports both but prefers legacy when both are running.
