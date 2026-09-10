@@ -37,6 +37,10 @@ from backend.tools.animation.qa import (
     compare_animation_previews,
     detect_curve_discontinuities,
 )
+from backend.tools.animation.records import (
+    get_animation_preview_record,
+    list_animation_preview_records,
+)
 from backend.tools.animation.sampling import sample_animation_clip
 from backend.tools.animation.scripts import (
     _inspect_clip_code,
@@ -66,9 +70,11 @@ __all__ = [
     "detect_mmd_bone_chains",
     "edit_animation_transaction",
     "find_bones",
+    "get_animation_preview_record",
     "inspect_animation_clip",
     "list_animation_backups",
     "list_animation_keyframes",
+    "list_animation_preview_records",
     "logger",
     "map_humanoid_bones",
     "match_bones_fuzzy",

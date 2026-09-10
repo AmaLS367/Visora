@@ -4,7 +4,7 @@ import pytest
 
 import backend.tools.animation as animation_pkg
 from backend.schemas import (
-    AnimationComparisonResult,
+    AnimationPreviewComparisonResult,
     CurveDiscontinuityResult,
     JointMotionAnalysisResult,
 )
@@ -213,7 +213,7 @@ async def test_compare_animation_previews_improvement() -> None:
         baseline_peak_jerk=200.0,
         comparison_peak_jerk=100.0,
     )
-    assert isinstance(result, AnimationComparisonResult)
+    assert isinstance(result, AnimationPreviewComparisonResult)
     assert result.success
     assert result.sliding_reduced_percent == 80.0
     assert result.jerk_reduced_percent == 50.0
@@ -231,7 +231,7 @@ async def test_compare_animation_previews_flags_regression() -> None:
         baseline_peak_jerk=100.0,
         comparison_peak_jerk=250.0,
     )
-    assert isinstance(result, AnimationComparisonResult)
+    assert isinstance(result, AnimationPreviewComparisonResult)
     assert result.success
     assert len(result.regression_warnings) >= 1
     assert "Regression" in result.regression_warnings[0]
@@ -243,5 +243,6 @@ async def test_compare_animation_previews_requires_baseline_metrics() -> None:
         baseline_preview_id="prev-1",
         comparison_preview_id="prev-2",
     )
+    assert isinstance(result, AnimationPreviewComparisonResult)
     assert result.success is False
     assert "baseline" in (result.error or "").lower()

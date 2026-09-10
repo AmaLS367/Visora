@@ -34,6 +34,8 @@ TOOL_FUNCTIONS = [
     animation.skeleton.skeleton_mapper,
     animation.skeleton.find_bones,
     animation.preview.preview_animation,
+    animation.records.get_animation_preview_record,
+    animation.records.list_animation_preview_records,
     # Mesh
     mesh.diagnostics.skinned_mesh_diagnostics,
     # Asset Web Search & Auto-Download

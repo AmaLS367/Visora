@@ -413,6 +413,10 @@ async def test_preview_animation_returns_key_frames_and_artifact_path(
     assert result.video_base64 is None
     assert result.rendered_camera_name == "Main Camera"
     assert result.preview_camera_destroyed is None
+    assert result.preview_id is not None
+    assert result.preview_id.startswith("prev_")
+    assert result.record_artifact_path is not None
+    assert Path(result.record_artifact_path).is_file()
 
 
 @pytest.mark.anyio

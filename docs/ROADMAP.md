@@ -38,8 +38,9 @@
 * **Delivered:** Added three first-class skills under `skills/` (`visora-animation-workflow`, `visora-camera-action-workflow`, `visora-rig-retarget-workflow`) with YAML frontmatter and prescriptive step-by-step sequences. Enforced acceptance rules across all skills: direct reporting of concrete bridge/Unity errors, strictly forbidding inferring success from static screenshots, enforcing the smallest safe preview (Edit Mode `preview_animation`) before final capture, anchoring combat beats to a single authoritative impact timestamp $T_{\text{impact}}$ without unsynchronized procedural shake, and providing explicit Generic rig fallback paths when Humanoid Avatar blockers occur. Updated `backend/app.py` instructions and documentation (`SETUP_GUIDE.md`, `AGENT_WORKFLOWS.md`), backed by automated skill integrity tests in `tests/unit/test_skills.py`.
 
 ### 6. 🧾 Reproducible Preview Artifacts
-* **Status:** 🔜 Planned
+* **Status:** ✅ Completed
 * **Scope:** Give each animation preview a stable artifact record containing its ID, scene and clip identities, camera, requested and actual capture settings, editor/bridge state, timestamps or named action markers, MP4 path, and generated key frames. Support comparison between two preview records so agents and humans can trace an observed improvement or regression back to the exact inputs.
+* **Delivered:** Added `AnimationPreviewRecord` schema and atomic storage engine in `backend.tools.animation.preview_store` organizing each preview run under `artifacts/animation_previews/<preview_id>/` with `record.json`, MP4 video, and keyframes. Integrated stable ID generation and record persistence directly into `preview_animation`. Added `preview_compare` engine and upgraded `compare_animation_previews` to load and diff records across inputs, temporal motion peaks, action markers, and side-by-side visual contact sheets. Added `get_animation_preview_record` and `list_animation_preview_records` MCP tools with comprehensive test coverage.
 
 ### 7. 🧪 Real Unity End-to-End Animation Fixtures
 * **Status:** 🔜 Planned

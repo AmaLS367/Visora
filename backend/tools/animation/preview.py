@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 from typing import Any
 
 from mcp.server.mcpserver import Image
@@ -11,6 +12,16 @@ from backend.schemas import (
     AnimationPreviewMotionSummary,
     AnimationPreviewResult,
 )
+from backend.schemas.preview_record import (
+    AnimationPreviewRecord,
+    PreviewActionMarker,
+    PreviewArtifactFiles,
+    PreviewCameraInfo,
+    PreviewCaptureSettings,
+    PreviewClipInfo,
+    PreviewEditorState,
+    PreviewSceneInfo,
+)
 from backend.tools.animation.common import _bridge_supports
 from backend.tools.animation.inspector import inspect_animation_clip
 from backend.tools.animation.preview_keyframes import select_key_frames
@@ -19,6 +30,10 @@ from backend.tools.animation.preview_math import (
     measure_actual_fps,
     resolve_frame_budget,
     summarize_motion,
+)
+from backend.tools.animation.preview_store import (
+    generate_preview_id,
+    save_preview_record,
 )
 from backend.tools.vision.image_utils import _downscale_for_inline
 
@@ -264,13 +279,16 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     result_height = int(payload.get("height") or height)
     range_duration = budget.end_time - budget.start_time
 
+    preview_id = generate_preview_id()
+    preview_subfolder = f"animation_previews/{preview_id}"
+
     key_images: list[Any] = []
     key_labels: list[str] = []
     key_frames: list[AnimationPreviewKeyFrame] = []
     for choice in choices:
         frame_b64 = images[choice.frame_index]
         saved_frame_path = vision_pkg._save_image_artifact(
-            frame_b64, prefix=f"keyframe_{choice.frame_index}", subfolder="animation_previews"
+            frame_b64, prefix=f"keyframe_{choice.frame_index}", subfolder=preview_subfolder
         )
         key_images.append(vision_pkg._decode_image(frame_b64))
         key_labels.append(f"#{choice.frame_index} t={timestamps[choice.frame_index]:.2f}s ({choice.source})")
@@ -296,7 +314,7 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     if key_images:
         contact_sheet = vision_pkg._create_contact_sheet(key_images, key_labels, cols=3)
         saved_sheet = vision_pkg._save_image_artifact(
-            contact_sheet, prefix="preview_contact_sheet", subfolder="animation_previews"
+            contact_sheet, prefix="preview_contact_sheet", subfolder=preview_subfolder
         )
         contact_sheet_path = str(saved_sheet)
 
@@ -384,6 +402,95 @@ async def preview_animation(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             else "Review key frames in timestamp order; motion peaks mark the frames with the greatest visual change."
         ),
     )
+
+    action_markers: list[PreviewActionMarker] = [
+        PreviewActionMarker(time=float(event.time), label=str(event.function_name), marker_type="event")
+        for event in clip.events
+    ]
+    if motion_summary.peak_motion_timestamp is not None:
+        action_markers.append(
+            PreviewActionMarker(
+                time=float(motion_summary.peak_motion_timestamp),
+                label="PeakMotion",
+                marker_type="peak_motion",
+            )
+        )
+
+    record = AnimationPreviewRecord(
+        preview_id=preview_id,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        target_object_path=target_object_path,
+        scene=PreviewSceneInfo(
+            scene_path=str(editor_state.get("activeScenePath") or "") if editor_state.get("activeScenePath") else None,
+            scene_name=str(editor_state.get("activeSceneName") or "") if editor_state.get("activeSceneName") else None,
+            is_dirty=bool(editor_state.get("isDirty", False)),
+        ),
+        clip=PreviewClipInfo(
+            clip_path=clip.clip_path or clip_path,
+            clip_name=clip.clip_name,
+            length=clip_length,
+            loop_time=clip.loop_time or False,
+            event_count=len(clip.events),
+            dangerous_curves=[warning.description for warning in clip.dangerous_curves]
+            if include_clip_diagnostics
+            else [],
+        ),
+        camera=PreviewCameraInfo(
+            requested_camera_name=camera_name,
+            rendered_camera_name=str(payload.get("previewCameraUsed") or payload.get("cameraName") or camera_name),
+            auto_frame_status=auto_frame_status,
+            framing_status_before=(str(payload["framingStatusBefore"]) if payload.get("framingStatusBefore") else None),
+        ),
+        capture_settings=PreviewCaptureSettings(
+            requested_start_time=budget.start_time,
+            requested_end_time=budget.end_time,
+            requested_fps=fps,
+            effective_fps=budget.effective_fps,
+            actual_fps=actual_fps,
+            width=result_width,
+            height=result_height,
+            frame_ceiling_applied=budget.frame_ceiling_applied,
+            range_truncated=budget.range_truncated,
+            timing_source=str(payload.get("timingSource") or "edit_mode_sampled"),
+            frame_count=len(images),
+        ),
+        editor_state=PreviewEditorState(
+            is_playing=bool(editor_state.get("isPlaying", False)),
+            is_paused=bool(editor_state.get("isPaused", False)),
+            pose_restored=bool(payload.get("poseRestored", False)),
+            scene_dirtied_by_preview=bool(payload.get("sceneDirtiedByPreview", False)),
+            preview_camera_created=preview_camera_created,
+            preview_camera_destroyed=bool(payload.get("previewCameraDestroyed", False))
+            if preview_camera_created
+            else None,
+        ),
+        action_markers=action_markers,
+        artifacts=PreviewArtifactFiles(
+            record_path="",
+            mp4_path=video_artifact_path,
+            contact_sheet_path=contact_sheet_path,
+            key_frame_paths=[kf.file_path for kf in key_frames if kf.file_path],
+        ),
+        motion_summary=AnimationPreviewMotionSummary(
+            peak_motion_timestamp=motion_summary.peak_motion_timestamp,
+            peak_changed_pixel_ratio=motion_summary.peak_changed_pixel_ratio,
+            mean_changed_pixel_ratio=motion_summary.mean_changed_pixel_ratio,
+            static_intervals=[[start, end] for start, end in motion_summary.static_intervals],
+            is_static=motion_summary.is_static,
+        ),
+        motion_timeline=motion_timeline,
+        key_frames=key_frames,
+        warnings=warnings,
+        recommended_interpretation=result.recommended_interpretation,
+    )
+
+    try:
+        saved_record_path = save_preview_record(record)
+        result.preview_id = preview_id
+        result.record_artifact_path = str(saved_record_path)
+    except Exception as exc:
+        animation_pkg.logger.warning("Failed to persist animation preview record: %s", exc)
+        warnings.append(f"Failed to persist preview record: {exc}")
 
     if contact_sheet_path is not None:
         return (result, Image(data=_downscale_for_inline(contact_sheet_path), format="png"))

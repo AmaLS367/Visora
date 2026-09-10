@@ -323,6 +323,10 @@ class AnimationPreviewResult(BaseToolResult):
     width: int = Field(default=0, description="Frame width in pixels")
     height: int = Field(default=0, description="Frame height in pixels")
 
+    preview_id: str | None = Field(default=None, description="Unique, stable ID of the generated preview record")
+    record_artifact_path: str | None = Field(
+        default=None, description="Local path of the saved preview record JSON manifest, when written"
+    )
     video_artifact_path: str | None = Field(default=None, description="Local path of the encoded MP4, when written")
     contact_sheet_path: str | None = Field(
         default=None, description="Local path of the generated contact sheet PNG, when written"

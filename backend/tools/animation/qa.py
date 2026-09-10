@@ -1,9 +1,11 @@
 from typing import Any
 
+from mcp.server.mcpserver import Image
+
 import backend.tools.animation as animation_pkg
 from backend.app import mcp
 from backend.schemas import (
-    AnimationComparisonResult,
+    AnimationPreviewComparisonResult,
     BoneMotionSummary,
     CurveDiscontinuityItem,
     CurveDiscontinuityResult,
@@ -17,6 +19,9 @@ from backend.tools.animation.common import (
     logger,
     warns,
 )
+from backend.tools.animation.preview_compare import compare_records
+from backend.tools.animation.preview_store import get_preview_record
+from backend.tools.vision.image_utils import _downscale_for_inline
 
 _CAPABILITY_MOTION_QA = "animation_motion_qa"
 _CAPABILITY_CURVE_DISCONTINUITY = "curve_discontinuity_detection"
@@ -238,7 +243,7 @@ async def detect_curve_discontinuities(
 
 
 @mcp.tool()
-async def compare_animation_previews(  # noqa: PLR0913
+async def compare_animation_previews(  # noqa: PLR0912, PLR0913
     baseline_preview_id: str,
     comparison_preview_id: str,
     baseline_slide_distance: float = 0.0,
@@ -250,7 +255,7 @@ async def compare_animation_previews(  # noqa: PLR0913
     baseline_camera_distance: float = 0.0,
     comparison_camera_distance: float = 0.0,
     keyframes_diff_count: int = 0,
-) -> AnimationComparisonResult:
+) -> tuple[AnimationPreviewComparisonResult, Image] | AnimationPreviewComparisonResult:
     """
     Compares two animation preview runs or diagnostic records to quantify improvement and detect regressions.
 
@@ -271,12 +276,29 @@ async def compare_animation_previews(  # noqa: PLR0913
         keyframes_diff_count: Number of keyframes altered between versions.
 
     Returns:
-        An AnimationComparisonResult summarizing percentage improvements and regression warnings.
-
-    Note:
-        `baseline_preview_id` / `comparison_preview_id` are labels echoed into the result for
-        traceability - the metrics themselves are supplied directly by the caller.
+        An AnimationPreviewComparisonResult (and optional side-by-side Image) summarizing deltas and regressions.
     """
+    baseline_rec = get_preview_record(baseline_preview_id)
+    comp_rec = get_preview_record(comparison_preview_id)
+
+    if baseline_rec is not None and comp_rec is not None:
+        result, diff_image_path = compare_records(
+            baseline=baseline_rec,
+            comparison=comp_rec,
+            baseline_slide_distance=baseline_slide_distance,
+            comparison_slide_distance=comparison_slide_distance,
+            baseline_peak_jerk=baseline_peak_jerk,
+            comparison_peak_jerk=comparison_peak_jerk,
+            baseline_peak_speed=baseline_peak_speed,
+            comparison_peak_speed=comparison_peak_speed,
+            baseline_camera_distance=baseline_camera_distance,
+            comparison_camera_distance=comparison_camera_distance,
+            keyframes_diff_count=keyframes_diff_count,
+        )
+        if diff_image_path is not None:
+            return (result, Image(data=_downscale_for_inline(diff_image_path), format="png"))
+        return result
+
     if (
         max(
             abs(baseline_slide_distance),
@@ -286,7 +308,7 @@ async def compare_animation_previews(  # noqa: PLR0913
         )
         < 1e-4
     ):
-        return AnimationComparisonResult(
+        return AnimationPreviewComparisonResult(
             success=False,
             baseline_preview_id=baseline_preview_id,
             comparison_preview_id=comparison_preview_id,
@@ -331,7 +353,7 @@ async def compare_animation_previews(  # noqa: PLR0913
     else:
         summary = "; ".join(summary_parts) + "."
 
-    return AnimationComparisonResult(
+    return AnimationPreviewComparisonResult(
         success=True,
         baseline_preview_id=baseline_preview_id,
         comparison_preview_id=comparison_preview_id,
