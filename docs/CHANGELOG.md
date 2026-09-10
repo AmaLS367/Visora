@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Real Unity End-to-End Animation Fixtures & C# Test Suites:** deterministic integration fixtures and end-to-end test suites for the production workflows that mocks cannot establish:
+  - C# EditMode integration test suites (`unity-package/Tests/Editor/`):
+    - `HumanoidRigIntegrationTests`: validates Generic rig `AvatarBlocker` diagnostics, actionable suggestions, and missing bone warnings; validates complete 15-bone Humanoid rig in canonical T-pose with zero blockers and angular symmetry; verifies four-limb contact constraint analysis via `HumanoidContactService.AnalyzeContacts`.
+    - `AnimationPreviewIntegrationTests`: validates high-FPS (24 fps and 30 fps) Edit Mode preview routine timing, exact frame counts, non-empty frame textures, auto-framing camera creation/destruction lifecycle without GameObject leaks, and full character transform restoration (`poseRestored == true`).
+    - `FastImpactHitStopIntegrationTests`: validates multi-clip camera-subject contact and hit-stop synchronization at exact impact timestamps ($T_{\text{impact}}$), verifying recoil trajectory curves on camera, hold ranges on character limbs, and clean resting scene state.
+  - Headless Unity batchmode EditMode test runner: `scripts/check_unity_tests.py` runs tests inside Unity Editor (`6000.6.0f1`) in batchmode with NUnit XML output (37/37 passing).
+  - Deterministic Python E2E fixtures (`tests/integration/test_animation_e2e_fixtures.py`):
+    - Multi-phase domain reload recovery: verifies client resilience across socket connection drops, transient empty HTTP 200 responses, and non-JSON HTML bodies until bridge re-binding is complete.
+    - Stale first Game View frame detection: validates `_discard_stale_frames` comparing against baseline, discarding pre-Play-Mode content, and awaiting dynamic frames.
+    - Physical artifact verification: inspects real files on disk, ensuring `record.json` matches `AnimationPreviewRecord` schema, MP4 files have valid `ftyp` container headers, and keyframes are valid PNGs.
+- **Reproducible Preview Artifacts & Comparison Engine:** stable artifact records and regression diffing for animation iteration:
+  - `AnimationPreviewRecord` schema and atomic storage engine in `backend.tools.animation.preview_store`, organizing preview runs under `artifacts/animation_previews/<preview_id>/` with `record.json`, MP4 video, and extracted keyframe PNGs.
+  - New MCP tools: `get_animation_preview_record` for loading full preview manifests and `list_animation_preview_records` for compact historical summaries.
+  - Upgraded `compare_animation_previews` with `preview_compare` engine: diffs preview inputs, motion metrics, peak timestamps, and generates side-by-side visual contact sheet artifacts comparing before/after keyframes.
+- **Agent Skills for Animation Workflows:** reusable, prescriptive skills under `skills/`:
+  - `visora-animation-workflow`: guides character rig preflight, progressive preview iteration, and final capture criteria.
+  - `visora-camera-action-workflow`: enforces a single authoritative impact timestamp $T_{\text{impact}}$, synchronized poses, camera recoil, flash, and hit-stop without unsynchronized procedural shake.
+  - `visora-rig-retarget-workflow`: guides imported rig validation, Humanoid eligibility diagnostics, and Generic rig fallbacks.
+  - Skill integrity test suite: `tests/unit/test_skills.py` validating skill structure, YAML frontmatter, tool references, and safety rules.
 - **Humanoid retargeting and contact constraints MCP tools:** 5 typed MCP tools for character setup, retargeting validation, and contact dynamics:
   - `validate_humanoid_avatar` for diagnosing avatar validity, required bone hierarchy (15 required bones), T-pose/A-pose orientation, and scale anomalies.
   - `configure_humanoid_avatar` for configuring imported character models via `ModelImporter` (`create_new` or `copy_from_other`).

@@ -43,8 +43,9 @@
 * **Delivered:** Added `AnimationPreviewRecord` schema and atomic storage engine in `backend.tools.animation.preview_store` organizing each preview run under `artifacts/animation_previews/<preview_id>/` with `record.json`, MP4 video, and keyframes. Integrated stable ID generation and record persistence directly into `preview_animation`. Added `preview_compare` engine and upgraded `compare_animation_previews` to load and diff records across inputs, temporal motion peaks, action markers, and side-by-side visual contact sheets. Added `get_animation_preview_record` and `list_animation_preview_records` MCP tools with comprehensive test coverage.
 
 ### 7. 🧪 Real Unity End-to-End Animation Fixtures
-* **Status:** 🔜 Planned
+* **Status:** ✅ Completed
 * **Scope:** Add deterministic Unity integration fixtures and end-to-end tests for the production workflows that mocks cannot establish: Play Mode domain reload and bridge re-binding, empty transient responses, stale first Game View frames, high-FPS MP4 capture, a fast impact/hit-stop sequence, a Generic rig with no Avatar, and a valid Humanoid rig. Assert scene restoration and inspect the produced artifacts, not just API success responses.
+* **Delivered:** Added deterministic Unity C# EditMode integration test suites (`HumanoidRigIntegrationTests.cs`, `AnimationPreviewIntegrationTests.cs`, `FastImpactHitStopIntegrationTests.cs`) running in headless batchmode via `check_unity_tests.py` (37/37 passing). Verified Generic rig AvatarBlocker reporting, complete 15-bone Humanoid rig validation with T-pose posture assessment and contact constraint resolution, high-FPS preview routine timing with automatic camera lifecycle/cleanup and transform restoration, and fast camera-subject contact with synchronized impact curves and hit-stop holds. Added Python end-to-end fixtures (`tests/integration/test_animation_e2e_fixtures.py`) testing multi-phase domain reload recovery (connection drops, empty HTTP 200, non-JSON responses), stale first Game View frame detection/discard, disk artifact validation (`record.json`, MP4 container headers, PNG keyframes), and scene restoration.
 
 ---
 
