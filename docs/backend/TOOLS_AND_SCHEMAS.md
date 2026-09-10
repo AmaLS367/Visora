@@ -28,9 +28,9 @@ A public tool is an async function decorated with the singleton server:
 from backend.app import mcp
 from backend.schemas import SomeResult
 
+
 @mcp.tool()
-async def some_operation(required_value: str, limit: int = 10) -> SomeResult:
-    ...
+async def some_operation(required_value: str, limit: int = 10) -> SomeResult: ...
 ```
 
 Registration happens when Python imports the module. To make a new tool reachable:

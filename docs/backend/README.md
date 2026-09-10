@@ -133,6 +133,7 @@ class BaseToolResult(RetryHint):
     success: bool
     error: str | None = None
 
+
 class RetryHint(BaseModel):
     retryable: bool = False
     unity_state: str | None = None
